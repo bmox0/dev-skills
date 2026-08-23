@@ -611,4 +611,25 @@ printf '%s' "$out" | grep -q 'M-1' \
 printf '%s' "$out" | grep -qiE 'stor|US-' \
   || fail "TC-11 (moments): the finding should say a moment names the stories it gathers, got: $out"
 
+# --- a moment whose steps are indented four spaces --------------------------
+#
+# No TC-ID: this is a local regression test, not one of the plan's approved
+# cases. Steps are counted by /^  [0-9]+\.[ \t]/, so ordinary four-space
+# markdown nesting is not a step. The rule stays as frozen — four spaces is
+# still rejected — but the finding has to name the two-space indentation, or
+# it reports '0 numbered step(s)' to a planner looking at two steps.
+
+dirm12=$(mktemp_dir)
+planm12="$dirm12/plan.md"
+write_moments_plan "$planm12" '- **M-1. Switching provider**  · US-1
+    1. You open settings and see your current provider.
+    2. You pick a new provider from the list.'
+
+run_plan_check "$planm12"
+[ "$rc" -eq 1 ] || fail "four-space steps: should still exit 1, got $rc: $out"
+printf '%s' "$out" | grep -q 'M-1' \
+  || fail "four-space steps: the finding should name M-1, got: $out"
+printf '%s' "$out" | grep -qiE 'two spaces|indent' \
+  || fail "four-space steps: the finding should name the two-space indentation, got: $out"
+
 echo "ok"

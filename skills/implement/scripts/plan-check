@@ -361,7 +361,7 @@ if [ -n "$moments_line" ]; then
             findings+=("'## Moments' in ${plan} has a bullet that is not a moment heading: '${m_a}' — expected the shape '- **M-<n>. <what the person is doing>** · US-<n>[, US-<n>...]'. ${DONT_READ}")
             ;;
           SHORT)
-            findings+=("moment ${m_a} in ${plan} has ${m_b} numbered step(s) — a moment needs at least two steps. ${DONT_READ}")
+            findings+=("moment ${m_a} in ${plan} has ${m_b} numbered step(s) — a moment needs at least two, each written '  1. <step>' and indented exactly two spaces. A step indented any other way is not counted, which is why this can read 0 with steps on the page. ${DONT_READ}")
             ;;
           NOSTORY)
             findings+=("moment ${m_a} in ${plan} names no story — a moment names the stories (US-<n>) it gathers. ${DONT_READ}")
