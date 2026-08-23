@@ -298,7 +298,7 @@ After the last phase, in this order and never at once:
 scripts/review-package <plan> BASE HEAD   the whole range
 → scripts/dispatch <plan> --gate-a
 → dispatch gate A: checks, then conformance, then integrity
-→ green → dispatch gate B on the executable cases
+→ green → dispatch gate B on the executable cases and the plan's moments
 → green → squash, then the human
 ```
 

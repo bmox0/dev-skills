@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Refuses a malformed plan before a human ever dispatches work against it.
 #
-# Six mechanical checks, fence-aware the way brief and preflight
+# Seven mechanical checks, fence-aware the way brief and preflight
 # already are (a heading inside a fenced example is not a heading):
 #   1. '## Phases' is present
 #   2. at least one '### Phase <n>.' heading exists
@@ -12,6 +12,9 @@
 #      '| Phases | Implementer | Why the boundary is here |', and every
 #      phase number appears in exactly one row's range
 #   6. '## Ledger' is present once '## Topology' is
+#   7. '## Moments', when present and not a bare '—', holds only moment
+#      headings ('- **M-<n>. <text>** · US-<n>[, ...]') each carrying at
+#      least one 'US-' reference and at least two numbered steps
 #
 # Check 1 is the one fault with no decision in it: the heading always goes
 # immediately above the first '### Phase 1.', so it is inserted in place and
@@ -289,6 +292,83 @@ if [ -n "$topology_line" ]; then
   ledger_line=$(first_line_matching "$plan" '^##[ \t]+Ledger[ \t]*$')
   if [ -z "$ledger_line" ]; then
     findings+=("'## Ledger' is missing from ${plan} even though '## Topology' is present — add a '## Ledger' section. ${DONT_READ}")
+  fi
+fi
+
+# --- check 7: '## Moments', its bullets and their steps ---------------------
+#
+# Not flagged for being entirely absent, and a block whose only non-blank
+# content is a bare '—' is the planner's own assertion that this work puts
+# no new moment in front of anyone — also not a finding. Once the heading
+# carries anything else, every top-level bullet must be a moment heading
+# ('- **M-<n>. <text>** · US-<n>[, ...]') naming at least one 'US-'
+# reference, and each must carry at least two numbered steps indented two
+# spaces.
+
+moments_line=$(first_line_matching "$plan" '^##[ \t]+Moments[ \t]*$')
+if [ -n "$moments_line" ]; then
+  moments_block=$(awk -v start="$moments_line" '
+    /^```/ { fence = !fence; next }
+    fence { next }
+    NR == start { inmoments = 1; next }
+    inmoments && /^##[ \t]+/ { exit }
+    inmoments { print }
+  ' "$plan")
+
+  moments_nonblank=$(printf '%s\n' "$moments_block" | grep -v '^[ \t]*$' || true)
+
+  if [ -n "$moments_nonblank" ] && [ "$moments_nonblank" != "—" ]; then
+    moments_issues=$(printf '%s\n' "$moments_block" | awk '
+      function flush(   ) {
+        if (have) {
+          if (valid) {
+            if (steps < 2) print "SHORT\t" id "\t" steps
+            if (!has_story) print "NOSTORY\t" id
+          } else {
+            print "BAD\t" line
+          }
+        }
+      }
+      /^-[ \t]/ {
+        flush()
+        have = 1
+        line = $0
+        steps = 0
+        if (line ~ /^- \*\*M-[0-9]+\.[ \t]/) {
+          valid = 1
+          id = line
+          sub(/^- \*\*M-/, "", id)
+          sub(/\..*$/, "", id)
+          id = "M-" id
+          has_story = (line ~ /·[ \t]*US-[0-9]+/) ? 1 : 0
+        } else {
+          valid = 0
+        }
+        next
+      }
+      /^  [0-9]+\.[ \t]/ {
+        if (have && valid) steps++
+        next
+      }
+      END { flush() }
+    ')
+
+    if [ -n "$moments_issues" ]; then
+      while IFS=$'\t' read -r m_kind m_a m_b; do
+        [ -n "$m_kind" ] || continue
+        case "$m_kind" in
+          BAD)
+            findings+=("'## Moments' in ${plan} has a bullet that is not a moment heading: '${m_a}' — expected the shape '- **M-<n>. <what the person is doing>** · US-<n>[, US-<n>...]'. ${DONT_READ}")
+            ;;
+          SHORT)
+            findings+=("moment ${m_a} in ${plan} has ${m_b} numbered step(s) — a moment needs at least two steps. ${DONT_READ}")
+            ;;
+          NOSTORY)
+            findings+=("moment ${m_a} in ${plan} names no story — a moment names the stories (US-<n>) it gathers. ${DONT_READ}")
+            ;;
+        esac
+      done <<< "$moments_issues"
+    fi
   fi
 fi
 

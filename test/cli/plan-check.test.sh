@@ -479,4 +479,136 @@ assert_eq "$before_mode" "$after_mode2" \
   "mode: a second, idempotent run must not change the file mode either" \
   || fail "file mode changed on idempotent rerun"
 
+# --- TC-1, TC-2, TC-3, TC-4, TC-5, TC-11 of ------------------------------
+# .ai-workflow/plans/2026-08-23-moments-in-the-plan.md — the '## Moments'
+# check. These numbers repeat TC-1/TC-2/TC-3 used above for
+# .ai-workflow/plans/2026-08-06-six-fixes-from-real-runs.md: two different
+# plans, each with its own case list, sharing this one file per that plan's
+# Test seams.
+#
+# The '## Moments' check itself is phase 2's, and does not exist in this
+# script yet. Every fixture below is well-formed by every OTHER check —
+# '## Phases', one phase carrying all seven fields, a covering
+# '## Topology' table, a '## Ledger' — so that only the moments rule under
+# test can move the exit code or the findings.
+
+# write_moments_plan FILE BLOCK — BLOCK becomes the verbatim body of
+# '## Moments'; pass "" to omit the heading entirely (TC-5).
+write_moments_plan() {
+  local f="$1" block="$2" fld
+  {
+    printf '# moments fixture\n\n'
+    if [ -n "$block" ]; then
+      printf '## Moments\n\n%s\n\n' "$block"
+    fi
+    printf '## Phases\n\n### Phase 1. First phase title\n\n'
+    for fld in "Becomes true" "Changes" "How" "Do not touch" \
+               "Frozen for later phases" "Verification" "Steps"; do
+      printf '**%s**\n- x\n\n' "$fld"
+    done
+    printf '## Topology\n\n'
+    printf '| Phases | Implementer | Why the boundary is here |\n'
+    printf '|---|---|---|\n'
+    printf '| 1 | Sonnet | one |\n\n'
+    printf '## Ledger\n- [ ] x\n'
+  } > "$f"
+}
+
+# --- TC-1: a moment with a single step ------------------------------------
+#
+# given: '## Moments' holds '- **M-1. Switching provider** · US-1' followed
+# by a single numbered step.
+
+dirm1=$(mktemp_dir)
+planm1="$dirm1/plan.md"
+write_moments_plan "$planm1" '- **M-1. Switching provider** · US-1
+  1. You open settings and pick a new provider.'
+
+run_plan_check "$planm1"
+[ "$rc" -eq 1 ] || fail "TC-1 (moments): a moment with one step should exit 1, got $rc: $out"
+printf '%s' "$out" | grep -q 'M-1' \
+  || fail "TC-1 (moments): the finding should name M-1, got: $out"
+printf '%s' "$out" | grep -qiE '\btwo\b|\b2\b' \
+  || fail "TC-1 (moments): the finding should say a moment needs at least two steps, got: $out"
+printf '%s' "$out" | grep -qi 'step' \
+  || fail "TC-1 (moments): the finding should mention steps, got: $out"
+
+# --- TC-2: a bullet under '## Moments' that is not a moment heading --------
+#
+# given: '## Moments' holds '- **Switching provider** · US-1' — no
+# 'M-<n>.'.
+
+dirm2=$(mktemp_dir)
+planm2="$dirm2/plan.md"
+write_moments_plan "$planm2" '- **Switching provider** · US-1'
+
+run_plan_check "$planm2"
+[ "$rc" -eq 1 ] || fail "TC-2 (moments): a bullet with no 'M-<n>.' should exit 1, got $rc: $out"
+assert_contains "$out" "Switching provider" \
+  "TC-2 (moments): the finding should name the offending line" || fail "line not named"
+printf '%s' "$out" | grep -q 'M-' \
+  || fail "TC-2 (moments): the finding should say the shape it wanted (an 'M-<n>.' heading), got: $out"
+
+# --- TC-3: a well-formed moment ---------------------------------------------
+#
+# given: one moment heading, four numbered steps.
+
+dirm3=$(mktemp_dir)
+planm3="$dirm3/plan.md"
+write_moments_plan "$planm3" '- **M-1. Switching provider** · US-1
+  1. You open settings and see your current provider.
+  2. You pick a new provider from the list.
+  3. You see a confirmation before anything changes.
+  4. You see the switch applied and your data intact.'
+
+run_plan_check "$planm3"
+[ "$rc" -eq 0 ] || fail "TC-3 (moments): a well-formed moment should exit 0, got $rc: $out"
+! printf '%s' "$out" | grep -qi 'moment' \
+  || fail "TC-3 (moments): no finding should mention a moment, got: $out"
+
+# --- TC-4: '## Moments' holding a single dash -------------------------------
+#
+# given: '## Moments' is a single '—', asserting no new moment.
+
+dirm4=$(mktemp_dir)
+planm4="$dirm4/plan.md"
+write_moments_plan "$planm4" '—'
+
+run_plan_check "$planm4"
+[ "$rc" -eq 0 ] || fail "TC-4 (moments): a dash should exit 0, got $rc: $out"
+! printf '%s' "$out" | grep -qi 'moment' \
+  || fail "TC-4 (moments): a dash should raise no finding mentioning a moment, got: $out"
+
+# --- TC-5: no '## Moments' heading at all -----------------------------------
+
+dirm5=$(mktemp_dir)
+planm5="$dirm5/plan.md"
+write_moments_plan "$planm5" ""
+
+! grep -qE '^##[ \t]+Moments[ \t]*$' "$planm5" \
+  || fail "TC-5 test setup: fixture must have no '## Moments' heading"
+
+run_plan_check "$planm5"
+[ "$rc" -eq 0 ] || fail "TC-5 (moments): a plan with no '## Moments' heading should exit 0, got $rc: $out"
+[ -z "$out" ] \
+  || fail "TC-5 (moments): a plan with no '## Moments' heading should raise no finding at all, got: $out"
+
+# --- TC-11: a moment heading with no story reference ------------------------
+#
+# given: '## Moments' holds '- **M-1. Switching provider**' with nothing
+# after it — no 'US-' reference.
+
+dirm11=$(mktemp_dir)
+planm11="$dirm11/plan.md"
+write_moments_plan "$planm11" '- **M-1. Switching provider**
+  1. You open settings and see your current provider.
+  2. You pick a new provider from the list.'
+
+run_plan_check "$planm11"
+[ "$rc" -eq 1 ] || fail "TC-11 (moments): a moment heading with no story reference should exit 1, got $rc: $out"
+printf '%s' "$out" | grep -q 'M-1' \
+  || fail "TC-11 (moments): the finding should name M-1, got: $out"
+printf '%s' "$out" | grep -qiE 'stor|US-' \
+  || fail "TC-11 (moments): the finding should say a moment names the stories it gathers, got: $out"
+
 echo "ok"

@@ -70,6 +70,7 @@ dash — the dash is an assertion by the planner, not tidiness.
 | `Norms:` | the paths that count as an approved source of a convention | the code gate |
 | `Baseline:` | what the mandatory checks produce before any work starts | the code gate |
 | **User stories** | actor, action, outcome — what the work is for | everyone |
+| **Moments** | what the person is put in front of, and in what order | planner, implementer, gate B |
 | **Constraints** and **Out of scope** | where not to go | implementer |
 | **What the final gate proves** | the verification contract for this kind of task | the runtime gate |
 | **Test seams** | where we check. Existing beats new, highest level that works, the ideal number of new seams is zero | implementer, reviewer |
@@ -79,6 +80,12 @@ dash — the dash is an assertion by the planner, not tidiness.
 | **Phases** | bounded units of execution, seven fields each | implementer, reviewer |
 | **Final-gate scenarios** | the runtime projection of the test cases | the runtime gate, the human at acceptance |
 | **Ledger** | the run's record and its resume point after a compaction | orchestrator |
+
+If the work puts something new in front of a person — a screen, a prompt, a
+message, the output of a command — [references/moments.md](references/moments.md)
+says how a storyboard is written and when you offer to draw one. Work that
+changes only a server, a script or a schema puts nothing new in front of anyone:
+its section is a dash, and that file stays unread.
 
 There is **no `Commit` section**. The Goal is enough: the actor assembling the
 commit reads the goal and the result.
@@ -103,6 +110,7 @@ Baseline: …
 ## Goal
 ## Epic
 ## User stories
+## Moments
 ## Constraints
 ## Out of scope
 ## What the final gate proves
@@ -603,6 +611,7 @@ is in [codebase-design.md](references/codebase-design.md).
 Present the plan and take approval before anything is built. Show:
 
 - the user stories;
+- the moments, in the person's words — or the dash and why it holds;
 - the phase list, one line each;
 - the topology: how the phases are grouped, the model on each group, and the
   reason each boundary sits where it does — and for any Parallel group the frozen

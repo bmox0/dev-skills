@@ -32,3 +32,4 @@ plan-check-field-check-not-per-phase	skills/implement/scripts/plan-check	test/mu
 plan-check-phases-repair-noop	skills/implement/scripts/plan-check	test/mutations/plan-check-phases-repair-noop.patch	TC-1: '## Phases' should now be present in the file
 plan-check-exit-relaxed	skills/implement/scripts/plan-check	test/mutations/plan-check-exit-relaxed.patch	got 0: phase 2 is missing
 preflight-parallel-locale	skills/implement/scripts/preflight	test/mutations/preflight-parallel-locale.patch	an intersection must be found whatever the locale
+moments-check-shape-relaxed	skills/implement/scripts/plan-check	test/mutations/moments-check-shape-relaxed.patch	TC-1 (moments): a moment with one step should exit 1, got 0

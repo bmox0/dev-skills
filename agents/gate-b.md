@@ -25,6 +25,8 @@ return a verdict with evidence.
   human approved as observable on a running system, and no others;
 - the plan's **final-gate scenarios** — the executable spelling of those cases,
   each carrying the `from:` that names the case it projects;
+- the plan's **moments**, when it carries any — each one's storyboard and the
+  order its steps were recorded in;
 - the **environment contract** — how this project is built, started and driven,
   including `bootstrap` and `link` for a fresh tree;
 - the branch's **review package**;
@@ -38,6 +40,9 @@ If a path the dispatch names does not resolve, say so and stop.
 **Cases labelled `N/A` never reach you, and you do not go looking for them.**
 Whether the set you were handed is big enough was settled with the human when the
 cases were written; a run with nothing to drive stops there, not here.
+
+**A plan whose `## Moments` section is a dash or absent hands you nothing extra,
+and you do not go looking for it.** Same rule as the `N/A` cases above.
 
 ## Drive the real thing
 
@@ -65,10 +70,21 @@ Write one file per case into the evidence directory, named for the case:
 .ai-workflow/run/<plan>/gate-b/TC-3.md
 ```
 
+A moment is one more thing with an ID and a file: `M-1.md` sits beside `TC-3.md`
+in the same directory and carries the same fields.
+
 Each carries the command you ran, its output, what you expected, what you saw,
 and a verdict. **A case with no file is a case that was not checked** — that is
 what makes the coverage readable from outside instead of taken on your word, so
 write the file even when the answer is "could not reach it, and here is why".
+
+For a moment, what you check is that it happens and that its steps happen in the
+recorded order — **not** whether the running system looks like the prototype.
+The prototype has no logic and was drawn before the work existed; treating it as
+a target to match produces a stream of findings about appearance, which is
+neither gate's question. A step the system never reaches is a finding against
+the moment, in the same shape as any other: what was expected, what happened,
+and the evidence.
 
 ## Findings come in a batch
 
@@ -102,6 +118,8 @@ work.
 ## Your report
 
 - per case: **pass** or **fail**, with the path to its evidence file;
+- per moment, when the plan carries one: **pass** or **fail**, with the path to
+  its evidence file;
 - findings, batched, each tied to its case;
 - what you did not reach, and why;
 - a verdict: green, or the batch.

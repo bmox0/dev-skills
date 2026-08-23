@@ -1,0 +1,13 @@
+diff --git a/skills/implement/scripts/plan-check b/skills/implement/scripts/plan-check
+index ccf2d69..69464b0 100755
+--- a/skills/implement/scripts/plan-check
++++ b/skills/implement/scripts/plan-check
+@@ -322,7 +322,7 @@ if [ -n "$moments_line" ]; then
+       function flush(   ) {
+         if (have) {
+           if (valid) {
+-            if (steps < 2) print "SHORT\t" id "\t" steps
++            if (steps < 1) print "SHORT\t" id "\t" steps
+             if (!has_story) print "NOSTORY\t" id
+           } else {
+             print "BAD\t" line

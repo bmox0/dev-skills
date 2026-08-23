@@ -98,6 +98,28 @@ Named by the **artifact naming convention** below.
 
 _Avoid_: summary, log, output
 
+### Moment
+
+A sequence the work puts in front of a person, recorded in a **plan**'s `##
+Moments` section between `## User stories` and `## Constraints`. Where a user
+story says what the work is for, a moment says what a person sees and does,
+and in what order; one moment usually gathers several stories under a single
+heading. Read by the planner, the **implementer** building the **phase** that
+lands part of it, and **Gate B**, which checks the running system against the
+order it recorded.
+
+_Avoid_: flow, interaction, scenario, walkthrough, journey
+
+### Storyboard
+
+The form a **moment** takes on the page: a moment heading followed by at
+least two numbered steps, each written in the person's own words rather than
+the mechanism's. A `## Moments` section holding a single `—` is a deliberate,
+well-formed absence — the planner's assertion that this work puts no new
+moment in front of anyone; an absent section is equally well-formed.
+
+_Avoid_: script, mockup, storyline
+
 ## The Actors
 
 ### Planner
@@ -134,6 +156,16 @@ else — no architecture, no product decision — and commits them as their own
 commit, before the phases that make them green.
 
 _Avoid_: QA, tester
+
+### Prototyper
+
+The subagent a planner dispatches once a **moment**'s questions are settled
+and before **phase**s are laid out, to offer a self-contained HTML drawing of
+it — one file per moment, opened directly with no server running. A decline
+ends the offer without changing the interview's shape.
+
+_Avoid_: prototype (the existing skill that writes throwaway code into a
+project — a different thing), mockup tool
 
 ### Gate A
 
@@ -269,6 +301,15 @@ exactly as later phases must produce and check them:
 - `## Topology`, and its table columns, in this order and no others:
   `| Phases | Implementer | Why the boundary is here |`
 - `## Ledger`
+- `## Moments` — the section heading, on its own line, between `## User
+  stories` and `## Constraints`
+- a moment heading — `- **M-<n>. <what the person is doing>** · US-<n>[, …]` —
+  matches `^- \*\*M-[0-9]+\. ` and carries at least one `US-` reference after a
+  `·`
+- a moment carries **at least two** numbered steps, each indented two spaces:
+  `  1. <step, in the person's own words>`
+- `## Moments` holding a single `—` is well-formed and means "no new moment";
+  an absent section is equally well-formed
 
 ## Artifact naming convention
 
@@ -276,6 +317,10 @@ Every file a script derives from a phase range is `<kind>-<first>-<last>.md` —
 `brief-1-3.md`, `dispatch-1-3.md`, `report-1-3.md`. Files not derived from a
 range keep their own names: `gate-a-dispatch.md`, `contracts/<range>.md`,
 `review-<sha>..<sha>.diff`.
+
+A file derived from a **moment** instead of a phase range is named by its
+number: `.ai-workflow/plans/<plan>/prototypes/M-<n>.html` for the drawing, and
+`.ai-workflow/run/<plan>/gate-b/M-<n>.md` for gate B's evidence.
 
 ## Script names
 
