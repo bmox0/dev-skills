@@ -47,9 +47,10 @@ outside the file. It has to render exactly the same with the network off,
 because that is how it will be opened — pulled up directly in a browser, with
 no server running.
 
-No logic beyond what a static page needs to be readable: no `<script>` that
-does anything but move between the steps already drawn, no form that submits
-anywhere, no state that outlives the page. It is a picture, not a program.
+No logic. Every step is already in the document, one below the next, so the
+page is readable with no `<script>` at all: none to move between steps, none to
+show or hide them, no form that submits anywhere, no state of any kind. It is a
+picture, not a program.
 
 ## Your report
 
