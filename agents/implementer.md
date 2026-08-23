@@ -112,6 +112,10 @@ stale under you, and no shared file to race for. What is left is this:
 - **Stage only the paths you changed yourself.** `git add -A`, `git add .` and
   `git commit -a` are refused by `commit-guard`; Conventional Commits are
   required.
+- **Subject only — no body.** `finish` squashes the whole run into one commit, so
+  a phase body is written to be thrown away. Say the phase in the subject, under
+  72 characters. If you truly need a body, `commit-guard` caps it at 300
+  characters and refuses anything longer.
 - Commit when the phases in your brief are built. That commit is also the run's
   recovery point.
   **In a parallel group you do not commit at all** — the orchestrator makes the

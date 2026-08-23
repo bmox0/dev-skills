@@ -62,9 +62,10 @@ Why it changed, plus anything the diff cannot show.
 BREAKING CHANGE: if applicable
 ```
 
-The body is optional and capped: 2-4 sentences, one paragraph, plain B1
-English. See `commit-message-template.md` for the word swaps and good/bad
-pairs.
+Most commits have no body. When one is needed it is capped at 300 characters,
+one paragraph, plain B1 English — and the subject at 72. Both caps are enforced
+by the `commit-guard` hook, which refuses a longer message. See
+`commit-message-template.md` for the word swaps and good/bad pairs.
 
 ### Safety Checks
 

@@ -13,6 +13,8 @@ Make commits that are easy to review and safe to ship:
 
 ## Non-negotiables (a PreToolUse hook enforces these — a violating `git commit` is blocked)
 - **Conventional Commits** subject: `type(scope): summary`.
+- **Subject ≤ 72 characters.**
+- **Body ≤ 300 characters** — and most commits carry no body at all.
 - **No** `Co-Authored-By`, no "Generated with Claude Code" footnote, no `Claude-Session:` trailer.
 - **Never** `git add .` / `git add -A` — stage intentionally (`git add -p` or explicit paths).
 
@@ -49,12 +51,15 @@ Make commits that are easy to review and safe to ship:
    <Why it changed, plus anything the diff cannot show.>
    ```
 
-   **Budget.** Subject ≤ 72 chars, imperative, no trailing period. A body is
-   optional — write one only when the subject leaves a real question open.
-   When you do: one paragraph, 2-4 sentences, wrapped at 72 columns. Add a
-   second short paragraph only for a genuinely separate fact (a caveat, a side
-   effect, a follow-up). Past ~80 words the commit is usually too big — go back
-   to step 2 and split it. Compact is the target, not terse: keep every fact a
+   **Budget — the hook enforces both halves, and a longer message is refused.**
+   Subject ≤ 72 characters, imperative, no trailing period. **Default to no
+   body**: most commits are one line, and a subject that already answers "why"
+   needs nothing under it. Write a body only when the subject leaves a real
+   question open — then ≤ 300 characters, wrapped at 72 columns, which is about
+   two short sentences. A second short paragraph is allowed for a genuinely
+   separate fact (a caveat, a side effect, a follow-up), inside the same 300.
+   If 300 characters cannot hold the reason, the commit is too big — go back to
+   step 2 and split it. Compact is the target, not terse: keep every fact a
    reviewer needs, drop every word they do not.
 
    **Each line must earn its place.** Keep: the reason, the symptom it fixes,

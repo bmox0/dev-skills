@@ -8,12 +8,17 @@
 
 ## Size
 
-- Subject ≤ 72 chars, imperative, no trailing period.
-- Body optional. Write one only if the subject leaves a real question open.
-- When you write one: 2-4 sentences, one paragraph, wrapped at 72 columns.
+Both caps are enforced by the `commit-guard` hook. A message over either one is
+refused, not warned about.
+
+- Subject ≤ 72 characters, imperative, no trailing period.
+- Default to no body. Write one only if the subject leaves a real question open.
+- When you write one: ≤ 300 characters, wrapped at 72 columns — about two short
+  sentences.
 - Second paragraph only for a separate fact — a caveat, a side effect, a
-  follow-up. Not for more detail on the first one.
-- Past ~80 words, the commit is probably too big. Split it instead.
+  follow-up. Not for more detail on the first one, and inside the same 300.
+- If 300 characters cannot hold the reason, the commit is too big. Split it
+  instead.
 
 Compact is the target, not terse. Keep every fact a reviewer needs; drop every
 word they do not.
@@ -72,7 +77,8 @@ streamlined, powerful, elegant.
 
 ## Good / bad
 
-Too long, and most of it is the diff read aloud:
+Too long, and most of it is the diff read aloud — 463 characters, refused by the
+hook:
 
 ```text
 fix(auth): resolve token expiration edge case
@@ -86,7 +92,7 @@ updated accordingly to cover the new behaviour, making the auth flow much
 more robust.
 ```
 
-Same commit, compact:
+Same commit, compact — 227 characters:
 
 ```text
 fix(auth): accept tokens for 5s past expiry

@@ -60,8 +60,11 @@ before the code and approved at the plan gate; a message reconstructed from a
 diff describes what changed, which the diff already says, instead of what it was
 for.
 
-Subject: Conventional Commits — `commit-guard` requires it. Body: what and why,
-in a few lines. No trailers, no session links, no co-authors.
+Subject: Conventional Commits, 72 characters max — `commit-guard` requires both
+and refuses a longer one. Body: why the run happened, in 300 characters or less,
+which `commit-guard` also enforces. A whole run still squashes to a message this
+size: the plan holds the detail, and it is on disk. No trailers, no session
+links, no co-authors.
 
 Write it to a file and show the draft to the human before committing.
 
