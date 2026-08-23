@@ -4,8 +4,8 @@
 #
 # Plain mode discovers and runs every test/**/*.test.sh (executed as its own
 # process, so one file's `set -e` cannot end the run) and every
-# test/unit/test_*.py (via `python3 -m unittest`), prints one line per file,
-# and exits 0 only if every file passed.
+# test/unit/test_*.py (via `python3 -m unittest discover`), prints one line per
+# file, and exits 0 only if every file passed.
 #
 # Given a PATH instead, runs only that one file — the same argument form for
 # a .test.sh file and for a test/unit/test_*.py file — and prints only its
@@ -60,9 +60,31 @@ run_sh_file() {
 }
 
 run_py_file() {
-  local f="$1" out rc
-  out=$(python3 -m unittest "$f" 2>&1)
+  local f="$1" out rc dir base
+  dir=$(dirname "$f")
+  base=$(basename "$f")
+  # Not `python3 -m unittest "$f"`. That turns the path into a dotted name, so
+  # test/unit/test_dispatch.py becomes test.unit.test_dispatch — and `test` is
+  # a package in the standard library. This tree's test/ has no __init__.py, so
+  # it is only a namespace portion, and a regular package anywhere on sys.path
+  # beats a namespace portion: the name resolves into the stdlib and the import
+  # dies with "No module named 'test.unit'". Discovering with the file's own
+  # directory as the top level keeps the module name bare, so there is no
+  # `test.` prefix left to collide.
+  # -B: with the import now working, python would drop __pycache__ next to the
+  # test and next to every file it loads — including skills/implement/scripts/,
+  # via the SourceFileLoader the test uses. This tree has never carried
+  # bytecode and does not ignore it, so do not write any.
+  out=$(python3 -B -m unittest discover -s "$dir" -t "$dir" -p "$base" 2>&1)
   rc=$?
+  # discover exits 0 when the pattern matches nothing, which would report a
+  # file that never ran as ok. A file we were asked to run and did not is a
+  # failure, not a pass.
+  if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^Ran 0 tests'; then
+    rc=1
+    out="${out}
+scripts/test: discovered no tests in ${f} — it matched the runner but ran nothing"
+  fi
   report_result "$f" "$rc" "$out"
 }
 
