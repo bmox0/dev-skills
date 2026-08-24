@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "An engineering workflow for Claude Code. One idea goes in; a reviewed, integrated commit comes out.",
-    "version": "2.5.0"
+    "version": "2.6.0"
   },
   "plugins": [
     {
@@ -14,7 +14,7 @@
       "source": "./",
       "description": "Puts a sequence between the idea and the commit: an interview that pins down what you actually want, a plan you approve before anything is built, implementation judged by an agent that did not write it, and one reviewed commit at the end. Git hooks enforce it rather than asking politely, and no run starts until you invoke it.",
       "repository": "https://github.com/bmox0/dev-skills",
-      "version": "2.5.0",
+      "version": "2.6.0",
       "license": "MIT",
       "category": "development",
       "keywords": [
