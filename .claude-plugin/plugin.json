@@ -1,6 +1,6 @@
 {
   "name": "dev-skills",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "An engineering workflow for Claude Code. One idea goes in; a reviewed, integrated commit comes out.",
   "author": {
     "name": "bmox0"
