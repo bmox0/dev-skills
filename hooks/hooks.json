@@ -1,5 +1,5 @@
 {
-  "description": "dev-skills guard hooks: commit discipline, finish-time history surgery, branch protection, and the session-start bootstrap.",
+  "description": "dev-skills guard hooks: commit discipline, finish-time history surgery, branch protection, the session-start bootstrap, and opening a freshly drawn prototype in the browser.",
   "hooks": {
     "PreToolUse": [
       {
@@ -37,6 +37,17 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/open-prototype.sh"
           }
         ]
       }

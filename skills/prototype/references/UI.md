@@ -91,9 +91,9 @@ Behaviour:
 
 Put the switcher in a single shared component so both sub-shapes can reuse it. Locate it wherever shared UI lives in the project.
 
-### 5. Hand it over
+### 5. Open it
 
-Surface the URL (and the `?variant=` keys). The user will flip through whenever they get to it. The interesting feedback is usually **"I want the header from B with the sidebar from C"** — that's the actual design they want.
+Open the route yourself — `open <url>` on macOS, `xdg-open <url>` elsewhere — rather than handing over a URL and waiting to be asked. If the dev server isn't running, start it first with the project's dev command. Then surface the URL and the `?variant=` keys so the tab is reproducible. The user will flip through whenever they get to it. The interesting feedback is usually **"I want the header from B with the sidebar from C"** — that's the actual design they want.
 
 ### 6. Capture the answer and clean up
 

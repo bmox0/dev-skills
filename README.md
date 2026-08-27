@@ -72,6 +72,11 @@ every relevant tool call, whether or not a run is open:
 All three fail open: whatever they cannot parse confidently, they allow. A
 guard that blocks the wrong thing is worse than one that misses.
 
+One more hook does the opposite of guarding: the moment a prototype is written
+to `.ai-workflow/plans/<plan>/prototypes/`, it opens in the browser — `open` on
+macOS, `xdg-open` elsewhere, `DEV_SKILLS_OPEN_CMD` to pick your own. You never
+ask for it to be opened.
+
 ## Install
 
 ```

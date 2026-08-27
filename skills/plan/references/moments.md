@@ -93,9 +93,10 @@ It returns the path it wrote, and one line per step it could not draw without
 inventing something. **Each of those lines is a question you have not asked yet**
 — put it to the human before the next moment.
 
-Then give the human the path and tell them that `open <path>` shows it. No server
-starts and there is nothing to shut down afterwards: the file stands on its own
-and opens from disk.
+The file is already in their browser by the time the seat returns — a hook
+opens every prototype the moment it is written — so give the human the path and
+nothing else; do not tell them to open it. No server starts and there is nothing
+to shut down afterwards: the file stands on its own and opens from disk.
 
 What comes back — the wrong order, a step that does not belong, a step nobody
 wrote down — is a change to the storyboard, and the storyboard is what the plan
