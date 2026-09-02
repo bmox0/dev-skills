@@ -95,14 +95,16 @@ Put the switcher in a single shared component so both sub-shapes can reuse it. L
 
 Open the route yourself — `open <url>` on macOS, `xdg-open <url>` elsewhere — rather than handing over a URL and waiting to be asked. If the dev server isn't running, start it first with the project's dev command. Then surface the URL and the `?variant=` keys so the tab is reproducible. The user will flip through whenever they get to it. The interesting feedback is usually **"I want the header from B with the sidebar from C"** — that's the actual design they want.
 
+A project with no dev server — a native app, a CLI — has no route to open. There the variants are one self-contained HTML file under `.ai-workflow/`, per rule 2 of the [SKILL](../SKILL.md), and it opens itself when the Write lands. Say which variant keys are in the file; there is no URL to hand over.
+
 ### 6. Capture the answer and clean up
 
-Once a variant has won, capture the answer — which variant and why — then capture the prototype the way the [SKILL](../SKILL.md) describes. Fold the winner into the real code and move the rest onto the throwaway branch, not into main:
+Once a variant has won, write down the answer — which variant and why — the way rule 7 of the [SKILL](../SKILL.md) describes. Then fold the winner in and take the rest out of the tree:
 
-- **Sub-shape A** — fold the winner into the existing page; drop the losing variants and the switcher from main.
-- **Sub-shape B** — promote the winning variant to a real route; drop the throwaway route and the switcher from main.
+- **Sub-shape A** — fold the winner into the existing page; drop the losing variants and the switcher.
+- **Sub-shape B** — promote the winning variant to a real route; drop the throwaway route and the switcher.
 
-The full set of variants is the primary source, so it lands on the throwaway branch, not the bin — variant components and the switcher left in the main branch rot fast and confuse the next reader.
+The variants file under `.ai-workflow/` keeps the losers readable if you want one back, so deleting them from the tree costs nothing. Variant components and a switcher left behind rot fast and confuse the next reader.
 
 ## Anti-patterns
 
