@@ -64,7 +64,7 @@ abstraction you were told to use is not there, that is a `PLAN_CONFLICT`.
   written before its test gets deleted, not adapted.
 - Where red *is* the contract — a bug fix, or tests as the goal — the brief says
   so, and the test lands as **its own commit before the implementation**.
-- **Read `CONTEXT.md` and any ADRs covering what you touch**, if they exist, and
+- **Read `docs/CONTEXT.md` and any ADRs covering what you touch**, if they exist, and
   name things the way the glossary does. On a small change there may be neither;
   do not block on their absence.
 - Follow the repository's neighbouring code for everything the brief treats as

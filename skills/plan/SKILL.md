@@ -141,11 +141,11 @@ file is the letter. Neither is a copy of the other.
 Both are bare lines above `## Goal`, so every brief and every gate carries them:
 
 ```markdown
-Norms: docs/adr/0007-errors.md, CONTEXT.md
+Norms: docs/adr/0007-errors.md, docs/CONTEXT.md
 Baseline: `pnpm typecheck` → 150 errors, all outside `src/features/auth/`
 ```
 
-**`Norms:`** lists the approved documents — ADRs, `CONTEXT.md`, a coding standard
+**`Norms:`** lists the approved documents — ADRs, `docs/CONTEXT.md`, a coding standard
 — that count as a source of convention for this work. It is the top rung of the
 review's ladder, and what is not on the line, the review does not go looking for.
 That makes completeness yours: a convention you leave off is a convention nobody

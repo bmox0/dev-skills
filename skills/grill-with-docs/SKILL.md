@@ -29,11 +29,11 @@ Two things surface in a design conversation that are lost the moment it ends.
 
 **A new domain word.** The moment the two of you settle on a term for a thing — a
 state, an actor, an event, a boundary — that word belongs in the glossary, not
-only in this transcript. Add it to `CONTEXT.md` through `dev-skills:domain-modeling`,
+only in this transcript. Add it to `docs/CONTEXT.md` through `dev-skills:domain-modeling`,
 **as it settles**, not at the end: a term recorded three topics later has already
 lost the discussion that sharpened it.
 
-`CONTEXT.md` is a glossary and nothing else. No implementation detail, no
+`docs/CONTEXT.md` is a glossary and nothing else. No implementation detail, no
 decisions, no scratch notes.
 
 **A hard-to-reverse decision.** Offer an ADR only when **all three** are true:
@@ -62,6 +62,6 @@ a decision is theirs to authorise, and so is putting it in the history.
 artifact. That difference in what comes out the other end is the only reason two
 skills exist rather than one, which is why `dev-skills:domain-modeling` may fire inside
 this skill and must not fire inside bare `dev-skills:grill`. Let it fire there and the
-bare grill starts writing `CONTEXT.md` on its own and becomes this skill in
+bare grill starts writing `docs/CONTEXT.md` on its own and becomes this skill in
 practice, and the choice the human made when they typed one name rather than the
 other stops meaning anything.

@@ -43,8 +43,8 @@ plans, each with the reason that settled it. Every plan is bound by them and
 — it is what stops plan 3 from quietly contradicting plan 1, which nobody would
 notice until integration.
 
-**Glossary.** The terms already carried into `CONTEXT.md` that every plan must
-use identically. Names only; the definitions live in `CONTEXT.md`.
+**Glossary.** The terms already carried into `docs/CONTEXT.md` that every plan must
+use identically. Names only; the definitions live in `docs/CONTEXT.md`.
 
 **Integration invariants.** What has to stay true where two plans meet — an
 ordering, a shape passed between them, a state neither may leave behind. Each

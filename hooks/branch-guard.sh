@@ -3,11 +3,11 @@
 # deny file mutations and git commits while on the default branch, forcing a
 # dedicated branch/worktree first. Fail-open on any uncertainty.
 #
-# Exception: the domain docs — CONTEXT.md and docs/adr/** — are always allowed.
-# Domain knowledge belongs on the main line, and the human may ask for it to be
-# recorded while standing on the default branch. Nothing writes these on its own
-# any more: dev-skills:domain-modeling offers, the human decides, and this exemption only
-# means the guard does not stand in the way once they have.
+# Exception: the domain docs — anything under a docs/ path segment — are always
+# allowed. Domain knowledge belongs on the main line, and the human may ask for
+# it to be recorded while standing on the default branch. Nothing writes these
+# on its own any more: dev-skills:domain-modeling offers, the human decides, and
+# this exemption only means the guard does not stand in the way once they have.
 #
 # Exception: .ai-workflow/** — git-ignored scratch (epics, plans, run
 # workspaces). The grilling and the plan are written before the branch exists, and
@@ -20,7 +20,7 @@ tool="$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null || true)"
 # anything under the git-ignored .ai-workflow/ scratch tree.
 is_doc_path() {
   case "$1" in
-    CONTEXT.md|*/CONTEXT.md|docs/adr/*|*/docs/adr/*) return 0 ;;
+    docs/*|*/docs/*) return 0 ;;
     .ai-workflow/*|*/.ai-workflow/*) return 0 ;;
     *) return 1 ;;
   esac
@@ -40,7 +40,7 @@ case "$tool" in
     droot="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     if [ -n "$droot" ]; then
       staged="$(git -C "$droot" diff --cached --name-only 2>/dev/null || true)"
-      if [ -n "$staged" ] && ! printf '%s\n' "$staged" | grep -qvE '(^|/)CONTEXT\.md$|(^|/)docs/adr/'; then
+      if [ -n "$staged" ] && ! printf '%s\n' "$staged" | grep -qvE '(^|/)docs/'; then
         exit 0
       fi
     fi
@@ -65,7 +65,7 @@ fi
 
 if [ "$branch" = "$def" ]; then
   jq -cn --arg b "$branch" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Blocked: on the default branch (" + $b + ") in a dev-skills repo. Work is isolated first — dev-skills:implement settles that at its first step, offering a worktree, a branch here, or the current branch. Enforced, not advised. (CONTEXT.md, docs/adr/ and .ai-workflow/ are exempt.)")}}' \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Blocked: on the default branch (" + $b + ") in a dev-skills repo. Work is isolated first — dev-skills:implement settles that at its first step, offering a worktree, a branch here, or the current branch. Enforced, not advised. (docs/ and .ai-workflow/ are exempt.)")}}' \
     2>/dev/null
 fi
 exit 0

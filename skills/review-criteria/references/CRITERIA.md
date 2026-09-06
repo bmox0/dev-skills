@@ -144,7 +144,7 @@ that produces it, and neither of them could have noticed.
 Rank the sources and stop at the first one that answers. Judge only the part
 decidable from the diff in hand: naming, import style, error handling, layout.
 
-1. **Approved documents** — an ADR, `CONTEXT.md`, a coding standard — but only
+1. **Approved documents** — an ADR, `docs/CONTEXT.md`, a coding standard — but only
    the paths the plan lists on its `Norms:` header line. What is not listed, you
    do not go looking for; the planner owns that line's completeness, not you.
 2. **Precedents and prohibitions the plan names itself** — the negative half of a
@@ -167,7 +167,7 @@ budget. If it is not on the ladder, it is not a norm.
 
 **When the plan carries no `Norms:` line, this ladder does not apply.** The older
 rule stands instead: read what the repository says about how its code is written —
-`CLAUDE.md`, `CONTRIBUTING.md`, `CODING_STANDARDS.md`, `CONTEXT.md` for
+`CLAUDE.md`, `CONTRIBUTING.md`, `CODING_STANDARDS.md`, `docs/CONTEXT.md` for
 vocabulary — documented conventions are hard because they cite themselves, and
 everything else needs an existing pattern in the code to point at. A plan written
 before the header line existed gets reviewed at today's strictness. Without this,

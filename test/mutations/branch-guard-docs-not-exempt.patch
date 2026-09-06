@@ -1,0 +1,22 @@
+diff --git a/hooks/branch-guard.sh b/hooks/branch-guard.sh
+index 4ebea92..df747ff 100755
+--- a/hooks/branch-guard.sh
++++ b/hooks/branch-guard.sh
+@@ -20,7 +20,7 @@ tool="$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null || true)"
+ # anything under the git-ignored .ai-workflow/ scratch tree.
+ is_doc_path() {
+   case "$1" in
+-    docs/*|*/docs/*) return 0 ;;
++    CONTEXT.md|*/CONTEXT.md|docs/adr/*|*/docs/adr/*) return 0 ;;
+     .ai-workflow/*|*/.ai-workflow/*) return 0 ;;
+     *) return 1 ;;
+   esac
+@@ -40,7 +40,7 @@ case "$tool" in
+     droot="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+     if [ -n "$droot" ]; then
+       staged="$(git -C "$droot" diff --cached --name-only 2>/dev/null || true)"
+-      if [ -n "$staged" ] && ! printf '%s\n' "$staged" | grep -qvE '(^|/)docs/'; then
++      if [ -n "$staged" ] && ! printf '%s\n' "$staged" | grep -qvE '(^|/)CONTEXT\.md$|(^|/)docs/adr/'; then
+         exit 0
+       fi
+     fi
