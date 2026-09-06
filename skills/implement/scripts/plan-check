@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Refuses a malformed plan before a human ever dispatches work against it.
 #
-# Seven mechanical checks, fence-aware the way brief and preflight
+# Eight mechanical checks, fence-aware the way brief and preflight
 # already are (a heading inside a fenced example is not a heading):
 #   1. '## Phases' is present
 #   2. at least one '### Phase <n>.' heading exists
@@ -15,14 +15,18 @@
 #   7. '## Moments', when present and not a bare '—', holds only moment
 #      headings ('- **M-<n>. <text>** · US-<n>[, ...]') each carrying at
 #      least one 'US-' reference and at least two numbered steps
+#   8. '## Test cases', when present, holds no case whose 'initial state:'
+#      starts GREEN without a '- mutation:' line naming the one production
+#      break its test must catch
 #
 # Check 1 is the one fault with no decision in it: the heading always goes
 # immediately above the first '### Phase 1.', so it is inserted in place and
 # announced with one 'fixed:' line — never counted as a finding. Every other
 # check only reports: which phase a missing field belongs to is knowable,
-# what belongs in it is not, and this script cannot guess it. Idempotent —
-# a second run on an already-repaired plan changes nothing and prints no
-# 'fixed:' line.
+# what belongs in it is not, and this script cannot guess it. Check 8 only
+# reports for the same reason: what belongs in a missing 'mutation:' line is
+# a decision, and this script cannot guess it. Idempotent — a second run on
+# an already-repaired plan changes nothing and prints no 'fixed:' line.
 #
 # Checks 5 and 6 read '## Topology' / '## Ledger' as a pair of trailing
 # sections written together at the end of a plan: neither is flagged simply
@@ -369,6 +373,67 @@ if [ -n "$moments_line" ]; then
         esac
       done <<< "$moments_issues"
     fi
+  fi
+fi
+
+# --- check 8: '## Test cases', a GREEN case names its break -----------------
+#
+# Not flagged for being entirely absent, nor for an empty section, nor for
+# one with no GREEN case — see the header comment. A case block is a
+# top-level bullet ('^-[ \t]') inside the section, running to the next
+# top-level bullet or the end of the section; a top-level bullet naming no
+# 'TC-<n>' is not a case and is skipped in silence. Within a block, the
+# starting state is the first word of the value on the first 'initial
+# state:' line (so 'GREEN [CORRECTED] — …' is still GREEN), and a mutation
+# line is any 'mutation:' line whose value, after the colon, is non-empty. A
+# GREEN case with no mutation line is a finding; a case in any other state
+# is not.
+
+test_cases_line=$(first_line_matching "$plan" '^##[ \t]+Test cases[ \t]*$')
+if [ -n "$test_cases_line" ]; then
+  test_cases_block=$(awk -v start="$test_cases_line" '
+    /^```/ { fence = !fence; next }
+    fence { next }
+    NR == start { intc = 1; next }
+    intc && /^##[ \t]+/ { exit }
+    intc { print }
+  ' "$plan")
+
+  tc_issues=$(printf '%s\n' "$test_cases_block" | awk '
+    function flush(   ) {
+      if (have && id != "" && state == "GREEN" && !has_mutation) print id
+    }
+    /^-[ \t]/ {
+      flush()
+      have = 1
+      id = ""
+      state = ""
+      has_mutation = 0
+      if (match($0, /TC-[0-9]+/)) id = substr($0, RSTART, RLENGTH)
+      next
+    }
+    have && id != "" && state == "" && /^[ \t]*-[ \t]*initial state:/ {
+      line = $0
+      sub(/^[ \t]*-[ \t]*initial state:[ \t]*/, "", line)
+      n = split(line, w, /[ \t]/)
+      state = (n >= 1) ? w[1] : ""
+      next
+    }
+    have && id != "" && /^[ \t]*-[ \t]*mutation:/ {
+      line = $0
+      sub(/^[ \t]*-[ \t]*mutation:[ \t]*/, "", line)
+      gsub(/^[ \t]+|[ \t]+$/, "", line)
+      if (line != "") has_mutation = 1
+      next
+    }
+    END { flush() }
+  ')
+
+  if [ -n "$tc_issues" ]; then
+    while IFS= read -r tc_id; do
+      [ -n "$tc_id" ] || continue
+      findings+=("case ${tc_id} in ${plan} starts GREEN and carries no '- mutation:' line — a case whose starting state is GREEN must name the one production break its test must catch. ${DONT_READ}")
+    done <<< "$tc_issues"
   fi
 fi
 

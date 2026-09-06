@@ -21,10 +21,12 @@ Paths, and you read all of them:
 1. the **plan**, whole — its `Norms:` and `Baseline:` lines, the stories, the
    test cases, every phase;
 2. the **implementers' reports**;
-3. the **range** — `BASE` and `HEAD`;
-4. the **environment contract** — how this project is checked, built and started;
-5. the **review criteria** — what counts as a finding and what does not;
-6. the **path you write your report to**.
+3. the **test writer's reports** — one per dispatch of that seat, each naming
+   the mutation proofs it recorded;
+4. the **range** — `BASE` and `HEAD`;
+5. the **environment contract** — how this project is checked, built and started;
+6. the **review criteria** — what counts as a finding and what does not;
+7. the **path you write your report to**.
 
 If any of these is missing from the dispatch, say so and stop. Do not go looking
 for it.
@@ -49,6 +51,21 @@ defends against is the actor that wrote the report.
 **Case IDs.** `grep -o 'TC-[0-9]*'` over the test paths, compared against the
 plan's list of cases. A case whose ID appears in no test is not covered, whatever
 anyone reported. Two lists, compared; no judgement in it.
+
+**Mutation proofs.** The plan's cases whose `initial state:` is `GREEN`,
+compared against the case IDs carrying a `mutation proof:` line in the run's
+`report-tests-<n>.md` files. Two lists, compared; no judgement in it, exactly as
+**Case IDs** above. A case on the first list and not the second has no recorded
+proof — a failed check, and a failed check is a `BLOCKER` under
+`skills/review-criteria/references/CRITERIA.md`'s *Two classes of finding, and
+what each one costs*. Do not soften it and do not invent a third class.
+
+The optional `**Mutation.**` layer runs only when the environment contract's
+`**Mutation.**` field names a tool, and only over the files
+`git diff --name-only BASE..HEAD` reports. A mutant that survives there is at
+most an `ADVISORY`, reported as a place to look — no score, no ratio and no
+count of mutants is reported at all. On `none` or an absent field, this layer
+does nothing whatever.
 
 **The static checks** — typecheck, lint, build, and the cheapest probe the
 environment contract offers that the thing starts at all. Here, and only here,

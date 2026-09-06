@@ -205,6 +205,19 @@ intersecting write-sets stop the group before anything is dispatched.
 
 _Avoid_: touched files, scope (bare), footprint
 
+### Mutation proof
+
+Defined against a test case's starting state: a case that began `RED` already
+proved itself when it went green, and a case that began `GREEN` never did.
+The mutation proof is the one break the case names —
+`- mutation: <the one production break this test must catch>` — that the
+**Test Writer** performs, watching the named test turn red before restoring
+the code, then records as `- mutation proof: broke <what>, in <path> → <test
+name> failed: <what was seen> → restored, tree clean` in its **report**, the
+line **Gate A** compares against the plan's `GREEN` cases.
+
+_Avoid_: mutation score, mutation testing, mutant
+
 ## Findings
 
 ### Blocker
@@ -310,13 +323,15 @@ exactly as later phases must produce and check them:
   `  1. <step, in the person's own words>`
 - `## Moments` holding a single `—` is well-formed and means "no new moment";
   an absent section is equally well-formed
+- a GREEN case's mutation line, a sub-line of the case block indented two
+  spaces: `  - mutation: <the one production break this test must catch>`
 
 ## Artifact naming convention
 
 Every file a script derives from a phase range is `<kind>-<first>-<last>.md` —
 `brief-1-3.md`, `dispatch-1-3.md`, `report-1-3.md`. Files not derived from a
 range keep their own names: `gate-a-dispatch.md`, `contracts/<range>.md`,
-`review-<sha>..<sha>.diff`.
+`review-<sha>..<sha>.diff`, `report-tests-<n>.md`.
 
 A file derived from a **moment** instead of a phase range is named by its
 number: `.ai-workflow/plans/<plan>/prototypes/M-<n>.html` for the drawing, and

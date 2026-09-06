@@ -643,7 +643,8 @@ reach them.
 and the wording of the error are mechanics, and they are somebody else's.
 
 Each case carries an ID, the story it serves, preconditions, the action, the
-expected behaviour, a starting state, and a `gate-b:` label:
+expected behaviour, a starting state, a `gate-b:` label, and — when that state
+is `GREEN` — the one production break its test must catch:
 
 ```markdown
 - **TC-3** · US-2 · gate-b: browser
@@ -651,12 +652,34 @@ expected behaviour, a starting state, and a `gate-b:` label:
   - when: they submit `alice@` and a valid password
   - then: the form stays, the field is marked, and what they typed is still there
   - initial state: RED
+
+- **TC-9** · US-1 · gate-b: http
+  - given: a signed-in user with two devices
+  - when: the second device asks for the session list
+  - then: both sessions come back, newest first
+  - initial state: GREEN
+  - mutation: drop the sort from the session query — the list comes back in
+    insertion order and this case goes red
 ```
 
 A case serving no story is either a missing story or a case nobody asked for —
 resolve it, do not leave it. The starting state is `RED`, `GREEN` or
 `NOT-YET-RUNNABLE`; `GREEN` is a real answer, because a case that already holds
-is how a regression becomes visible later.
+is how a regression becomes visible later; and `NOT-YET-RUNNABLE` is not
+`GREEN`, whatever it turns out to be once it runs.
+
+A case that starts `RED` proves itself: something watches it fail, then watches
+it pass, so it carries no such line. A case that starts `GREEN` never was red,
+so it names the one production break its test must catch, on a `mutation:` line
+of its own — named here, with the human, alongside the case it belongs to, and
+never invented afterwards by anyone downstream.
+
+Ask for it the way you ask for everything else here: a leading question, in the
+person's own terms and not the code's. "If someone broke the thing this test is
+guarding, what would they have broken?" is the shape of it, and *"if it stopped
+resetting the counter between retries"* is a whole answer. If the line you write
+down from that answer names a symbol they have never seen, translating it back
+is your job — not theirs to decode.
 
 ### What the `gate-b:` label decides
 
@@ -675,7 +698,8 @@ lifted only by the human saying, explicitly, that `N/A` everywhere is right for
 this work. It is never lifted by silence.
 
 Then write the final-gate scenarios as the projection of the executable cases,
-and take the second approval:
+and take the second approval. A `GREEN` case's named break is approved with its
+case — part of what is being agreed to, not a note attached to it:
 
 > **These cases are what gets checked, and nothing else is. Approve?**
 

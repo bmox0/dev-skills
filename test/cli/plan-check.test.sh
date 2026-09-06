@@ -632,4 +632,204 @@ printf '%s' "$out" | grep -q 'M-1' \
 printf '%s' "$out" | grep -qiE 'two spaces|indent' \
   || fail "four-space steps: the finding should name the two-space indentation, got: $out"
 
+# --- TC-1, TC-2, TC-3, TC-4, TC-5, TC-15, TC-16 of --------------------------
+# .ai-workflow/plans/2026-09-06-mutation-proof.md — check 8, the '## Test
+# cases' rule. These numbers repeat TC-1 through TC-5 used above for two
+# other plans' '## Phases' and '## Moments' checks: three different plans,
+# each with its own case list, sharing this one file per each plan's Test
+# seams. The case IDs written *inside* each '## Test cases' fixture below are
+# TC-9xx — arbitrary, chosen only to satisfy check 8's own 'TC-<n>' bullet
+# pattern, and kept outside 1-16 so a fixture's own ID is never mistaken for
+# one of this plan's cases.
+#
+# Check 8 itself is phase 6's, and does not exist in this script yet. Every
+# fixture below is well-formed by every OTHER check — '## Phases', one phase
+# carrying all seven fields, a covering '## Topology' table, a '## Ledger' —
+# so that only the '## Test cases' rule under test can move the exit code or
+# the findings.
+#
+# TC-1, TC-5, TC-15 and TC-16 assert exit 1 and a finding; today plan-check
+# ignores '## Test cases' entirely, so all four are RED until phase 6 lands.
+# TC-2, TC-3 and TC-4 assert exit 0 and no finding mentioning a mutation,
+# which already holds today for the same reason — they are GREEN now, and
+# stay worth running because a phase 6 that over-reaches would turn them red.
+
+# write_test_cases_plan FILE BLOCK — BLOCK becomes the verbatim body of
+# '## Test cases'; pass "" to omit the heading entirely (TC-4).
+write_test_cases_plan() {
+  local f="$1" block="$2" fld
+  {
+    printf '# mutation-proof fixture\n\n'
+    if [ -n "$block" ]; then
+      printf '## Test cases\n\n%s\n\n' "$block"
+    fi
+    printf '## Phases\n\n### Phase 1. First phase title\n\n'
+    for fld in "Becomes true" "Changes" "How" "Do not touch" \
+               "Frozen for later phases" "Verification" "Steps"; do
+      printf '**%s**\n- x\n\n' "$fld"
+    done
+    printf '## Topology\n\n'
+    printf '| Phases | Implementer | Why the boundary is here |\n'
+    printf '|---|---|---|\n'
+    printf '| 1 | Sonnet | one |\n\n'
+    printf '## Ledger\n- [ ] x\n'
+  } > "$f"
+}
+
+# --- TC-1: a GREEN case with no '- mutation:' line --------------------------
+#
+# given: a plan whose '## Test cases' section holds one case with
+# '- initial state: GREEN' and no '- mutation:' line.
+
+dirtc1=$(mktemp_dir)
+plantc1="$dirtc1/plan.md"
+write_test_cases_plan "$plantc1" '- **TC-901** · US-1 · gate-b: cli
+  - given: x
+  - when: x
+  - then: x
+  - initial state: GREEN'
+
+run_plan_check "$plantc1"
+[ "$rc" -eq 1 ] || fail "TC-1: a GREEN case with no mutation: line should exit 1, got $rc: $out"
+assert_contains "$out" "TC-901" \
+  "TC-1: the finding should name the offending case" || fail "case ID not named"
+printf '%s' "$out" | grep -qi 'mutation' \
+  || fail "TC-1: the finding should say a mutation: line is needed, got: $out"
+printf '%s' "$out" | grep -qi 'green' \
+  || fail "TC-1: the finding should say why — the case starts green, got: $out"
+assert_ends_without_reading_script "$out" "TC-1: message should end telling the reader not to open the script"
+
+# --- TC-2: a GREEN case that carries a '- mutation:' line -------------------
+#
+# given: a plan whose '## Test cases' section holds one case with
+# '- initial state: GREEN' followed by '- mutation: …'.
+
+dirtc2=$(mktemp_dir)
+plantc2="$dirtc2/plan.md"
+write_test_cases_plan "$plantc2" '- **TC-902** · US-1 · gate-b: cli
+  - given: x
+  - when: x
+  - then: x
+  - initial state: GREEN
+  - mutation: drop the sort from the session query — the list comes back in
+    insertion order and this case goes red'
+
+before_tc2=$(cat "$plantc2")
+run_plan_check "$plantc2"
+[ "$rc" -eq 0 ] || fail "TC-2: a GREEN case with a mutation: line should exit 0, got $rc: $out"
+[ -z "$out" ] || fail "TC-2: a GREEN case with a mutation: line should raise no finding at all, got: $out"
+after_tc2=$(cat "$plantc2")
+assert_eq "$before_tc2" "$after_tc2" "TC-2: the file must not be modified" || fail "file was modified"
+
+# --- TC-3: every case RED or NOT-YET-RUNNABLE, none carrying a mutation ----
+#
+# given: a plan whose cases are all '- initial state: RED' or
+# '- initial state: NOT-YET-RUNNABLE', none of them carrying a
+# '- mutation:' line.
+
+dirtc3=$(mktemp_dir)
+plantc3="$dirtc3/plan.md"
+write_test_cases_plan "$plantc3" '- **TC-903** · US-1 · gate-b: cli
+  - given: x
+  - when: x
+  - then: x
+  - initial state: RED
+
+- **TC-904** · US-1 · gate-b: cli
+  - given: x
+  - when: x
+  - then: x
+  - initial state: NOT-YET-RUNNABLE'
+
+run_plan_check "$plantc3"
+[ "$rc" -eq 0 ] || fail "TC-3: RED/NOT-YET-RUNNABLE cases should exit 0, got $rc: $out"
+[ -z "$out" ] || fail "TC-3: RED/NOT-YET-RUNNABLE cases should raise no finding at all, got: $out"
+
+# --- TC-4: no '## Test cases' heading at all --------------------------------
+
+dirtc4=$(mktemp_dir)
+plantc4="$dirtc4/plan.md"
+write_test_cases_plan "$plantc4" ""
+
+! grep -qE '^##[ \t]+Test cases[ \t]*$' "$plantc4" \
+  || fail "TC-4 test setup: fixture must have no '## Test cases' heading"
+
+run_plan_check "$plantc4"
+[ "$rc" -eq 0 ] || fail "TC-4: a plan with no '## Test cases' heading should exit 0, got $rc: $out"
+[ -z "$out" ] || fail "TC-4: a plan with no '## Test cases' heading should raise no finding at all, got: $out"
+
+# --- TC-5: two GREEN cases in a row, only the first missing the line -------
+#
+# given: two GREEN cases in a row — the first carrying no '- mutation:'
+# line, the second carrying one.
+
+dirtc5=$(mktemp_dir)
+plantc5="$dirtc5/plan.md"
+write_test_cases_plan "$plantc5" '- **TC-905** · US-1 · gate-b: cli
+  - given: x
+  - when: x
+  - then: x
+  - initial state: GREEN
+
+- **TC-906** · US-1 · gate-b: cli
+  - given: x
+  - when: x
+  - then: x
+  - initial state: GREEN
+  - mutation: drop the sort from the session query — the list comes back in
+    insertion order and this case goes red'
+
+run_plan_check "$plantc5"
+[ "$rc" -eq 1 ] || fail "TC-5: the first of two GREEN cases with no mutation: line should exit 1, got $rc: $out"
+finding_count_tc5=$(printf '%s\n' "$out" | grep -vc '^[[:space:]]*$')
+[ "$finding_count_tc5" -eq 1 ] || fail "TC-5: expected exactly one finding, got $finding_count_tc5: $out"
+assert_contains "$out" "TC-905" \
+  "TC-5: the finding should name the first case" || fail "first case not named"
+! printf '%s' "$out" | grep -q "TC-906" \
+  || fail "TC-5: the second case, which carries its own mutation: line, must not be named: $out"
+assert_ends_without_reading_script "$out" "TC-5: message should end telling the reader not to open the script"
+
+# --- TC-15: a '- mutation:' line with nothing after the colon --------------
+#
+# given: a plan whose GREEN case carries a '- mutation:' line with nothing
+# after the colon.
+
+dirtc15=$(mktemp_dir)
+plantc15="$dirtc15/plan.md"
+write_test_cases_plan "$plantc15" '- **TC-907** · US-1 · gate-b: cli
+  - given: x
+  - when: x
+  - then: x
+  - initial state: GREEN
+  - mutation:'
+
+run_plan_check "$plantc15"
+[ "$rc" -eq 1 ] || fail "TC-15: an empty mutation: value should exit 1, got $rc: $out"
+assert_contains "$out" "TC-907" \
+  "TC-15: the finding should name the offending case" || fail "case ID not named"
+printf '%s' "$out" | grep -qi 'mutation' \
+  || fail "TC-15: the finding should say a mutation: line is needed, got: $out"
+assert_ends_without_reading_script "$out" "TC-15: message should end telling the reader not to open the script"
+
+# --- TC-16: 'initial state: GREEN [CORRECTED] — …' is still GREEN ----------
+#
+# given: a plan whose case reads '- initial state: GREEN [CORRECTED] — …'
+# and carries no '- mutation:' line.
+
+dirtc16=$(mktemp_dir)
+plantc16="$dirtc16/plan.md"
+write_test_cases_plan "$plantc16" '- **TC-908** · US-1 · gate-b: cli
+  - given: x
+  - when: x
+  - then: x
+  - initial state: GREEN [CORRECTED] — already holds today'
+
+run_plan_check "$plantc16"
+[ "$rc" -eq 1 ] || fail "TC-16: a corrected-but-still-GREEN case with no mutation: line should exit 1, got $rc: $out"
+assert_contains "$out" "TC-908" \
+  "TC-16: the finding should name the offending case" || fail "case ID not named"
+printf '%s' "$out" | grep -qi 'mutation' \
+  || fail "TC-16: the finding should say a mutation: line is needed, got: $out"
+assert_ends_without_reading_script "$out" "TC-16: message should end telling the reader not to open the script"
+
 echo "ok"

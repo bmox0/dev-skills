@@ -1,0 +1,12 @@
+diff --git a/skills/implement/scripts/plan-check b/skills/implement/scripts/plan-check
+--- a/skills/implement/scripts/plan-check
++++ b/skills/implement/scripts/plan-check
+@@ -401,7 +401,7 @@
+ 
+   tc_issues=$(printf '%s\n' "$test_cases_block" | awk '
+     function flush(   ) {
+-      if (have && id != "" && state == "GREEN" && !has_mutation) print id
++      if (0) print id
+     }
+     /^-[ \t]/ {
+       flush()

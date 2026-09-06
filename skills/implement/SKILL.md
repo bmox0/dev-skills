@@ -142,6 +142,10 @@ Dispatch the test writer again **immediately before the parallel group that
 depends on it** — not at some convenient moment in between. A group starts from
 one `HEAD`; a test landing after that is a test half the group never saw.
 
+Its report lands at `.ai-workflow/run/<plan>/report-tests-<n>.md`, `<n>`
+counting from 1 in dispatch order across the run — that second dispatch writes
+`report-tests-2.md`, never overwriting the first.
+
 The test writer does not make product decisions. A case it escalates goes to the
 human, because it means the case was not finished.
 
@@ -274,7 +278,7 @@ still in it is not ready, whatever else it says.
 
 | Seat | Model | Does | Does not |
 |---|---|---|---|
-| `dev-skills:test-writer` | Sonnet | turns approved cases into executable tests, each named with its `TC-ID` | does not touch architecture, paths or phases; makes no product decision |
+| `dev-skills:test-writer` | Sonnet | turns approved cases into executable tests, each named with its `TC-ID`; proves every `GREEN` case with its mutation cycle and records the proof | does not touch architecture, paths or phases; makes no product decision |
 | `dev-skills:implementer` | assigned by the plan | its phases, TDD where the plan says there are tests; static checks last, at its final commit | E2E, runtime, a request to a live endpoint; does not commit inside a parallel group |
 | `dev-skills:gate-a` | Opus, cold context | checks, then conformance, then integrity, over the whole `BASE..HEAD` | does not debug stack traces or build noise — hands red straight back; does not compare the diff to the step list |
 | `dev-skills:gate-b` | Opus, cold context | does the system work: runtime, E2E, the plan's executable cases, one evidence file each | does not review code quality — gate A closed that |
@@ -329,6 +333,9 @@ For a `BLOCKER`:
   the plan, and it is pointed at the specific place;
 - if that round does not close it, a **new implementer** on a cold context;
 - **two rounds, and the cap is checked mechanically.**
+
+A missing mutation proof goes back to the **test writer**, not an implementer:
+the remedy is the cycle it did not run, and no production code changes.
 
 ### Checking the cap
 

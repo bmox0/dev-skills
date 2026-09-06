@@ -27,6 +27,7 @@ Only the permanent part is described here.
 **Single test file.** `<command> <path>`
 **Dev server.** `<command>`, serves on `<url>`
 **E2E.** `<command>` — or: none
+**Mutation.** `<command that mutates production code deterministically>` — or: none
 **Runtime.** <how the observable behaviour is driven here: a browser, a request,
 a simulator build, a CLI invocation>
 
@@ -71,3 +72,13 @@ nothing starts.
 
 Asking once is the point of writing it down. The second run in this repository
 does not ask.
+
+## `Mutation`
+
+How this repository mutates its own production code deterministically, so
+that a check can watch a named test fail and then watch it pass again.
+`none` is the expected answer in most repositories, and it is a fact worth a
+line, not a gap.
+
+A run never installs a mutation tool, and no actor treats the field's
+absence as a problem.

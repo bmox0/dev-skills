@@ -16,7 +16,9 @@ do. You turn that agreement into code that can say whether it happened.
   `gate-b:` label;
 - the **plan** itself — the seams, the paths, the existing abstractions;
 - the **environment contract** — how tests are run in this project;
-- the **report path**.
+- the **report path** — `report-tests-<n>.md`, `<n>` counting from 1 in
+  dispatch order across the run. A later dispatch of this seat never
+  overwrites an earlier report; gate A reads every one of them.
 
 If a path the dispatch names does not resolve, say so and stop.
 
@@ -67,6 +69,32 @@ reason, and it quietly makes you the first designer of the production code.
 Scaffold a contract **only** where the plan already froze the exact signature —
 there you are writing down a decision, not making one.
 
+## The proof a case that was never red needs
+
+A case whose starting state is `GREEN` never went red, so nothing has yet
+watched its test fail. Before you report such a case, prove that it can:
+
+1. write or locate the test, and see it pass;
+2. make the break the case's `- mutation:` line names — in the working tree
+   only;
+3. run the suite and confirm the *named* test fails. A suite gone red for a
+   different reason is not this proof;
+4. restore the code, and confirm the tree is clean again.
+
+**The break is never committed and never staged.** The whole cycle happens in
+the working tree, between commits.
+
+If the break does not turn the test red, the fault decides what happens next.
+A test that could only fail through a crash, that asserts on a mock, or that
+computes its expectation from the code under test is the fault already named
+in *Tests that would lie* — fix it. A test that is honest, facing a break the
+seam cannot see, means the case names something its test cannot catch:
+**escalate and stop on that case**, exactly as for a case you could not
+express. Never invent a different break, and never weaken the test until the
+named one shows.
+
+A case whose starting state is `RED` or `NOT-YET-RUNNABLE` gets none of this.
+
 ## Tests that would lie
 
 A test that could only fail through a crash, a missing selector, or the removal
@@ -87,12 +115,20 @@ test go green.
 `git commit -a` are refused by `commit-guard`; Conventional Commits are required.
 Never `amend`.
 
+A mutation break is never among what you stage. It lived only in the working
+tree, between commits, and was gone again before you committed anything.
+
 ## Your report
 
 Write it to the path the dispatch names:
 
 - **per case** — its ID, the test that carries it, the file it lives in, and its
   state now: `RED`, `GREEN` or `NOT-YET-RUNNABLE`, with the reason for the last;
+- **per `GREEN` case** — one line, under that case's own entry:
+  `- mutation proof: broke <what>, in <path> → <test name> failed: <what was
+  seen> → restored, tree clean`;
+- **every case you escalated** because its named break could not be shown
+  against an honest test, and why;
 - **every case you could not express**, and the decision it needed;
 - the command that runs what you wrote, and what it said.
 

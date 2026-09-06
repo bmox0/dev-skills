@@ -297,6 +297,20 @@ def existing_reports(workspace):
     return [p for _n, p in sorted(found)]
 
 
+def tests_reports(workspace):
+    """The test writer's reports already written in this run, one per dispatch
+    of that seat, in dispatch order — same shape as existing_reports, a
+    different filename pattern."""
+    if not os.path.isdir(workspace):
+        return []
+    found = []
+    for name in os.listdir(workspace):
+        m = re.fullmatch(r"report-tests-(\d+)\.md", name)
+        if m:
+            found.append((int(m.group(1)), os.path.join(workspace, name)))
+    return [p for _n, p in sorted(found)]
+
+
 def build_implementer_body(plan, first, last, rng, owner, workspace, agent_file):
     brief_path = extract_written_path(run_sibling("brief", plan, rng))
     report_path = os.path.join(workspace, "report-%s.md" % rng)
@@ -377,6 +391,12 @@ def build_gate_a_body(plan, workspace, agent_file):
         "No implementer report is on disk. That is not normal after a run: "
         "say so and stop rather than judging the range without them.")
 
+    test_reports = tests_reports(workspace)
+    tests_reports_text = "\n".join(test_reports) if test_reports else (
+        "No test-writer report is on disk. A plan with a GREEN case cannot be "
+        "judged without one: say so and stop rather than judging the range "
+        "without them.")
+
     evidence_dir = os.path.join(workspace, "gate-a")
     os.makedirs(evidence_dir, exist_ok=True)
 
@@ -392,6 +412,11 @@ def build_gate_a_body(plan, workspace, agent_file):
         "Each one names the SHA its static checks ran at. Compare that against "
         "HEAD before you re-run anything:",
         reports_text,
+        "",
+        "## Test writer's reports",
+        "One per dispatch of that seat. Every case the plan starts at GREEN "
+        "must carry a mutation proof line in one of these:",
+        tests_reports_text,
         "",
         "## Baseline",
         BASELINE_HOLE,
