@@ -89,10 +89,12 @@ Then restart the session. The repository carries its own
 marketplace holding exactly one plugin — itself. Claude Code clones it, keeps it
 current, and `/plugin uninstall dev-skills` takes it back out again.
 
-Installing also brings four subagents — `test-writer`, `implementer`, `gate-a`
-and `gate-b` — which [`dev-skills:implement`](skills/implement/SKILL.md)
-dispatches and you never call directly, and the hooks above
-([`hooks/hooks.json`](hooks/hooks.json)).
+Installing also brings six subagents and the hooks above
+([`hooks/hooks.json`](hooks/hooks.json)). You never call a subagent directly:
+[`dev-skills:implement`](skills/implement/SKILL.md) dispatches `test-writer`,
+`implementer`, `gate-a` and `gate-b` inside a run, and
+[`dev-skills:plan`](skills/plan/SKILL.md) dispatches `gate-0` and `prototyper`
+while the plan is still being written.
 
 ## Every skill
 

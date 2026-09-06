@@ -606,6 +606,65 @@ epic:
 Fix what you find inline. For interface shape and seam placement, the vocabulary
 is in [codebase-design.md](references/codebase-design.md).
 
+## Gate 0
+
+A cold judge for the plan itself: a clean-context Opus seat reads the finished
+file and attacks it where it would fail an implementer. It has no verdict and
+blocks nothing — approval is still the human's act at the gate below.
+
+**When.** After `plan-check` exits `0`, and after your own read of the five
+points above — a plan you are still repairing gets judged twice, and the second
+reading is the one you pay for. Before the plan is presented. The ask is made
+once per plan: a yes carries to a version the human sends back at the approval
+gate — dispatch again without asking — and a no is never raised again.
+
+**The ask, and it leans.** It is a question and it waits for an answer, because
+it costs an Opus pass over the whole plan. Say what the plan visibly is, then
+recommend — the recommendation is what makes the answer one word:
+
+> Plan's ready — seven phases, one parallel group, three frozen contracts.
+> Worth a cold read before you see it? (I'd say yes.)
+
+The lean is counted, not felt. **Any one of these leans "yes"**:
+
+| | leans "yes" |
+|---|---|
+| phases | more than four |
+| topology | any row naming more than one phase |
+| frozen contracts | any phase freezing anything |
+| territory | you had to read code you did not already know to write *Paths and existing abstractions* |
+
+**None of them → recommend skipping.** Two phases, everything sequential, every
+*Frozen for later phases* a dash, and a tree you already knew: that plan is
+cheaper to execute than to put through ceremony. A decline ends it for this
+plan — you do not raise it again, exactly as with the offer to draw a moment.
+
+**The dispatch.** `dev-skills:gate-0`, with three things and nothing else:
+
+- the plan file path;
+- the epic path, or the words "single-cycle";
+- the path `docs/LESSONS.md` when the file exists, or the words "no lessons
+  file" — a repository without one is ordinary, and the dispatch says so.
+
+The seat reads its own definition; a dispatch that repeats it pays for the same
+instructions twice.
+
+**What you do with what comes back.** Findings, in plan order, and no verdict.
+They come to you, not to the human. Work them:
+
+- what the epic or the tree already settles → settle it, and write it into the
+  plan;
+- what is genuinely the human's → it becomes a question at the approval gate, in
+  their words, carrying the finding that produced it. Do not settle it on their
+  behalf and do not drop it;
+- one you disagree with → keep the plan as it is and say so at the gate, with
+  your reason. Gate 0 has no verdict, so disagreeing costs nothing and hiding it
+  costs the human their read;
+- re-run `plan-check` if you changed the plan's shape.
+
+What the human gets is what was found, what changed, and the questions that are
+left.
+
 ## The gate
 
 Present the plan and take approval before anything is built. Show:
@@ -620,6 +679,8 @@ Present the plan and take approval before anything is built. Show:
 - the `Norms:` and `Baseline:` lines;
 - that `plan-check` exits `0` on this file, and anything it repaired to get
   there;
+- whether the plan was read cold, and if so what it found and what changed
+  because of it — or the recommendation you gave and that it was declined;
 - anything you settled by your own judgement rather than from the epic.
 
 Then ask:

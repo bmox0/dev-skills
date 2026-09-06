@@ -167,6 +167,23 @@ ends the offer without changing the interview's shape.
 _Avoid_: prototype (the existing skill that writes throwaway code into a
 project — a different thing), mockup tool
 
+### Gate 0
+
+The plan's cold read — Opus, on a clean context, dispatched by the
+**planner** after `plan-check` runs and before the **plan** is presented for
+approval. Attacks the finished plan across six rungs: whether every **phase**
+is one an **implementer** could actually build from, whether a **frozen
+contract** is one it could actually call, whether every user story lands in a
+phase and every phase serves one, whether two phases sharing a path each name
+the other's region, whether a parallel group's conditions are demonstrated
+rather than asserted, and — when `docs/LESSONS.md` exists — whether the plan
+honours it, its absence read as absence and never as a finding. Unlike
+**Gate A**, it returns findings to the **planner**, never a verdict: no
+grade, no class, no fix round. It neither blocks the plan nor approves it —
+approval stays the human's act, unchanged.
+
+_Avoid_: plan review, pre-gate, plan gate, gate zero
+
 ### Gate A
 
 The run's code gate — Opus, on a clean context. Reads the whole `BASE..HEAD`
