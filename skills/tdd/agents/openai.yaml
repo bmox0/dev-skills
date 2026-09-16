@@ -1,0 +1,3 @@
+interface:
+  display_name: "Tdd"
+  short_description: "Use when writing tests — the red-green-refactor cycle and the discipline around it: one test at a time, verify red before green, the simplest code that passes. Read by the implementer when its phases have tests."

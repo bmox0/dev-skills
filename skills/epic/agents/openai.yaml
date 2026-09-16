@@ -1,0 +1,3 @@
+interface:
+  display_name: "Epic"
+  short_description: "Use when the work is too big for one plan and needs splitting first — \"this is a whole epic\", \"write the epic\", \"break this into plans\", \"one plan won't cover it\". Writes the epic that holds the shared decisions, the vocabulary, and the list of plans the work breaks into."

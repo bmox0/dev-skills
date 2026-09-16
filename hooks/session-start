@@ -10,6 +10,59 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 bootstrap=$(cat "${PLUGIN_ROOT}/skills/bootstrap/SKILL.md" 2>&1 \
   || echo "Error reading dev-skills:bootstrap skill")
 
+# --- host detection --------------------------------------------------------
+# The same two signals skills/implement/scripts/harness-ready reads, in the
+# same order, so this repository's own code cannot disagree with itself
+# about which host it is on: Claude Code's own live marker ($CLAUDECODE=1)
+# first — the definitive signal — the codex CLI on PATH second, since
+# plenty of Claude Code users have it installed too and its mere presence
+# proves nothing about which host is running this session. Unlike
+# harness-ready, an undetermined host is not a failure here — a session
+# still needs a bootstrap — so it falls through to the neutral bare form
+# below instead of refusing to run.
+host=""
+if [ "${CLAUDECODE:-}" = "1" ]; then
+  host="claude"
+elif command -v codex >/dev/null 2>&1; then
+  host="codex"
+fi
+
+# Every invocable name in bootstrap/SKILL.md is written as {{SKILL:<name>}},
+# substituted here rather than left as literal `dev-skills:<name>` text.
+# Both known hosts use the same plugin-qualified form: Claude Code's Skill
+# tool resolves `dev-skills:<name>`, and so does Codex's own skill
+# resolution — confirmed against a real Codex session (its `skills/list`
+# and its own <skills_instructions> both report the qualified name, and a
+# binding probe shows `[[skills.config]] name = "grill"` does not bind
+# while `"dev-skills:grill"` does). Two sessions reading an earlier, wrong
+# build of this file — bare names for Codex — mistook the bootstrap's
+# description of `implement`/`finish` for an instruction to run them; this
+# is why getting this substitution right matters beyond cosmetics. The two
+# case arms below read identically today because that fact is true of both
+# hosts, not because the distinction between them was removed — if either
+# host's own convention ever changes, only its one arm needs to move. Only
+# the undetermined case (neither signal visible at all) falls back to the
+# bare `<name>`: the neutral choice when there is no host to name a form
+# for, never a guess at either host's prefixed syntax.
+case "$host" in
+  claude) skill_repl='dev-skills:\1' ;;
+  codex)  skill_repl='dev-skills:\1' ;;
+  *)      skill_repl='\1' ;;
+esac
+bootstrap=$(printf '%s' "$bootstrap" | sed "s/{{SKILL:\\([a-zA-Z0-9_-]*\\)}}/${skill_repl}/g")
+
+# Which file the project actually carries for its own instructions — Claude
+# Code's convention is CLAUDE.md, Codex's is AGENTS.md. Named for whichever
+# is actually present, read from the project the session started in (this
+# hook's own $PWD), not from where the plugin itself is installed.
+project_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+if [ -f "${project_root}/AGENTS.md" ] && [ ! -f "${project_root}/CLAUDE.md" ]; then
+  instructions_file="AGENTS.md"
+else
+  instructions_file="CLAUDE.md"
+fi
+bootstrap=$(printf '%s' "$bootstrap" | sed "s/{{PROJECT_INSTRUCTIONS_FILE}}/${instructions_file}/g")
+
 # Escape for JSON embedding. Each ${s//old/new} is a single C-level pass —
 # orders of magnitude faster than a character-by-character loop.
 escape_for_json() {

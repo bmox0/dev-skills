@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Derive skills/<name>/agents/openai.yaml for every skill directory.
+
+This is the repository-side half of Codex parity: a mechanical transform of
+text this repository has already had reviewed (a skill's directory name and
+its own frontmatter `description`), not new copy. Nothing here invents,
+shortens or improves a description — a description that reads oddly as
+picker copy is the accepted cost of not writing twenty-five strings nobody
+reviewed.
+
+Per skill directory carrying a SKILL.md:
+
+  interface.display_name    the directory's own name, title-cased on '-'
+                             (grill-with-docs -> Grill With Docs)
+  interface.short_description   that skill's frontmatter `description`,
+                             verbatim
+  policy.allow_implicit_invocation: false   written only when the skill's
+                             frontmatter carries `disable-model-invocation:
+                             true`. A skill without that flag gets no
+                             `policy` block at all. `user-invocable` is a
+                             different flag — Claude Code's own menu
+                             visibility control, with no Codex counterpart —
+                             and is never read here.
+
+Takes no arguments, walks every skills/*/SKILL.md, and is idempotent: run it
+again after adding a skill or editing a description, and commit what it
+writes. A skill added later is one run of this script from compliance.
+
+Usage: generate-skill-metadata
+Exit:  0 always, once every skill directory got a fresh openai.yaml
+"""
+
+import os
+import re
+import sys
+
+PROG = "generate-skill-metadata"
+HERE = os.path.dirname(os.path.abspath(__file__))
+# skills/setup/scripts -> skills/setup -> skills -> plugin root
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+SKILLS_DIR = os.path.join(PLUGIN_ROOT, "skills")
+
+
+def die(msg, code=1):
+    sys.stderr.write("%s: %s\n" % (PROG, msg))
+    raise SystemExit(code)
+
+
+def read_frontmatter(skill_md_path):
+    with open(skill_md_path, "r", encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    if not lines or lines[0] != "---":
+        die("%s has no frontmatter" % skill_md_path)
+    fm = {}
+    i = 1
+    while i < len(lines) and lines[i] != "---":
+        m = re.match(r"^([A-Za-z_-]+):[ \t]*(.*)$", lines[i])
+        if m:
+            key, value = m.group(1), m.group(2).strip()
+            if len(value) >= 2 and value[0] == value[-1] == '"':
+                value = value[1:-1]
+            fm[key] = value
+        i += 1
+    if i >= len(lines):
+        die("%s frontmatter never closes with a second '---'" % skill_md_path)
+    return fm
+
+
+def title_case(dirname):
+    return " ".join(part[:1].upper() + part[1:] for part in dirname.split("-"))
+
+
+def yaml_dquote(s):
+    """A YAML double-quoted flow scalar, properly escaped. Plain UTF-8
+    (an em dash, Cyrillic) passes through unescaped — only a backslash, a
+    double quote, or a control character needs it."""
+    out = []
+    for ch in s:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 0x20:
+            out.append("\\u%04x" % ord(ch))
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def skill_dirs():
+    return sorted(
+        name for name in os.listdir(SKILLS_DIR)
+        if os.path.isdir(os.path.join(SKILLS_DIR, name))
+    )
+
+
+def main():
+    if len(sys.argv) != 1:
+        die("usage: %s (no arguments)" % PROG, 2)
+
+    written = []
+    for name in skill_dirs():
+        skill_dir = os.path.join(SKILLS_DIR, name)
+        skill_md = os.path.join(skill_dir, "SKILL.md")
+        if not os.path.isfile(skill_md):
+            continue
+
+        fm = read_frontmatter(skill_md)
+        description = fm.get("description")
+        if not description:
+            die("%s has no frontmatter description" % skill_md)
+
+        lines = [
+            "interface:",
+            "  display_name: %s" % yaml_dquote(title_case(name)),
+            "  short_description: %s" % yaml_dquote(description),
+        ]
+        if fm.get("disable-model-invocation") == "true":
+            lines.append("policy:")
+            lines.append("  allow_implicit_invocation: false")
+
+        content = "\n".join(lines) + "\n"
+
+        out_dir = os.path.join(skill_dir, "agents")
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, "openai.yaml")
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        written.append(os.path.relpath(out_path, PLUGIN_ROOT))
+
+    for path in written:
+        print("wrote %s" % path)
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

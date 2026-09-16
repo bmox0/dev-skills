@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# Static readiness check for a run's guards: whether they are installed,
+# enabled, at a sufficient version, whether the generated Codex roles are
+# current, and whether subagents can actually run — naming the first thing
+# that fails. Run before the first phase is dispatched, same spirit as
+# preflight.
+#
+# This script does not prove Codex's live trust in a hook definition — that
+# is the diagnostic probe added to hooks/commit-guard.sh
+# (DEV_SKILLS_HOOK_PROBE / DEV_SKILLS_HOOK_READY), which the orchestrator
+# itself drives as a real PreToolUse call. Reproducing Codex's internal
+# hook-definition hash is deliberately not attempted here — but the plain
+# [features] toggles and the generated roles Codex's own config.toml
+# records are read directly (see the codex_home/config block below); that
+# is a different, much narrower thing than reproducing its trust decision.
+#
+# [fix round 2] Reads $CODEX_HOME, falling back to $HOME/.codex only when
+# CODEX_HOME is unset — the same rule the real codex CLI itself follows
+# (confirmed directly: codex --version/doctor honour $CODEX_HOME). Never
+# reads or writes the invoking user's real ~/.codex except through that
+# same fallback, and never writes to either.
+#
+# Usage: harness-ready
+# Exit:  0 ready
+#        1 not ready — the reason is on stdout
+#        2 usage
+set -uo pipefail
+
+if [ $# -ne 0 ]; then
+  echo "usage: harness-ready" >&2
+  exit 2
+fi
+
+root="$(cd "$(dirname "$0")/../../.." && pwd)"
+
+fail() {
+  echo "$1"
+  exit 1
+}
+
+sha256_file() {
+  python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
+}
+
+# feature_flag CONFIG_FILE KEY — prints "true", "false" or "" (absent, i.e.
+# left at its default, which for every feature named here is on) for KEY
+# under CONFIG_FILE's [features] table. [fix round 2] Codex's real shape,
+# verified against codex-cli 0.154.0 in an isolated CODEX_HOME (never the
+# real ~/.codex):
+#   [features]
+#   multi_agent = true
+#   js_repl = false
+# A bare, unscoped grep for a key name like "hooks" would also match a
+# same-named key under an unrelated table (a [mcp_servers.hooks] entry, an
+# incidental "hooks = false" elsewhere) — reading it as a proper TOML table
+# closes that. Uses tomllib (stdlib since Python 3.11) when available for a
+# fully correct parse; falls back to a minimal table-tracking line reader
+# — enough for this one well-known shape, a [features] table of bare
+# key = true/false lines — when it is not, so neither path adds a
+# dependency beyond python3 itself.
+feature_flag() {
+  python3 -c '
+import sys
+
+path, key = sys.argv[1], sys.argv[2]
+try:
+    with open(path, "rb") as fh:
+        data = fh.read()
+except OSError:
+    print("")
+    raise SystemExit
+
+try:
+    import tomllib
+    doc = tomllib.loads(data.decode("utf-8"))
+    val = doc.get("features", {}).get(key)
+    print("true" if val is True else "false" if val is False else "")
+    raise SystemExit
+except ImportError:
+    pass
+except Exception:
+    print("")
+    raise SystemExit
+
+section = None
+val = None
+for line in data.decode("utf-8", "replace").splitlines():
+    s = line.strip()
+    if not s or s.startswith("#"):
+        continue
+    if s.startswith("[") and s.endswith("]"):
+        section = s[1:-1].strip()
+        continue
+    if section != "features" or "=" not in s:
+        continue
+    k, _, v = s.partition("=")
+    k = k.strip()
+    v = v.split("#", 1)[0].strip()
+    if k == key:
+        val = v == "true" if v in ("true", "false") else None
+print("true" if val is True else "false" if val is False else "")
+' "$1" "$2"
+}
+
+# The floor at which this plugin expects hooks/plugins/multi_agent support
+# in the codex CLI. Conservative placeholder — raise it once a real
+# minimum release is confirmed; nothing here depends on the exact value.
+MIN_CODEX_VERSION="0.20.0"
+
+version_ge() {
+  [ "$1" = "$2" ] && return 0
+  local higher
+  higher="$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)"
+  [ "$higher" = "$1" ]
+}
+
+# --- host detection ----------------------------------------------------
+# Claude Code's own live marker ($CLAUDECODE=1, set by the Claude Code CLI
+# on every subprocess it runs) is the definitive signal and is checked
+# first. The codex CLI on PATH is only circumstantial — plenty of Claude
+# Code users have it installed too — so it is the fallback, read only when
+# $CLAUDECODE is not set.
+host=""
+if [ "${CLAUDECODE:-}" = "1" ]; then
+  host="claude"
+elif command -v codex >/dev/null 2>&1; then
+  host="codex"
+fi
+
+[ -n "$host" ] || fail "no supported host detected: neither the codex CLI nor Claude Code (\$CLAUDECODE) is visible in this environment"
+
+roles="gate-a gate-b implementer prototyper test-writer"
+
+# Every hook script hooks/hooks.json names must exist and be executable —
+# checked against this plugin's own install location, not \$HOME, since
+# that is where these scripts actually live regardless of host.
+hook_scripts_ready() {
+  local hooks_json="$root/hooks/hooks.json" cmd rel path
+  [ -f "$hooks_json" ] || { echo "hooks/hooks.json is missing from $root"; return 1; }
+  while IFS= read -r cmd; do
+    [ -n "$cmd" ] || continue
+    rel="${cmd#\$\{CLAUDE_PLUGIN_ROOT\}/}"
+    path="$root/$rel"
+    if [ ! -f "$path" ]; then
+      echo "hook script named in hooks.json is missing: $path"
+      return 1
+    fi
+    if [ ! -x "$path" ]; then
+      echo "hook script named in hooks.json is not executable: $path"
+      return 1
+    fi
+  done < <(jq -r '.. | .command? // empty' "$hooks_json" 2>/dev/null)
+  return 0
+}
+
+if [ "$host" = "codex" ]; then
+  # [fix round 2] $CODEX_HOME if set, the same fallback the real codex CLI
+  # itself uses otherwise — never $HOME/.codex unconditionally.
+  codex_home="${CODEX_HOME:-$HOME/.codex}"
+
+  # 1) the binary's version against the floor recorded above.
+  ver_out="$(codex --version 2>/dev/null || true)"
+  ver="$(printf '%s' "$ver_out" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  [ -n "$ver" ] || fail "could not read a version number from 'codex --version' (got: ${ver_out:-<empty>})"
+  version_ge "$ver" "$MIN_CODEX_VERSION" \
+    || fail "codex CLI is $ver, below the $MIN_CODEX_VERSION floor this plugin needs for hooks/plugins/multi_agent support"
+
+  # 2) hooks, plugins and multi_agent enabled, and subagents can run at all.
+  # [fix round 2] read as a real [features] TOML table (see feature_flag
+  # above), not flat <name>_enabled keys — no real Codex ever writes those,
+  # so every check built on them was dead. multi_agent is the one real,
+  # verified signal for "can this host run subagents at all" (confirmed
+  # directly: flipping it in an isolated CODEX_HOME changes what
+  # `codex features list`/`codex doctor --json` report as enabled); there is
+  # no separate, real "concurrent cap" anywhere in Codex to check alongside
+  # it (see test/cli/harness-ready.test.sh's TC-21 comment for how that was
+  # established), so its failure message names both the feature and the
+  # subagent consequence in one.
+  config="$codex_home/config.toml"
+  for feature in hooks plugins multi_agent; do
+    if [ "$(feature_flag "$config" "$feature")" = "false" ]; then
+      if [ "$feature" = "multi_agent" ]; then
+        fail "Codex's multi_agent feature is turned off ([features] multi_agent = false in $config) — subagents cannot run until it is turned back on"
+      else
+        fail "Codex's $feature feature is turned off ([features] $feature = false in $config) — turn it on before a run starts"
+      fi
+    fi
+  done
+
+  # 3) this plugin is installed and enabled. The generated role files
+  # under $CODEX_HOME/agents (or $HOME/.codex/agents) are the only trace
+  # dev-skills' own setup step leaves behind, so their presence stands for
+  # both.
+  agents_dir="$codex_home/agents"
+  if [ ! -d "$agents_dir" ] || [ -z "$(find "$agents_dir" -maxdepth 1 -name 'dev-skills-*.toml' -print -quit 2>/dev/null)" ]; then
+    fail "no dev-skills-*.toml roles found under $agents_dir — is the plugin installed, and has the setup skill been run?"
+  fi
+
+  # 4) every hook script hooks/hooks.json names exists and is executable.
+  reason="$(hook_scripts_ready)" || fail "$reason"
+
+  # 5) every generated role is present and current — its recorded source
+  # hash still matches the agents/<role>.md it was generated from, and the
+  # implementer's embedded copy of skills/tdd/SKILL.md is not stale either.
+  # Staleness is a stop: in Codex the implementer's embedded copy of the
+  # TDD protocol is the only copy it has, and nothing downstream would
+  # ever notice a run built on an instruction set the repository no longer
+  # holds.
+  for role in $roles; do
+    f="$agents_dir/dev-skills-$role.toml"
+    [ -f "$f" ] || fail "the generated roles are stale: $f is missing — re-run the setup skill"
+
+    src_line="$(grep -m1 '^# dev-skills:generated ' "$f" || true)"
+    [ -n "$src_line" ] || fail "the generated roles are stale: $f carries no ownership marker — re-run the setup skill"
+    recorded_hash="$(printf '%s' "$src_line" | sed -n 's/.*sha256=\([0-9a-f]*\).*/\1/p')"
+    current_hash="$(sha256_file "$root/agents/$role.md")"
+    if [ "$recorded_hash" != "$current_hash" ]; then
+      fail "the generated roles are stale: $f was generated from an older agents/$role.md — re-run the setup skill"
+    fi
+
+    if [ "$role" = "implementer" ]; then
+      embed_line="$(grep -m1 '^# dev-skills:embedded ' "$f" || true)"
+      [ -n "$embed_line" ] || fail "the generated roles are stale: $f carries no embedded-TDD marker — re-run the setup skill"
+      embed_hash="$(printf '%s' "$embed_line" | sed -n 's/.*sha256=\([0-9a-f]*\).*/\1/p')"
+      tdd_hash="$(sha256_file "$root/skills/tdd/SKILL.md")"
+      if [ "$embed_hash" != "$tdd_hash" ]; then
+        fail "the generated roles are stale: the implementer's embedded TDD protocol no longer matches skills/tdd/SKILL.md — re-run the setup skill"
+      fi
+    fi
+  done
+
+else
+  # Claude Code: no separate role-generation step and no version floor
+  # named by this phase's How for this branch — just confirm the plugin is
+  # installed and its hook scripts are present.
+  installed="$HOME/.claude/plugins/installed_plugins.json"
+  if [ ! -f "$installed" ] || ! jq -e '.plugins | keys[] | select(startswith("dev-skills@"))' "$installed" >/dev/null 2>&1; then
+    fail "the dev-skills plugin is not installed under $HOME/.claude (no dev-skills@... entry in $installed)"
+  fi
+  reason="$(hook_scripts_ready)" || fail "$reason"
+fi
+
+echo "harness ready"
+exit 0

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Finish"
+  short_description: "Close out a run — squash it into one commit, put exactly that commit in front of the human for the run's one acceptance, and integrate it. Invoke once both gates are green."
+policy:
+  allow_implicit_invocation: false

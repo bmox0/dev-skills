@@ -1,0 +1,5 @@
+interface:
+  display_name: "Setup"
+  short_description: "Generates this plugin's five Codex roles under ~/.codex/agents from agents/*.md, so a Codex session can dispatch dev-skills-gate-a, dev-skills-gate-b, dev-skills-implementer, dev-skills-prototyper and dev-skills-test-writer as separate agents. Run once after installing the plugin in Codex, and again whenever agents/*.md or skills/tdd/SKILL.md changes."
+policy:
+  allow_implicit_invocation: false

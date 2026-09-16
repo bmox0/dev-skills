@@ -5,17 +5,29 @@ description: Use when a change has to be seen working in the real thing — open
 
 # Browser Test
 
+**Compatibility.** A Unix-like shell with `node`, `open` (macOS) or `xdg-open`
+(Linux) — does not run natively on Windows.
+
 Verification runs against one long-lived tab, driven by `tab.mjs`. The browser runs detached on its own profile with a CDP port; every command is a separate node process that connects, does one thing, and exits without closing the browser. The tab, its session, `localStorage` and any live connection survive between commands and between sessions.
 
 ## First, get `tab` on PATH
 
-Every later call is then one short word. Run this once per machine:
+Every later call is then one short word. Run this once per machine, using the
+`tab.mjs` that sits beside this file — a path relative to this repository's own
+root, the way `skills/setup/scripts/install-codex-agents` is already named
+elsewhere in this plugin, not a guess at which host's plugin cache put it where:
 
 ```bash
-node "$(printf '%s\n' "$HOME"/.claude/plugins/cache/dev-skills/dev-skills/*/skills/browser-test/tab.mjs | sort -V | tail -1)" shim
+node skills/browser-test/tab.mjs shim
 ```
 
-It writes `~/.local/bin/tab`, which re-resolves the plugin on each call and so survives version bumps. If it reports that the directory is not on PATH, keep using the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a checkout, for anyone working on this skill itself. Everything below is written as `tab`.
+It writes `~/.local/bin/tab`, pointed at wherever this `tab.mjs` is installed
+right now — Claude Code's cache, Codex's, or a plain checkout. A version bump
+moves that file, so re-run this once more after one, the same one-time step as
+the first install. If it reports that the directory is not on PATH, keep using
+the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a
+checkout, for anyone working on this skill itself. Everything below is written
+as `tab`.
 
 ## Then, point it at the app
 

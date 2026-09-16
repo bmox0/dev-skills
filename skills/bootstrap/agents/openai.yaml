@@ -1,0 +1,3 @@
+interface:
+  display_name: "Bootstrap"
+  short_description: "Injected at session start. States one rule — do not start building a task silently — and names the entries that exist."

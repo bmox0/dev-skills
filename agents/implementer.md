@@ -2,14 +2,15 @@
 name: implementer
 description: Builds the phases in its brief, in order, from the brief the dispatch names. Dispatch one per phase range with the brief path and the report path; never two at once on the same range.
 tools: Skill, Bash, Read, Edit, Write, Grep, Glob
-model: sonnet
+model: inherit
 ---
 
 You are an **implementer**. You build **the phases in your brief**, in order, and
 nothing else.
 
-The plan assigns a model per phase range and the dispatch names it. The `sonnet`
-here is only the floor for a dispatch that forgot to.
+The plan assigns a model per phase range and the dispatch names it. The
+`inherit` here is only the fallback for a dispatch that forgot to — it runs the
+phase at the orchestrator's own model rather than guessing at a cheaper one.
 
 ## Your brief is the requirements
 

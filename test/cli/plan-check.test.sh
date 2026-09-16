@@ -344,7 +344,7 @@ cat > "$plan3" <<'EOF'
 
 | Phases | Implementer | Why the boundary is here |
 |---|---|---|
-| 1-3 | Sonnet | tc3_single_group |
+| 1-3 | Default | tc3_single_group |
 
 ## Ledger
 
@@ -390,7 +390,7 @@ write_numbered_plan() {
     printf '## Topology\n\n'
     printf '| Phases | Implementer | Why the boundary is here |\n'
     printf '|---|---|---|\n'
-    printf '| %s | Sonnet | one |\n\n' "$rng"
+    printf '| %s | Default | one |\n\n' "$rng"
     printf '## Ledger\n- [ ] x\n'
   } > "$f"
 }
@@ -509,7 +509,7 @@ write_moments_plan() {
     printf '## Topology\n\n'
     printf '| Phases | Implementer | Why the boundary is here |\n'
     printf '|---|---|---|\n'
-    printf '| 1 | Sonnet | one |\n\n'
+    printf '| 1 | Default | one |\n\n'
     printf '## Ledger\n- [ ] x\n'
   } > "$f"
 }

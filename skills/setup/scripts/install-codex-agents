@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""Turn agents/*.md into $CODEX_HOME/agents/dev-skills-<role>.toml (or
+~/.codex/agents when $CODEX_HOME is unset — the same fallback the real codex
+CLI itself uses, and the exact rule skills/implement/scripts/harness-ready
+reads back).
+
+Codex has no `agents` key in its plugin manifest and ignores a top-level
+`agents/` directory, so without this step the five roles this plugin
+dispatches by name do not exist in a Codex session at all.
+
+Each source role file maps to one generated file: frontmatter `name` becomes
+`dev-skills-<name>`, frontmatter `description` becomes `description`, and the
+markdown body becomes `developer_instructions`. `model` is never written —
+omitting it inherits the parent, and writing `inherit` would request a model
+literally named `inherit`.
+
+The implementer role additionally gets the whole of skills/tdd/SKILL.md
+embedded verbatim in its developer_instructions, under its own marker: Codex
+has no Skill tool, so a generated role cannot reach a skill at runtime and the
+test discipline has to travel with it.
+
+Every generated file's first line is an ownership marker recording the exact
+source file and its hash:
+
+    # dev-skills:generated source=agents/<role>.md sha256=<hex>
+
+and, implementer only, a second marker line for the embedded copy:
+
+    # dev-skills:embedded source=skills/tdd/SKILL.md sha256=<hex>
+
+A same-named file that already exists but does not start with the
+`# dev-skills:generated ` marker is not ours: it is refused by name and left
+byte-identical, never overwritten. A file that does carry the marker but whose
+recorded source no longer exists under agents/ is a leftover from a role that
+was removed, and is deleted, reported by name.
+
+Writes are atomic: built into a temporary file beside the target, then moved
+into place, so an interrupted run cannot leave a half-written role behind.
+
+Usage: install-codex-agents
+Exit:  0 every current role is now in place (created, refreshed, or already
+         current) and no orphan removal or refusal needed reporting as a
+         problem
+       1 at least one target could not be written because an unmarked file
+         already occupies its path (named on stdout)
+"""
+
+import hashlib
+import os
+import re
+import sys
+
+PROG = "install-codex-agents"
+HERE = os.path.dirname(os.path.abspath(__file__))
+# skills/setup/scripts -> skills/setup -> skills -> plugin root
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+AGENTS_SRC_DIR = os.path.join(PLUGIN_ROOT, "agents")
+TDD_SKILL = os.path.join(PLUGIN_ROOT, "skills", "tdd", "SKILL.md")
+
+MARKER_RE = re.compile(
+    r"^# dev-skills:generated source=(\S+) sha256=([0-9a-f]{64})$")
+
+
+def die(msg, code=2):
+    sys.stderr.write("%s: %s\n" % (PROG, msg))
+    raise SystemExit(code)
+
+
+def sha256_file(path):
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+def parse_frontmatter(text):
+    """Split a leading '---' frontmatter block from the rest of the file.
+    Returns (dict-of-scalars, body-with-one-leading-blank-line-stripped)."""
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].rstrip("\n") != "---":
+        die("expected frontmatter starting with '---'")
+    fm = {}
+    i = 1
+    while i < len(lines) and lines[i].rstrip("\n") != "---":
+        line = lines[i].rstrip("\n")
+        m = re.match(r"^([A-Za-z_-]+):[ \t]*(.*)$", line)
+        if m:
+            key, value = m.group(1), m.group(2).strip()
+            if len(value) >= 2 and value[0] == value[-1] == '"':
+                value = value[1:-1]
+            fm[key] = value
+        i += 1
+    if i >= len(lines):
+        die("frontmatter never closes with a second '---'")
+    body = "".join(lines[i + 1:])
+    body = body.lstrip("\n")
+    return fm, body
+
+
+def toml_basic_string(s):
+    """A TOML basic (double-quoted) single-line string, properly escaped."""
+    out = []
+    for ch in s:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 0x20:
+            out.append("\\u%04x" % ord(ch))
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def toml_literal_multiline(body):
+    """A TOML literal ('''...''') multi-line string: no escaping at all, so
+    it is only safe when the body never contains a run of three or more
+    single quotes. Every source this script embeds is checked for that
+    before being written."""
+    if "'''" in body:
+        die("cannot embed content containing \"'''\" in a TOML literal "
+            "multi-line string")
+    text = body if body.endswith("\n") else body + "\n"
+    return "'''\n" + text + "'''"
+
+
+def role_files():
+    return sorted(
+        os.path.join(AGENTS_SRC_DIR, name)
+        for name in os.listdir(AGENTS_SRC_DIR)
+        if name.endswith(".md")
+    )
+
+
+def build_role(md_path):
+    with open(md_path, "r", encoding="utf-8") as fh:
+        raw = fh.read()
+    fm, body = parse_frontmatter(raw)
+    name = fm.get("name")
+    description = fm.get("description")
+    if not name or not description:
+        die("%s has no frontmatter name/description" % md_path)
+
+    source_rel = os.path.relpath(md_path, PLUGIN_ROOT)
+    source_hash = sha256_file(md_path)
+    target_name = "dev-skills-%s.toml" % name
+
+    header_lines = [
+        "# dev-skills:generated source=%s sha256=%s" % (source_rel, source_hash),
+    ]
+
+    dev_body = body.rstrip("\n")
+
+    if name == "implementer":
+        tdd_hash = sha256_file(TDD_SKILL)
+        header_lines.append(
+            "# dev-skills:embedded source=skills/tdd/SKILL.md sha256=%s"
+            % tdd_hash)
+        with open(TDD_SKILL, "r", encoding="utf-8") as fh:
+            tdd_text = fh.read()
+        dev_body = dev_body + "\n\n---\n\n" + tdd_text.rstrip("\n")
+
+    field_lines = [
+        "name = %s" % toml_basic_string("dev-skills-%s" % name),
+        "description = %s" % toml_basic_string(description),
+        "developer_instructions = %s" % toml_literal_multiline(dev_body),
+    ]
+
+    content = "\n".join(header_lines + field_lines) + "\n"
+    return target_name, content
+
+
+def read_first_line(path):
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        return fh.readline().rstrip("\n")
+
+
+def write_atomic(path, content):
+    tmp = path + ".tmp-%d" % os.getpid()
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    os.replace(tmp, path)
+
+
+def main():
+    if len(sys.argv) != 1:
+        die("usage: %s (no arguments)" % PROG)
+
+    # The same rule skills/implement/scripts/harness-ready reads back:
+    # $CODEX_HOME if set, otherwise $HOME/.codex — never $HOME/.codex
+    # unconditionally. The two must never be able to drift again.
+    codex_home_env = os.environ.get("CODEX_HOME")
+    if codex_home_env:
+        codex_home = codex_home_env
+    else:
+        home = os.environ.get("HOME")
+        if not home:
+            die("neither $CODEX_HOME nor $HOME is set")
+        codex_home = os.path.join(home, ".codex")
+    target_dir = os.path.join(codex_home, "agents")
+    os.makedirs(target_dir, exist_ok=True)
+
+    roles = dict(build_role(p) for p in role_files())
+
+    # Orphans first: a marked dev-skills-*.toml whose recorded source no
+    # longer exists under agents/ is a leftover from a removed role.
+    for entry in sorted(os.listdir(target_dir)):
+        if not (entry.startswith("dev-skills-") and entry.endswith(".toml")):
+            continue
+        if entry in roles:
+            continue  # handled in the write loop below
+        path = os.path.join(target_dir, entry)
+        m = MARKER_RE.match(read_first_line(path))
+        if not m:
+            continue  # not ours; never touched
+        source_rel = m.group(1)
+        if not os.path.isfile(os.path.join(PLUGIN_ROOT, source_rel)):
+            os.remove(path)
+            print("removed %s: its source %s no longer exists under agents/"
+                  % (entry, source_rel))
+
+    had_refusal = False
+    for target_name in sorted(roles):
+        content = roles[target_name]
+        path = os.path.join(target_dir, target_name)
+        if os.path.exists(path):
+            if not MARKER_RE.match(read_first_line(path)):
+                print("refused %s: an existing file with no dev-skills "
+                      "ownership marker already occupies this path — left "
+                      "byte-identical" % target_name)
+                had_refusal = True
+                continue
+        write_atomic(path, content)
+        print("wrote %s" % target_name)
+
+    sys.exit(1 if had_refusal else 0)
+
+
+if __name__ == "__main__":
+    main()

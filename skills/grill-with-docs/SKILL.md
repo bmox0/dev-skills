@@ -60,8 +60,10 @@ a decision is theirs to authorise, and so is putting it in the history.
 
 `dev-skills:grill` produces alignment and no artifact. This one produces a durable
 artifact. That difference in what comes out the other end is the only reason two
-skills exist rather than one, which is why `dev-skills:domain-modeling` may fire inside
-this skill and must not fire inside bare `dev-skills:grill`. Let it fire there and the
+skills exist rather than one, which is why `dev-skills:domain-modeling` (reached
+by calling the Skill tool with that name, or, where no Skill tool exists, by
+reading [`../domain-modeling/SKILL.md`](../domain-modeling/SKILL.md) directly)
+may fire inside this skill and must not fire inside bare `dev-skills:grill`. Let it fire there and the
 bare grill starts writing `CONTEXT.md` on its own and becomes this skill in
 practice, and the choice the human made when they typed one name rather than the
 other stops meaning anything.

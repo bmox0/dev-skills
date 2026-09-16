@@ -2,6 +2,10 @@
 # Pins hooks/open-prototype.sh: a Write of a .html file under a prototypes/
 # directory opens it, and nothing else does. The opener is stubbed through
 # DEV_SKILLS_OPEN_CMD so the test proves the call without a browser.
+#
+# TC-1 through TC-6 below are this file's own long-standing local numbering,
+# unrelated to the codex-parity plan's case IDs. TC-8 at the bottom is that
+# plan's own case — a prototype written by apply_patch rather than Write.
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,5 +91,28 @@ assert_eq "" "$(cat "$log")" "TC-5: opener not called for a missing file" || fai
 printf 'not json' | DEV_SKILLS_OPEN_CMD="$stub" "$hook"
 assert_exit 0 "TC-6: hook exits 0 on unparseable input" || fail "TC-6"
 assert_eq "" "$(cat "$log")" "TC-6: opener not called on garbage" || fail "TC-6"
+
+# run_hook_patch PATH — feeds the hook an apply_patch payload whose body adds
+# PATH, the same shape Codex's own patch tool would send, rather than the
+# Write-shaped tool_input the run_hook helper above builds.
+run_hook_patch() {
+  local path="$1" payload
+  : > "$log"
+  payload=$(python3 - "$path" <<'PY'
+import json, sys
+path = sys.argv[1]
+patch = "*** Begin Patch\n*** Add File: " + path + "\n+<h1>M-1</h1>\n*** End Patch"
+print(json.dumps({"tool_name": "apply_patch", "tool_input": {"command": patch}}))
+PY
+)
+  printf '%s' "$payload" | DEV_SKILLS_OPEN_CMD="$stub" "$hook"
+  rc=$?
+}
+
+# TC-8: a prototype written by apply_patch rather than Write is still opened.
+run_hook_patch "$proto"
+assert_eq 0 "$rc" "TC-8: hook exits 0" || fail "TC-8"
+opened_within || fail "TC-8: opener never called for a prototype written by apply_patch"
+assert_eq "$proto" "$(cat "$log")" "TC-8: opener called with the prototype's path" || fail "TC-8"
 
 exit 0

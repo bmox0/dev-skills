@@ -1,0 +1,3 @@
+interface:
+  display_name: "Browser Test"
+  short_description: "Use when a change has to be seen working in the real thing — opening the app, clicking through a flow, filling a form, reading console errors or failed requests, recording WebSocket frames, or taking a screenshot. Drives a web app or an Electron build over CDP; replaces one-off Playwright scripts and browser MCP servers for every interactive check."

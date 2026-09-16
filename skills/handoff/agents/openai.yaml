@@ -1,0 +1,5 @@
+interface:
+  display_name: "Handoff"
+  short_description: "Pack this session into a document a fresh agent continues from — the work, or the thinking. Type it when you are about to move to a new chat."
+policy:
+  allow_implicit_invocation: false

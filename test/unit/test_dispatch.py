@@ -41,8 +41,8 @@ PLAN_WITH_TOPOLOGY = """# Some Plan
 
 | Phases | Implementer | Why the checkpoint is here |
 |---|---|---|
-| 1-3 | Sonnet | first checkpoint |
-| 4-8 | Sonnet | last one before the final gate |
+| 1-3 | Default | first checkpoint |
+| 4-8 | Default | last one before the final gate |
 
 ## Phases
 
@@ -61,12 +61,12 @@ PLAN_TWO_TABLES = """# Plan
 
 | Phases | Implementer | Why the checkpoint is here |
 |---|---|---|
-| 1-3 | Sonnet | first checkpoint |
-| 4-8 | Sonnet | last one before the final gate |
+| 1-3 | Default | first checkpoint |
+| 4-8 | Default | last one before the final gate |
 ## Not Topology
 | Phases | Implementer | Why the checkpoint is here |
 |---|---|---|
-| 20-21 | Opus | should never appear |
+| 20-21 | Escalated | should never appear |
 """
 
 PLAN_NO_TOPOLOGY = """# Plan
@@ -108,7 +108,7 @@ class IsSeparatorTests(unittest.TestCase):
         self.assertTrue(sd.is_separator(sd.split_row("|---|---|")))
 
     def test_data_row_is_false(self):
-        cells = sd.split_row("| 1 | 1-3 | Sonnet | first checkpoint |")
+        cells = sd.split_row("| 1 | 1-3 | Default | first checkpoint |")
         self.assertFalse(sd.is_separator(cells))
 
 
@@ -116,9 +116,9 @@ class ParseTableTests(unittest.TestCase):
     TABLE_LINES = [
         "| Phases | Implementer | Why the checkpoint is here |",
         "|---|---|---|",
-        "| 1 | Sonnet | first |",
-        "| 2, 3, 4 | Sonnet | second |",
-        "| 5-6 | Opus | third |",
+        "| 1 | Default | first |",
+        "| 2, 3, 4 | Default | second |",
+        "| 5-6 | Escalated | third |",
     ]
 
     def test_yields_three_segments_first_and_last_present_no_separator(self):
@@ -156,14 +156,14 @@ class TopologySegmentsTests(unittest.TestCase):
 class FindOwnerTests(unittest.TestCase):
     def setUp(self):
         self.segments = [
-            sd.Segment("1-3", 1, 3, "Sonnet", "first checkpoint"),
-            sd.Segment("4-8", 4, 8, "Opus", "last one before the final gate"),
+            sd.Segment("1-3", 1, 3, "Default", "first checkpoint"),
+            sd.Segment("4-8", 4, 8, "Escalated", "last one before the final gate"),
         ]
 
     def test_exact_match_returns_owner_with_correct_model(self):
         owner, spanning = sd.find_owner(self.segments, 4, 8)
         self.assertIsNotNone(owner)
-        self.assertEqual(owner.model, "Opus")
+        self.assertEqual(owner.model, "Escalated")
         self.assertIsNone(spanning)
 
     def test_range_spanning_two_segments(self):

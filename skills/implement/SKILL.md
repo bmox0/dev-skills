@@ -30,6 +30,53 @@ results are the record.
 
 ## Setup
 
+### 0. Prove the guards are live
+
+Before anything else — before a workspace, a branch, or a commit exists — run:
+
+```bash
+skills/implement/scripts/harness-ready
+```
+
+Exit `0` and continue. Exit `1` and **refuse**: the run does not start, and the
+reason is on `harness-ready`'s own stdout — hand it to the human verbatim,
+whether it names a feature that is off, a guard that lost its trust, a version
+too old, or the generated Codex roles gone stale. Nothing before this step has
+run, so there is nothing to undo — no branch, no commit, no run marker exists
+yet, and none should until this has spoken.
+
+`harness-ready`'s own checks are static, deliberately — it does not reproduce
+Codex's internal hook-definition hash and does not read `~/.codex/config.toml`
+to infer trust in one. The one thing that proves a hook is registered, trusted
+and actually denying is a real `PreToolUse` call, and only a tool call you make
+yourself can trigger one — a script cannot. So immediately after
+`harness-ready` exits `0`, drive the reserved probe directly, through the Bash
+tool, with a nonce you generate fresh for this call alone:
+
+```bash
+printf '%s\n' 'DEV_SKILLS_HOOK_PROBE:<fresh nonce>'
+```
+
+The only passing outcome is a denial whose reason carries
+`DEV_SKILLS_HOOK_READY:<that same nonce>`. Anything else — in particular the
+command actually running and printing the probe string back — means the
+hooks are not live, whatever `harness-ready` said: no branch, no commit, no
+run marker. **Do not default to blaming setup here** — a probe failure and a
+missing role are different causes with different fixes, and re-running
+`dev-skills:setup` does nothing for a disabled feature or a lost hook trust.
+Tell the human plainly that the probe failed even though `harness-ready`
+reported ready, and hand them `harness-ready`'s own output; only say to run
+`dev-skills:setup` if that output actually names a missing or stale role.
+
+A missing or unknown `agent_type` at dispatch time is a different stop, under
+its own name: **`SETUP_REQUIRED`**. If a role you are about to dispatch
+resolves to an unknown `agent_type`, or the session carries no `agent_type`
+field at all, stop and tell the human to run `dev-skills:setup` and start a
+fresh session. Never substitute `default`, `worker` or `explorer` for the role
+that is missing, and never fall back to doing that phase's work yourself — an
+orchestrator marking its own work is exactly what the two gates exist to
+prevent.
+
 ### 1. Where the work happens
 
 The plan was written in the current tree; the workspace is settled now.
@@ -130,8 +177,10 @@ ledger and `git log` do, and they are trusted over recollection.
 
 ## The tests come first
 
-Dispatch **`dev-skills:test-writer`** before the first phase, with the plan's
-user stories, its test cases, the plan itself and the environment contract.
+Dispatch **`dev-skills:test-writer`** — Claude subagent type `test-writer`,
+Codex `agent_type: dev-skills-test-writer` — before the first phase, with the
+plan's user stories, its test cases, the plan itself and the environment
+contract.
 
 It writes the runnable cases as executable tests and commits them as their own
 commit. Tests written after the code they describe are written by someone who
@@ -154,7 +203,7 @@ earlier reports — **never the earlier diffs**.
 ```text
 record BASE (git rev-parse HEAD)
 → scripts/brief <plan> <range>               the implementer's brief
-→ dispatch the implementer on the model the plan assigns
+→ dispatch the implementer (Claude subagent type implementer, Codex agent_type dev-skills-implementer) on the model the plan assigns
 → it builds, runs its checks last, commits, writes its report
 → next phase
 ```
@@ -229,8 +278,12 @@ What goes in the dispatch is what varies. The implementer gets:
    `scripts/parallel-contract`, and the paths of the earlier reports. Mandatory:
    dependency between phases is the norm, and without it the implementer goes
    digging through diffs;
-4. the instruction to use **`dev-skills:tdd`**, if the plan says this work has tests —
-   it is a skill the implementer invokes, not a path you resolve;
+4. the instruction to use **`dev-skills:tdd`**, if the plan says this work has
+   tests — the implementer reaches it by calling the Skill tool with that name
+   where one exists, or, where it does not, by reading the sibling
+   [`../tdd/SKILL.md`](../tdd/SKILL.md) directly, relative to its own file and
+   never a plugin-cache path; either way it is a skill the implementer reaches
+   itself, not a path you resolve;
 5. the **report file path** — its contents and the short return format are the
    agent definition's contract, not yours to restate;
 6. **which fields of the brief you corrected — by name, not by content.**
@@ -274,10 +327,10 @@ still in it is not ready, whatever else it says.
 
 | Seat | Model | Does | Does not |
 |---|---|---|---|
-| `dev-skills:test-writer` | Sonnet | turns approved cases into executable tests, each named with its `TC-ID` | does not touch architecture, paths or phases; makes no product decision |
+| `dev-skills:test-writer` | inherits implicitly | turns approved cases into executable tests, each named with its `TC-ID` | does not touch architecture, paths or phases; makes no product decision |
 | `dev-skills:implementer` | assigned by the plan | its phases, TDD where the plan says there are tests; static checks last, at its final commit | E2E, runtime, a request to a live endpoint; does not commit inside a parallel group |
-| `dev-skills:gate-a` | Opus, cold context | checks, then conformance, then integrity, over the whole `BASE..HEAD` | does not debug stack traces or build noise — hands red straight back; does not compare the diff to the step list |
-| `dev-skills:gate-b` | Opus, cold context | does the system work: runtime, E2E, the plan's executable cases, one evidence file each | does not review code quality — gate A closed that |
+| `dev-skills:gate-a` | inherit, cold context | checks, then conformance, then integrity, over the whole `BASE..HEAD` | does not debug stack traces or build noise — hands red straight back; does not compare the diff to the step list |
+| `dev-skills:gate-b` | inherit, cold context | does the system work: runtime, E2E, the plan's executable cases, one evidence file each | does not review code quality — gate A closed that |
 
 Two orthogonal questions, never asked twice of the same code: **is it well
 written** belongs to gate A, **does it work as intended** to gate B.
@@ -297,8 +350,8 @@ After the last phase, in this order and never at once:
 ```text
 scripts/review-package <plan> BASE HEAD   the whole range
 → scripts/dispatch <plan> --gate-a
-→ dispatch gate A: checks, then conformance, then integrity
-→ green → dispatch gate B on the executable cases and the plan's moments
+→ dispatch gate A (Claude subagent type gate-a, Codex agent_type dev-skills-gate-a): checks, then conformance, then integrity
+→ green → dispatch gate B (Claude subagent type gate-b, Codex agent_type dev-skills-gate-b) on the executable cases and the plan's moments
 → green → squash, then the human
 ```
 

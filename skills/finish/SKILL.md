@@ -20,6 +20,7 @@ exactly what `finish-guard` blocks while a run is open.
 
 ```text
 gate A green, gate B green
+→ skills/implement/scripts/harness-ready   guards still live, or refuse
 → scripts/finish preflight   branch, run base, range, clean tree, no half-done ops
 → a numbered recovery ref on the current HEAD
 → git reset --soft <run base>
@@ -39,6 +40,44 @@ are two different things, and nobody would notice the day they differ.
 so a conflict is impossible by construction and the equivalence of the trees is
 *guaranteed* rather than checked — the script only confirms the hashes match. On
 any refusal the state is left staged: nothing is lost and everything is visible.
+
+## 0. Prove the guards are live
+
+Before anything below — before a recovery ref, a reset, or a commit — run:
+
+```bash
+skills/implement/scripts/harness-ready
+```
+
+Exit `0` and continue. Exit `1` and refuse: nothing here runs, and the reason
+is on `harness-ready`'s own stdout — hand it to the human verbatim.
+
+`harness-ready` deliberately checks none of this by reproducing Codex's
+internal hook-definition hash or reading `~/.codex/config.toml` for trust — a
+real `PreToolUse` call is the only proof, and only a tool call you make
+yourself can trigger one. So immediately after `harness-ready` exits `0`,
+drive the reserved probe directly, through the Bash tool, with a nonce you
+generate fresh for this call alone:
+
+```bash
+printf '%s\n' 'DEV_SKILLS_HOOK_PROBE:<fresh nonce>'
+```
+
+The only passing outcome is a denial whose reason carries
+`DEV_SKILLS_HOOK_READY:<that same nonce>`. Anything else — in particular the
+command actually running and printing the probe string back — means the
+hooks are not live, whatever `harness-ready` said: refuse exactly as above.
+**Do not default to blaming setup here** — a probe failure and a missing
+role are different causes with different fixes. Hand the human
+`harness-ready`'s own output instead of guessing; tell them to run
+`dev-skills:setup` only if that output actually names a missing or stale
+role.
+
+If an `agent_type` a fix round would need turns out unknown, or missing
+altogether, that is a different stop, under its own name:
+**`SETUP_REQUIRED`** — stop, tell the human to run `dev-skills:setup` and
+start a fresh session, rather than having the orchestrator do that round's
+work itself.
 
 ## 1. Preflight
 

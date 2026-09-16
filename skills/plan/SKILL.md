@@ -430,13 +430,16 @@ phases to edit one file at once — "parallel by purpose, not by file" — and t
 permission is exactly where the collisions came from. Where paths intersect, the
 phases run Sequential.
 
-Assign the **model per row**. **Sonnet by default; Opus only where the phase is
+Assign the **model per row, by tier relative to your own**. **The tier below the
+orchestrator by default; the orchestrator's own model only where the phase is
 genuinely hard** — the densest document in the tree, a design the plan could not
-fully fix, a phase whose failure mode is quiet. There is nothing below Sonnet:
-one fix round costs an implementer pass and a gate pass, which
+fully fix, a phase whose failure mode is quiet. Nothing goes below the default
+tier: one fix round costs an implementer pass and a gate pass, which
 `dev-skills:implement` calls the largest single cost in the run, and no cheaper
-model saves that much. The orchestrator executes the assignment and does not
-change it silently.
+model saves that much — true of any provider's tier structure. Write the
+concrete model name of your own provider into the cell; the human checks it at
+approval, and the orchestrator executes the assignment and does not change it
+silently.
 
 The `Implementer` column is filled on every row, even when every row says the
 same thing. A column that appears only sometimes makes the reader work out the
@@ -445,9 +448,9 @@ table's shape before reading it; a column always there is one cell to change.
 ```markdown
 | Phases | Implementer | Why the boundary is here |
 |---|---|---|
-| 1 | Sonnet | everything downstream builds on this contract |
-| 2, 3 | Sonnet | the two sides of that contract, parallel, joined by 4 |
-| 4 | Sonnet | the join, and the last work before the gates |
+| 1 | Default tier | everything downstream builds on this contract |
+| 2, 3 | Default tier | the two sides of that contract, parallel, joined by 4 |
+| 4 | Default tier | the join, and the last work before the gates |
 ```
 
 The column headings are fixed: the orchestrator reads this table mechanically.
@@ -660,7 +663,7 @@ is how a regression becomes visible later.
 
 ### What the `gate-b:` label decides
 
-`browser`, `snapshot`, `simulator`, `http`, or `N/A`.
+`browser`, `snapshot`, `simulator`, `http`, `cli`, or `N/A`.
 
 **Whatever is not in the test cases is not checked on the running system.** The
 label is what makes that rule mechanical rather than aspirational: the runtime

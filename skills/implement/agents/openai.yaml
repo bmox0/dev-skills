@@ -1,0 +1,5 @@
+interface:
+  display_name: "Implement"
+  short_description: "Execute an approved plan — create the workspace, run preflight, write the tests, dispatch the phases, join the parallel groups, drive both gates, and hand the run to the human. Invoke once the plan and its test cases are approved."
+policy:
+  allow_implicit_invocation: false

@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # The one command that stands for "the tree is sound": the reference layer
-# (scripts/check-links.py) plus the plugin manifest and every SKILL.md's
-# frontmatter (claude plugin validate). A SKILL.md with unparseable YAML
-# frontmatter silently drops every field at load — plugin validate is the
-# only thing that catches that, and it does not run on its own.
+# (scripts/check-links.py) plus each host's own manifest validation — a SKILL.md
+# with unparseable YAML frontmatter silently drops every field at load, and
+# plugin validation is the only thing that catches that on either side.
 #
-# Both checks run regardless of whether the first one fails, so one call
-# surfaces everything wrong at once. If `claude` is not on PATH the plugin
-# half cannot run at all; that is a failure of this check, not something to
-# skip past — a check that could not run is not a check that passed.
+# All three run regardless of whether an earlier one fails, so one call
+# surfaces everything wrong at once. If `claude` or `codex` is not on PATH the
+# matching half cannot run at all; that is a failure of this check, not
+# something to skip past — a check that could not run is not a check that
+# passed.
+#
+# The Codex half never touches the real ~/.codex: CODEX_HOME points at a fresh
+# temporary directory for the duration of the check, removed afterward.
 #
 # Usage: scripts/check
-# Exit:  0 both checks passed · 1 either failed, or could not run
+# Exit:  0 every check passed · 1 any failed, or could not run
 set -uo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,6 +29,21 @@ if ! command -v claude >/dev/null 2>&1; then
   status=1
 else
   (cd "$repo_root" && claude plugin validate . --strict) || status=1
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "scripts/check: 'codex' is not on PATH — cannot run 'codex plugin add' validation" >&2
+  status=1
+else
+  echo "scripts/check: validating the Codex-side manifests with 'codex plugin add'"
+  plugin_name="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$repo_root/.claude-plugin/plugin.json" 2>/dev/null)"
+  codex_home="$(mktemp -d)"
+  if [ -z "$plugin_name" ] \
+    || ! CODEX_HOME="$codex_home" codex plugin marketplace add "$repo_root" \
+    || ! CODEX_HOME="$codex_home" codex plugin add "${plugin_name}@${plugin_name}"; then
+    status=1
+  fi
+  rm -rf "$codex_home"
 fi
 
 exit "$status"

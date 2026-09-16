@@ -77,22 +77,57 @@ to `.ai-workflow/plans/<plan>/prototypes/`, it opens in the browser — `open` o
 macOS, `xdg-open` elsewhere, `DEV_SKILLS_OPEN_CMD` to pick your own. You never
 ask for it to be opened.
 
+## What your machine needs
+
+A Unix-like shell with `bash`, `jq`, `python3` and `node` on PATH. This plugin
+does not run natively on Windows.
+
 ## Install
+
+The manifests — [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) and
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) — are the
+same for both harnesses; only the install commands differ.
+
+### Claude Code
 
 ```
 /plugin marketplace add bmox0/dev-skills
 /plugin install dev-skills@dev-skills
 ```
 
-Then restart the session. The repository carries its own
-[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), so it is a
-marketplace holding exactly one plugin — itself. Claude Code clones it, keeps it
-current, and `/plugin uninstall dev-skills` takes it back out again.
+Then restart the session. The repository carries its own marketplace manifest,
+so it is a marketplace holding exactly one plugin — itself. Claude Code clones
+it, keeps it current, and `/plugin uninstall dev-skills` takes it back out
+again.
 
 Installing also brings four subagents — `test-writer`, `implementer`, `gate-a`
 and `gate-b` — which [`dev-skills:implement`](skills/implement/SKILL.md)
 dispatches and you never call directly, and the hooks above
 ([`hooks/hooks.json`](hooks/hooks.json)).
+
+### Codex
+
+```
+codex plugin marketplace add bmox0/dev-skills
+codex plugin add dev-skills@dev-skills
+```
+
+Every skill appears in Codex's picker straight away, but the run's five
+dispatched roles (both gates, the implementer, the test writer, the
+prototyper) do not exist yet — Codex has no `agents` key in a plugin manifest,
+so nothing loads `agents/*.md` on its own. Run
+[`dev-skills:setup`](skills/setup/SKILL.md) once, then start a fresh session:
+that is the moment those five roles become dispatchable by name. Re-run it
+whenever `agents/*.md` or [`skills/tdd/SKILL.md`](skills/tdd/SKILL.md) changes.
+
+### The one behavioural difference
+
+Four skills — `tdd`, `pre-commit`, `merge-conflicts` and `guardrails` — carry
+`user-invocable: false`, which hides them from the human's menu in Claude Code
+while leaving them reachable by the agent alone; Codex has no equivalent
+control, so those same four are visible in Codex's picker instead. Nothing
+else differs, and no capability is lost either way — this is the only
+unmatched invocation flag in the tree.
 
 ## Every skill
 
