@@ -1,9 +1,9 @@
 # dev-skills
 
-Claude Code starts writing the moment you describe a task. Most of the time that
-is exactly what you want. The rest of the time what comes back is fluent,
-confident, and built on an understanding of the problem you never agreed to —
-and you find that out after reading the diff.
+Claude Code and Codex start writing the moment you describe a task. Most of the
+time that is exactly what you want. The rest of the time what comes back is
+fluent, confident, and built on an understanding of the problem you never
+agreed to — and you find that out after reading the diff.
 
 dev-skills puts a sequence between the idea and the commit. You say what you
 want; it asks questions until you both mean the same thing. That agreement
@@ -100,34 +100,63 @@ so it is a marketplace holding exactly one plugin — itself. Claude Code clones
 it, keeps it current, and `/plugin uninstall dev-skills` takes it back out
 again.
 
-Installing also brings four subagents — `test-writer`, `implementer`, `gate-a`
-and `gate-b` — which [`dev-skills:implement`](skills/implement/SKILL.md)
-dispatches and you never call directly, and the hooks above
+Installing also brings five subagents — `test-writer`, `implementer`, `gate-a`,
+`gate-b` and `prototyper` — which the workflow dispatches and you never call
+directly, and the hooks above
 ([`hooks/hooks.json`](hooks/hooks.json)).
 
 ### Codex
 
-```
-codex plugin marketplace add bmox0/dev-skills
+Use Codex CLI or Codex in the ChatGPT desktop app. The Codex IDE extension does
+not currently load plugins.
+
+Install the production build from `main`:
+
+```sh
+codex plugin marketplace add bmox0/dev-skills --ref main
 codex plugin add dev-skills@dev-skills
 ```
 
-Every skill appears in Codex's picker straight away, but the run's five
-dispatched roles (both gates, the implementer, the test writer, the
-prototyper) do not exist yet — Codex has no `agents` key in a plugin manifest,
-so nothing loads `agents/*.md` on its own. Run
-[`dev-skills:setup`](skills/setup/SKILL.md) once, then start a fresh session:
-that is the moment those five roles become dispatchable by name. Re-run it
-whenever `agents/*.md` or [`skills/tdd/SKILL.md`](skills/tdd/SKILL.md) changes.
+Then complete the first run:
 
-### The one behavioural difference
+1. Start a new Codex session. Installed plugin skills are loaded only when a
+   session starts.
+2. Invoke **`$dev-skills:setup`**. It installs or refreshes the five dispatched
+   roles under `$CODEX_HOME/agents/`, falling back to `~/.codex/agents/` when
+   `CODEX_HOME` is unset. It never overwrites a same-named file it does not own.
+3. Open **`/hooks`**, review the hooks supplied by `dev-skills`, and trust them.
+   Codex deliberately skips new or changed plugin hooks until you approve their
+   exact definitions.
+4. Start one final fresh session. The skills, hooks, and five roles are now
+   available; try **`$dev-skills:grill`** with a task you want to shape.
+
+Those extra first-run actions cannot be folded into `codex plugin add`: Codex
+stores custom agents outside the plugin, and hook trust must remain a human
+decision. The setup skill handles everything else and is safe to run again
+after an update.
+
+To update an existing installation:
+
+```sh
+codex plugin marketplace upgrade dev-skills
+codex plugin add dev-skills@dev-skills
+```
+
+Start a new session, run **`$dev-skills:setup`** again, and check **`/hooks`**.
+Codex may ask you to trust the hooks again when their definitions changed.
+
+The Codex behavior behind these steps is documented by OpenAI under
+[Plugins](https://learn.chatgpt.com/docs/plugins),
+[Hooks](https://learn.chatgpt.com/docs/hooks), and
+[Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+
+### The one invocation difference
 
 Four skills — `tdd`, `pre-commit`, `merge-conflicts` and `guardrails` — carry
 `user-invocable: false`, which hides them from the human's menu in Claude Code
 while leaving them reachable by the agent alone; Codex has no equivalent
-control, so those same four are visible in Codex's picker instead. Nothing
-else differs, and no capability is lost either way — this is the only
-unmatched invocation flag in the tree.
+control, so those same four are visible in Codex's picker instead. No capability
+is lost either way; this is the only unmatched invocation flag in the tree.
 
 ## Every skill
 
@@ -146,7 +175,7 @@ that the pipeline reads as it works. Each one documents its own use inside its
 | [`dev-skills:finish`](skills/finish/SKILL.md) | close out a run into one commit and hand it to the human |
 | [`dev-skills:grill`](skills/grill/SKILL.md) | interview an idea into a shared understanding before anything is planned |
 | [`dev-skills:grill-with-docs`](skills/grill-with-docs/SKILL.md) | grilling that also captures glossary terms and ADRs as they settle |
-| [`dev-skills:guardrails`](skills/guardrails/SKILL.md) | set up Claude Code hooks that block dangerous git commands |
+| [`dev-skills:guardrails`](skills/guardrails/SKILL.md) | set up Claude Code or Codex hooks that block dangerous git commands |
 | [`dev-skills:handoff`](skills/handoff/SKILL.md) | pack this session into a document a fresh agent continues from |
 | [`dev-skills:implement`](skills/implement/SKILL.md) | execute an approved plan, from workspace through both gates |
 | [`dev-skills:improve`](skills/improve/SKILL.md) | scan a codebase for deepening opportunities, then work through one |
