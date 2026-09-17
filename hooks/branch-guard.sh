@@ -26,36 +26,11 @@ is_doc_path() {
   esac
 }
 
-# Every path an apply_patch body names — Add/Update/Delete File, and the
-# destination of a Move to (a move's own header line is an Update File, so
-# its source is already covered) — one per line. A trailing \r is stripped
-# so a CRLF-terminated payload does not turn "CONTEXT.md\r" into a path that
-# no longer matches the exempt-path patterns above.
-extract_patch_paths() {
-  printf '%s' "$1" | tr -d '\r' | sed -n \
-    -e 's/^\*\*\* Add File: \(.*\)$/\1/p' \
-    -e 's/^\*\*\* Update File: \(.*\)$/\1/p' \
-    -e 's/^\*\*\* Delete File: \(.*\)$/\1/p' \
-    -e 's/^\*\*\* Move to: \(.*\)$/\1/p'
-}
-
 case "$tool" in
   Edit|MultiEdit|Write|NotebookEdit)
     path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null || true)"
     is_doc_path "$path" && exit 0
     dir="$(dirname "$path" 2>/dev/null || true)"; [ -d "$dir" ] || dir="."
-    ;;
-  apply_patch)
-    cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || true)"
-    protected=0
-    while IFS= read -r p; do
-      [ -z "$p" ] && continue
-      is_doc_path "$p" || protected=1
-    done <<PATCH_PATHS
-$(extract_patch_paths "$cmd")
-PATCH_PATHS
-    [ "$protected" -eq 1 ] || exit 0
-    dir="."
     ;;
   Bash)
     cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || true)"

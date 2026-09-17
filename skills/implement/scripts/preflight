@@ -183,7 +183,7 @@ for f in "$root/CLAUDE.md" "$root/AGENTS.md"; do
   [ -f "$f" ] && contract="$f" && break
 done
 if [ -z "$contract" ]; then
-  add "no CLAUDE.md or AGENTS.md — the environment contract has nowhere to live; ask once and write it"
+  add "no CLAUDE.md — the environment contract has nowhere to live; ask once and write it"
 else
   grep -qiE '^\*\*bootstrap' "$contract" || add "no 'bootstrap' field in $(basename "$contract") — ask how a fresh tree is prepared, then record it"
   grep -qiE '^\*\*link'      "$contract" || add "no 'link' field in $(basename "$contract") — ask which untracked paths to symlink (default .env*), then record it"

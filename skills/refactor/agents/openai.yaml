@@ -1,3 +1,0 @@
-interface:
-  display_name: "Refactor"
-  short_description: "Use when changing the shape of code is itself the goal — \"refactor this\", \"clean this up\", \"migrate us off X\", \"upgrade to version N\", \"split this file up\". Restructures, migrates or upgrades under one contract: the observable behaviour does not change."

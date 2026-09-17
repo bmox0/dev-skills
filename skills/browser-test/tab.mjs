@@ -448,10 +448,11 @@ Env: TAB_BASE, TAB_PORT, TAB_HEADLESS=1, TAB_TIMEOUT, TAB_BROWSER, TAB_PROFILE, 
   if (cmd === "shim") {
     const dir = process.env.TAB_SHIM_DIR ?? path.join(homedir(), ".local", "bin")
     const file = path.join(dir, "tab")
+    const glob = '"$HOME"/.claude/plugins/cache/dev-skills/dev-skills/*/skills/browser-test/tab.mjs'
     mkdirSync(dir, {recursive: true})
     writeFileSync(
       file,
-      `#!/bin/sh\nT="\${TAB_MJS:-}"\n[ -f "$T" ] || T="${HERE}"\nexec node "$T" "$@"\n`,
+      `#!/bin/sh\nT="\${TAB_MJS:-}"\n[ -f "$T" ] || T="$(printf '%s\\n' ${glob} 2>/dev/null | sort -V | tail -1)"\n[ -f "$T" ] || T="${HERE}"\nexec node "$T" "$@"\n`,
     )
     chmodSync(file, 0o755)
     const onPath = (process.env.PATH ?? "").split(":").includes(dir)

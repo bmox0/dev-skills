@@ -27,7 +27,7 @@ This command is _informed_ by the project's domain model and built on a shared d
 
 Read the project's domain glossary (`CONTEXT.md`) and any ADRs in the area you're touching first.
 
-Then, in Claude Code, use the Agent tool with `subagent_type=Explore` to walk the codebase. Codex has no separate explorer role for this — walk the codebase yourself, directly, in the current context. Either way, don't follow rigid heuristics — explore organically and note where you experience friction:
+Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
 - Where are modules **shallow** — interface nearly as complex as the implementation?
@@ -66,7 +66,7 @@ Do NOT propose interfaces yet. After the file is written, ask the user: "Which o
 
 Once the user picks a candidate, read [INTERVIEW.md](../grill/references/INTERVIEW.md) and run that interview to walk the decision tree with them — constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
 
-Side effects happen inline as decisions crystallize — invoke `dev-skills:domain-modeling` (call the Skill tool with that name, or, where no Skill tool exists, read [`../domain-modeling/SKILL.md`](../domain-modeling/SKILL.md) directly and follow it) to keep the domain model current as you go:
+Side effects happen inline as decisions crystallize — invoke `dev-skills:domain-modeling` to keep the domain model current as you go:
 
 - **Naming a deepened module after a concept not in `CONTEXT.md`?** Add the term to `CONTEXT.md`. Create the file lazily if it doesn't exist.
 - **Sharpening a fuzzy term during the conversation?** Update `CONTEXT.md` right there.

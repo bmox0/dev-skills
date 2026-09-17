@@ -1,3 +1,0 @@
-interface:
-  display_name: "Guardrails"
-  short_description: "Set up Claude Code or Codex hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when the user wants git safety hooks or wants to block destructive git operations in either host."

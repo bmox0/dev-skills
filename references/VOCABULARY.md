@@ -169,20 +169,18 @@ project — a different thing), mockup tool
 
 ### Gate A
 
-The run's code gate — inherits the orchestrator's model, on a clean context.
-Reads the whole `BASE..HEAD` range against the **plan**, in order: checks, then
-conformance, then integrity. Judges whether the code is what the plan asked
-for, built the way the project builds things; never whether the running system
-works.
+The run's code gate — Opus, on a clean context. Reads the whole `BASE..HEAD`
+range against the **plan**, in order: checks, then conformance, then
+integrity. Judges whether the code is what the plan asked for, built the way
+the project builds things; never whether the running system works.
 
 _Avoid_: code review, static gate
 
 ### Gate B
 
-The run's one runtime gate — inherits the orchestrator's model, on a clean
-context. Drives the plan's executable test cases on a live system and writes
-one evidence file per case. Judges behaviour, never code quality — that
-question belongs to gate A.
+The run's one runtime gate — Opus, on a clean context. Drives the plan's
+executable test cases on a live system and writes one evidence file per case.
+Judges behaviour, never code quality — that question belongs to gate A.
 
 _Avoid_: e2e gate, runtime review, functional gate
 

@@ -1,3 +1,0 @@
-interface:
-  display_name: "Review"
-  short_description: "Review code the human points at — a PR, a branch, a file, a tree — against the same criteria the pipeline's gates use. Outside a run, and it never fixes anything. Invoke to have code judged rather than built."

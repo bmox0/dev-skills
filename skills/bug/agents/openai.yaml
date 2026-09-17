@@ -1,3 +1,0 @@
-interface:
-  display_name: "Bug"
-  short_description: "Reproduce a bug, find its root cause, and leave behind a failing test that pins it. Use for any bug, test failure, or unexpected behaviour, before proposing a fix."

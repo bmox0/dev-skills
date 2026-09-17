@@ -80,8 +80,7 @@ the moment gets drawn.
 
 ### Dispatching the prototyper
 
-Dispatch **`dev-skills:prototyper`** — Claude subagent type `prototyper`,
-Codex `agent_type: dev-skills-prototyper` — with three things and nothing else:
+Dispatch **`dev-skills:prototyper`** with three things and nothing else:
 
 - the moment's storyboard, verbatim;
 - the plan title;

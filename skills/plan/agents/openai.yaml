@@ -1,3 +1,0 @@
-interface:
-  display_name: "Plan"
-  short_description: "Write the implementation plan — the contract a cold, cheap implementer builds from. Use when the human moves from working out what to build to writing it down (\"write the plan\", \"переходим к плану\"), when a grilling has ended in alignment, or when they name an entry from an existing epic's plan list."

@@ -523,8 +523,8 @@ write_topology_plan() {
     echo
     echo "| Phases | Implementer | Why the boundary is here |"
     echo "|---|---|---|"
-    echo "| 1-3 | Default | tc_why_marker_one_three |"
-    echo "| 4-8 | Escalated | tc_why_marker_four_eight |"
+    echo "| 1-3 | Sonnet | tc_why_marker_one_three |"
+    echo "| 4-8 | Opus | tc_why_marker_four_eight |"
     echo
     echo "## Ledger"
     echo
@@ -575,8 +575,8 @@ dispatch_out7=$(cd "$repo_tc7" && "$dispatch_script" "$plan_tc7" 1-3 2>&1)
 dispatch_rc7=$?
 [ "$dispatch_rc7" -eq 0 ] || fail "TC-7: dispatch on a Segment-less Topology table should exit 0, got $dispatch_rc7: $dispatch_out7"
 dispatch_body7=$(cat "$ws_tc7/dispatch-1-3.md" 2>/dev/null)
-assert_contains "$dispatch_body7" "Default" \
-  "TC-7: the dispatch should carry row 1-3's implementer (Default)" || fail "implementer missing"
+assert_contains "$dispatch_body7" "Sonnet" \
+  "TC-7: the dispatch should carry row 1-3's implementer (Sonnet)" || fail "implementer missing"
 assert_contains "$dispatch_body7" "tc_why_marker_one_three" \
   "TC-7: the dispatch should carry row 1-3's reason" || fail "reason missing"
 

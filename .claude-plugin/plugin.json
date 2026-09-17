@@ -1,7 +1,7 @@
 {
   "name": "dev-skills",
-  "version": "2.7.2",
-  "description": "An engineering workflow for Claude Code and Codex. One idea goes in; a reviewed, integrated commit comes out.",
+  "version": "2.7.1",
+  "description": "An engineering workflow for Claude Code. One idea goes in; a reviewed, integrated commit comes out.",
   "author": {
     "name": "bmox0"
   },
