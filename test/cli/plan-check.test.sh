@@ -50,6 +50,34 @@ assert_ends_without_reading_script() {
     || fail "$msg (closing line has no read/open verb: $last)"
 }
 
+# span LO HI — a Topology row's Phases cell: a bare number when the row
+# carries one phase, '<lo>-<hi>' when it carries several.
+span() {
+  if [ "$1" = "$2" ]; then printf '%s' "$1"; else printf '%s-%s' "$1" "$2"; fi
+}
+
+# join_rows TOTAL JOINS — the Topology rows the joins induce, per ADR-0005:
+# the join is the only barrier, so every phase between two joins shares one
+# row and every join stands alone. Every fixture below builds its table from
+# this rather than writing rows by hand, which is the point plan-check's
+# check 10 now enforces on real plans.
+join_rows() {
+  local total="$1" joins="$2" p acc_lo="" out=""
+  for ((p = 1; p <= total; p++)); do
+    if printf '%s\n' ${joins} | grep -qx -- "$p"; then
+      if [ -n "$acc_lo" ]; then
+        out="${out}${out:+ }$(span "$acc_lo" $((p - 1)))"
+        acc_lo=""
+      fi
+      out="${out}${out:+ }${p}"
+    elif [ -z "$acc_lo" ]; then
+      acc_lo=$p
+    fi
+  done
+  [ -z "$acc_lo" ] || out="${out}${out:+ }$(span "$acc_lo" "$total")"
+  printf '%s' "$out"
+}
+
 # --- TC-1: three phases, all seven fields, no '## Phases' — repaired -------
 #
 # given: a plan with three '### Phase N.' headings, all seven fields on each,
@@ -70,6 +98,9 @@ cat > "$plan1" <<'EOF'
 
 **Depends on**
 - —
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -97,6 +128,9 @@ cat > "$plan1" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -122,6 +156,9 @@ cat > "$plan1" <<'EOF'
 
 **Depends on**
 - —
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -196,6 +233,9 @@ cat > "$plan2" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -222,6 +262,9 @@ cat > "$plan2" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -244,6 +287,9 @@ cat > "$plan2" <<'EOF'
 
 **Depends on**
 - —
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -302,6 +348,9 @@ cat > "$plan3" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -327,6 +376,9 @@ cat > "$plan3" <<'EOF'
 
 **Depends on**
 - —
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -354,6 +406,9 @@ cat > "$plan3" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -372,9 +427,10 @@ cat > "$plan3" <<'EOF'
 
 ## Topology
 
-| Phases | Implementer | Why the boundary is here |
-|---|---|---|
-| 1-3 | Sonnet | tc3_single_group |
+| Phases | Why the boundary is here |
+|---|---|
+| 1-2 | tc3_parallel_row |
+| 3 | tc3_join |
 
 ## Ledger
 
@@ -407,17 +463,20 @@ assert_eq "$before3" "$after3" "TC-3: a well-formed plan's file must be byte-ide
 
 # write_numbered_plan FILE NUMBERS TABLE_RANGE
 write_numbered_plan() {
-  local f="$1" nums="$2" rng="$3" n fld last=0
+  local f="$1" nums="$2" rng="$3" n fld row last=0
   for n in $nums; do [ "$n" -gt "$last" ] && last="$n"; done
   {
     printf '# numbered\n\n## Phases\n\n'
     for n in $nums; do
       printf '### Phase %s. p%s\n\n' "$n" "$n"
-      for fld in "Becomes true" "Changes" "Depends on" "How" "Do not touch" \
-                 "Frozen for later phases" "Verification" "Steps"; do
+      for fld in "Becomes true" "Changes" "Depends on" "Implementer" "How" \
+                 "Do not touch" "Frozen for later phases" "Verification" \
+                 "Steps"; do
         case "$fld" in
           "Depends on")
             printf '**%s**\n- —\n\n' "$fld" ;;
+          "Implementer")
+            printf '**%s**\n- Sonnet\n\n' "$fld" ;;
           "Verification")
             if [ "$n" -eq "$last" ]; then
               printf '**%s**\n- joins: phases 1-%s\n- cases: —\n\n' "$fld" "$((last - 1))"
@@ -430,9 +489,10 @@ write_numbered_plan() {
       done
     done
     printf '## Topology\n\n'
-    printf '| Phases | Implementer | Why the boundary is here |\n'
-    printf '|---|---|---|\n'
-    printf '| %s | Sonnet | one |\n\n' "$rng"
+    printf '| Phases | Why the boundary is here |\n'
+    printf '|---|---|\n'
+    for row in $rng; do printf '| %s | one |\n' "$row"; done
+    printf '\n'
     printf '## Ledger\n- [ ] x\n'
   } > "$f"
 }
@@ -440,12 +500,12 @@ write_numbered_plan() {
 numdir=$(mktemp_dir)
 
 # twelve contiguous phases, the table covering all of them: nothing to report
-write_numbered_plan "$numdir/ok.md" "1 2 3 4 5 6 7 8 9 10 11 12" "1-12"
+write_numbered_plan "$numdir/ok.md" "1 2 3 4 5 6 7 8 9 10 11 12" "1-11 12"
 run_plan_check "$numdir/ok.md"
 [ "$rc" -eq 0 ] || fail "twelve contiguous phases should exit 0, got $rc: $out"
 
 # phase 9 duplicated: 9 named, and no innocent two-digit phase alongside it
-write_numbered_plan "$numdir/dup.md" "1 2 3 4 5 6 7 8 9 9 10 11 12" "1-12"
+write_numbered_plan "$numdir/dup.md" "1 2 3 4 5 6 7 8 9 9 10 11 12" "1-11 12"
 run_plan_check "$numdir/dup.md"
 [ "$rc" -eq 1 ] || fail "a duplicated phase should exit 1, got $rc: $out"
 assert_contains "$out" "duplicated: 9" \
@@ -454,7 +514,7 @@ assert_contains "$out" "duplicated: 9" \
   || fail "only phase 9 is duplicated; 10, 11 and 12 must not be accused: $out"
 
 # phase 10 missing: the two-digit gap is found, and named
-write_numbered_plan "$numdir/gap.md" "1 2 3 4 5 6 7 8 9 11 12" "1-12"
+write_numbered_plan "$numdir/gap.md" "1 2 3 4 5 6 7 8 9 11 12" "1-11 12"
 run_plan_check "$numdir/gap.md"
 [ "$rc" -eq 1 ] || fail "a gap in the numbering should exit 1, got $rc: $out"
 assert_contains "$out" "missing: 10" \
@@ -486,6 +546,9 @@ cat > "$plan4" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -511,6 +574,9 @@ cat > "$plan4" <<'EOF'
 
 **Depends on**
 - —
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -569,7 +635,7 @@ assert_eq "$before_mode" "$after_mode2" \
 # write_moments_plan FILE BLOCK — BLOCK becomes the verbatim body of
 # '## Moments'; pass "" to omit the heading entirely (TC-5).
 write_moments_plan() {
-  local f="$1" block="$2" fld n
+  local f="$1" block="$2" fld n row
   {
     printf '# moments fixture\n\n'
     if [ -n "$block" ]; then
@@ -578,11 +644,14 @@ write_moments_plan() {
     printf '## Phases\n\n'
     for n in 1 2; do
       printf '### Phase %s. Phase %s title\n\n' "$n" "$n"
-      for fld in "Becomes true" "Changes" "Depends on" "How" "Do not touch" \
-                 "Frozen for later phases" "Verification" "Steps"; do
+      for fld in "Becomes true" "Changes" "Depends on" "Implementer" "How" \
+                 "Do not touch" "Frozen for later phases" "Verification" \
+                 "Steps"; do
         case "$fld" in
           "Depends on")
             printf '**%s**\n- —\n\n' "$fld" ;;
+          "Implementer")
+            printf '**%s**\n- Sonnet\n\n' "$fld" ;;
           "Verification")
             if [ "$n" -eq 2 ]; then
               printf '**%s**\n- joins: phases 1-1\n- cases: —\n\n' "$fld"
@@ -595,9 +664,10 @@ write_moments_plan() {
       done
     done
     printf '## Topology\n\n'
-    printf '| Phases | Implementer | Why the boundary is here |\n'
-    printf '|---|---|---|\n'
-    printf '| 1-2 | Sonnet | one |\n\n'
+    printf '| Phases | Why the boundary is here |\n'
+    printf '|---|---|\n'
+    for row in $(join_rows 2 "2"); do printf '| %s | one |\n' "$row"; done
+    printf '\n'
     printf '## Ledger\n- [ ] x\n'
   } > "$f"
 }
@@ -759,7 +829,7 @@ run_plan_graph() {
 # is where phase 1's How field says the eighth field belongs; pass "" to
 # omit the heading from that phase entirely.
 write_graph_plan() {
-  local f="$1" p1="$2" p2="$3" p3="$4" n title changes depends
+  local f="$1" p1="$2" p2="$3" p3="$4" n title changes depends row
   {
     printf '# graph fixture plan\n\n## Phases\n\n'
     for n in 1 2 3; do
@@ -774,6 +844,7 @@ write_graph_plan() {
       if [ -n "$depends" ]; then
         printf '%s\n\n' "$depends"
       fi
+      printf '**Implementer**\n- Sonnet\n\n'
       printf '**How**\n- plain implementation\n\n'
       printf '**Do not touch**\n- —\n\n'
       printf '**Frozen for later phases**\n- —\n\n'
@@ -785,9 +856,12 @@ write_graph_plan() {
       printf '**Steps**\n- [ ] step %s\n\n' "$n"
     done
     printf '## Topology\n\n'
-    printf '| Phases | Implementer | Why the boundary is here |\n'
-    printf '|---|---|---|\n'
-    printf '| 1-3 | Sonnet | graph_fixture_single_group |\n\n'
+    printf '| Phases | Why the boundary is here |\n'
+    printf '|---|---|\n'
+    for row in $(join_rows 3 "3"); do
+      printf '| %s | graph_fixture_row |\n' "$row"
+    done
+    printf '\n'
     printf '## Ledger\n- [ ] x\n'
   } > "$f"
 }
@@ -1015,6 +1089,9 @@ write_titled_plan() {
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -1040,6 +1117,9 @@ write_titled_plan() {
 
 **Depends on**
 - —
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -1067,6 +1147,9 @@ write_titled_plan() {
 **Depends on**
 - phase 1 — src/one.ts, which it edits
 - phase 2 — src/two.ts, which it edits
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -1160,6 +1243,7 @@ write_ten_phase_plan() {
       else
         printf '**Depends on**\n- —\n\n'
       fi
+      printf '**Implementer**\n- Sonnet\n\n'
       printf '**How**\n- plain implementation\n\n'
       printf '**Do not touch**\n- —\n\n'
       printf '**Frozen for later phases**\n- —\n\n'
@@ -1240,8 +1324,15 @@ assert_eq "$(cat "$copy12")" "$(cat "$plang12")" \
 # phase whose heading is there with nothing under it.
 write_join_plan() {
   local f="$1"; shift
-  local total=$# n=0 body
+  local total=$# n=0 body joins="" row
   {
+    for body in "$@"; do
+      n=$((n + 1))
+      case "$body" in
+        *"- joins: phases"*) joins="${joins}${joins:+ }$n" ;;
+      esac
+    done
+    n=0
     printf '# join fixture plan\n\n## Phases\n\n'
     for body in "$@"; do
       n=$((n + 1))
@@ -1249,6 +1340,7 @@ write_join_plan() {
       printf '**Becomes true**\n- join_phase_%s_becomes_true\n\n' "$n"
       printf '**Changes**\n- `src/p%s.ts` — placeholder\n\n' "$n"
       printf '**Depends on**\n- —\n\n'
+      printf '**Implementer**\n- Sonnet\n\n'
       printf '**How**\n- plain implementation\n\n'
       printf '**Do not touch**\n- —\n\n'
       printf '**Frozen for later phases**\n- —\n\n'
@@ -1260,9 +1352,12 @@ write_join_plan() {
       printf '**Steps**\n- [ ] step %s\n\n' "$n"
     done
     printf '## Topology\n\n'
-    printf '| Phases | Implementer | Why the boundary is here |\n'
-    printf '|---|---|---|\n'
-    printf '| 1-%s | Sonnet | join_fixture_single_row |\n\n' "$total"
+    printf '| Phases | Why the boundary is here |\n'
+    printf '|---|---|\n'
+    for row in $(join_rows "$total" "$joins"); do
+      printf '| %s | join_fixture_row |\n' "$row"
+    done
+    printf '\n'
     printf '## Ledger\n- [ ] x\n'
   } > "$f"
 }

@@ -826,6 +826,9 @@ cat > "$plan_tc4" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -852,6 +855,9 @@ cat > "$plan_tc4" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -874,6 +880,9 @@ cat > "$plan_tc4" <<'EOF'
 
 **Depends on**
 - —
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -930,6 +939,9 @@ cat > "$plan_tc5" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -956,6 +968,9 @@ cat > "$plan_tc5" <<'EOF'
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - plain implementation
 
@@ -981,6 +996,9 @@ cat > "$plan_tc5" <<'EOF'
 
 **Depends on**
 - —
+
+**Implementer**
+- Sonnet
 
 **How**
 - plain implementation
@@ -1052,6 +1070,9 @@ write_topology_plan() {
       echo "**Depends on**"
       echo "- —"
       echo
+      echo "**Implementer**"
+      echo "- Sonnet"
+      echo
       echo "**How**"
       echo "- plain implementation"
       echo
@@ -1062,9 +1083,14 @@ write_topology_plan() {
       echo "- —"
       echo
       echo "**Verification**"
-      if [ "$n" -eq 8 ]; then
-        echo "- joins: phases 1-7"
+      if [ "$n" -eq 4 ]; then
+        echo "- joins: phases 1-3"
         echo "- cases: —"
+      elif [ "$n" -eq 8 ]; then
+        echo "- joins: phases 5-7"
+        echo "- cases: —"
+      elif [ "$n" -lt 4 ]; then
+        echo "- proved by: phase 4"
       else
         echo "- proved by: phase 8"
       fi
@@ -1075,10 +1101,12 @@ write_topology_plan() {
     done
     echo "## Topology"
     echo
-    echo "| Phases | Implementer | Why the boundary is here |"
-    echo "|---|---|---|"
-    echo "| 1-3 | Sonnet | tc_why_marker_one_three |"
-    echo "| 4-8 | Opus | tc_why_marker_four_eight |"
+    echo "| Phases | Why the boundary is here |"
+    echo "|---|---|"
+    echo "| 1-3 | tc_why_marker_one_three |"
+    echo "| 4 | tc_why_marker_join_one |"
+    echo "| 5-7 | tc_why_marker_five_seven |"
+    echo "| 8 | tc_why_marker_join_two |"
     echo
     echo "## Ledger"
     echo
@@ -1115,11 +1143,11 @@ segment_files=$(find "$ws_tc6" -maxdepth 1 -name 'segment-*' 2>/dev/null)
 
 # --- TC-7: dispatch works with no 'Segment' column in the Topology table ----
 #
-# given: a plan whose '## Topology' table has the columns 'Phases |
-# Implementer | Why the boundary is here' and no 'Segment' column (every
-# fixture this file builds already has this shape — the frozen one). when:
-# dispatch <plan> 1-3 is run. then: exit 0, and the dispatch carries the
-# row's implementer and its reason.
+# given: a plan whose '## Topology' table has the columns 'Phases | Why the
+# boundary is here' and no 'Segment' column (every fixture this file builds
+# already has this shape — the frozen one). when: dispatch <plan> 1-3 is run.
+# then: exit 0, and the dispatch carries the model from the phases themselves
+# and the row's reason.
 
 repo_tc7=$(gitfixture_new)
 plan_tc7=$(write_topology_plan "$repo_tc7")
@@ -1130,15 +1158,16 @@ dispatch_rc7=$?
 [ "$dispatch_rc7" -eq 0 ] || fail "TC-7: dispatch on a Segment-less Topology table should exit 0, got $dispatch_rc7: $dispatch_out7"
 dispatch_body7=$(cat "$ws_tc7/dispatch-1-3.md" 2>/dev/null)
 assert_contains "$dispatch_body7" "Sonnet" \
-  "TC-7: the dispatch should carry row 1-3's implementer (Sonnet)" || fail "implementer missing"
+  "TC-7: the dispatch should carry the phases' own implementer (Sonnet)" || fail "implementer missing"
 assert_contains "$dispatch_body7" "tc_why_marker_one_three" \
   "TC-7: the dispatch should carry row 1-3's reason" || fail "reason missing"
 
 # --- TC-8: dispatch points at an earlier report already on disk ------------
 #
 # given: a workspace already holding report-1-3.md. when: dispatch <plan>
-# 4-8 is run. then: the dispatch points at report-1-3.md as an earlier
-# report, not at "no earlier report exists".
+# 5-7 is run — the row after the first join, so something does precede it.
+# then: the dispatch points at report-1-3.md as an earlier report, not at
+# "no earlier report exists".
 
 repo_tc8=$(gitfixture_new)
 plan_tc8=$(write_topology_plan "$repo_tc8")
@@ -1146,10 +1175,10 @@ ws_tc8="$repo_tc8/.ai-workflow/run/plan"
 mkdir -p "$ws_tc8"
 printf '# a prior implementer report\n' > "$ws_tc8/report-1-3.md"
 
-dispatch_out8=$(cd "$repo_tc8" && "$dispatch_script" "$plan_tc8" 4-8 2>&1)
+dispatch_out8=$(cd "$repo_tc8" && "$dispatch_script" "$plan_tc8" 5-7 2>&1)
 dispatch_rc8=$?
-[ "$dispatch_rc8" -eq 0 ] || fail "TC-8: dispatch <plan> 4-8 should exit 0, got $dispatch_rc8: $dispatch_out8"
-dispatch_body8=$(cat "$ws_tc8/dispatch-4-8.md" 2>/dev/null)
+[ "$dispatch_rc8" -eq 0 ] || fail "TC-8: dispatch <plan> 5-7 should exit 0, got $dispatch_rc8: $dispatch_out8"
+dispatch_body8=$(cat "$ws_tc8/dispatch-5-7.md" 2>/dev/null)
 assert_contains "$dispatch_body8" "report-1-3.md" \
   "TC-8: the dispatch should point at report-1-3.md" || fail "earlier report not named"
 ! printf '%s' "$dispatch_body8" | grep -qi 'no earlier report' \

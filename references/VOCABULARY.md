@@ -32,9 +32,9 @@ _Avoid_: session, execution, pass
 ### Phase
 
 A numbered unit inside a **plan**, and nothing else — `### Phase <n>.` under
-`## Phases`, carrying the eight fields (*Becomes true*, *Changes*, *Depends
-on*, *How*, *Do not touch*, *Frozen for later phases*, *Verification*,
-*Steps*). It compiles nothing, tests nothing and lints nothing: the one command
+`## Phases`, carrying the nine fields (*Becomes true*, *Changes*, *Depends
+on*, *Implementer*, *How*, *Do not touch*, *Frozen for later phases*,
+*Verification*, *Steps*). It compiles nothing, tests nothing and lints nothing: the one command
 it runs on its own work is the **Phase Check**, and what it builds is not proved
 until the **Join** its *Verification* names. The word collides with
 conversational use, and the collision is closed by declaration, not by a rename:
@@ -407,7 +407,9 @@ exactly as later phases must produce and check them:
 - `<!-- rendered by skills/implement/scripts/plan-graph — do not edit by hand -->`
   — the marker line directly under `## Graph`
 - `## Topology`, and its table columns, in this order and no others:
-  `| Phases | Implementer | Why the boundary is here |`
+  `| Phases | Why the boundary is here |`
+- `**Implementer**` — the phase field naming the model, holding `- Sonnet` or
+  `- Opus`, alone or followed by ` — <why>`
 - `## Ledger`
 - `` - [ ] Judge — `HEAD` at dispatch: `` — the **Ledger** line a plan carries
   for the **Judge**, with the cap origin written into the slot at the end

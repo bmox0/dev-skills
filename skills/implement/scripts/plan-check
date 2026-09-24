@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Refuses a malformed plan before a human ever dispatches work against it.
 #
-# Nine mechanical checks, fence-aware the way brief and preflight
+# Eleven mechanical checks, fence-aware the way brief and preflight
 # already are (a heading inside a fenced example is not a heading):
 #   1. '## Phases' is present
 #   2. at least one '### Phase <n>.' heading exists
 #   3. phase numbers are contiguous starting at 1
-#   4. every '### Phase <n>.' carries all eight field headings — reported
+#   4. every '### Phase <n>.' carries all nine field headings — reported
 #      per phase, naming the phase and every field it lacks
 #   5. '## Topology' has a first table whose header is exactly
-#      '| Phases | Implementer | Why the boundary is here |', and every
-#      phase number appears in exactly one row's range
+#      '| Phases | Why the boundary is here |', and every phase number
+#      appears in exactly one row's range, written as '<a>-<b>' or '<n>'
 #   6. '## Ledger' is present once '## Topology' is
 #   7. '## Moments', when present and not a bare '—', holds only moment
 #      headings ('- **M-<n>. <text>** · US-<n>[, ...]') each carrying at
@@ -24,6 +24,11 @@
 #      '- cases: —', never both bullets in one field; and the join a phase
 #      names exists, is later, carries a '- joins:' bullet of its own and
 #      covers that phase
+#  10. the '## Topology' rows are the partition the joins induce — every
+#      phase between two joins in one row, every join alone in its own —
+#      so a barrier that is not a join is refused (ADR-0005)
+#  11. every phase's '**Implementer**' names exactly one of Sonnet or
+#      Opus, alone or followed by ' — <why>'
 #
 # Check 9 needs no cycle detector and none is wanted: '- proved by:' always
 # names a higher-numbered phase, '- joins:' always a lower-numbered range,
@@ -164,14 +169,14 @@ field_issues=$(awk '
 
   function report(   i, out) {
     out = ""
-    for (i = 1; i <= 8; i++) {
+    for (i = 1; i <= 9; i++) {
       if (!(fields[i] in has)) out = out (out == "" ? "" : "|") fields[i]
     }
     if (out != "") print phase "\t" phase_line "\t" out
   }
 
   BEGIN {
-    split("Becomes true|Changes|Depends on|How|Do not touch|Frozen for later phases|Verification|Steps", fields, "|")
+    split("Becomes true|Changes|Depends on|Implementer|How|Do not touch|Frozen for later phases|Verification|Steps", fields, "|")
   }
 
   /^###[ \t]+Phase[ \t]+[0-9]+[.[:space:]]/ {
@@ -229,7 +234,7 @@ if [ -n "$topology_line" ]; then
   ' "$plan")
 
   if [ -z "$topology_table" ]; then
-    findings+=("'## Topology' in ${plan} has no table under it — add '| Phases | Implementer | Why the boundary is here |' and one row per phase. ${DONT_READ}")
+    findings+=("'## Topology' in ${plan} has no table under it — add '| Phases | Why the boundary is here |' and one row per phase. ${DONT_READ}")
   else
     header_row=$(printf '%s\n' "$topology_table" | sed -n '1p')
     norm_header=$(printf '%s' "$header_row" | awk -F'|' '{
@@ -241,7 +246,7 @@ if [ -n "$topology_line" ]; then
       }
       print out
     }')
-    expected_header="Phases | Implementer | Why the boundary is here"
+    expected_header="Phases | Why the boundary is here"
 
     if [ "$norm_header" != "$expected_header" ]; then
       findings+=("the '## Topology' table header in ${plan} is '${header_row}', expected '| ${expected_header} |'. ${DONT_READ}")
@@ -645,6 +650,165 @@ if [ -n "$verification_issues" ]; then
         ;;
     esac
   done <<< "$verification_issues"
+fi
+
+# --- check 10: the Topology rows are the partition the joins induce --------
+#
+# ADR-0005: the join is the only barrier, and everything between two joins
+# dispatches at once. So the rows are not authored — they are read off the
+# joins, and a row boundary that is not a join is a barrier the model does
+# not have. Walk the phases in order: a join closes the run of phases before
+# it and stands alone; everything else accumulates.
+#
+# Reports only. Which phases are a join is a decision made in **Verification**,
+# and rewriting someone's table from it is not this script's business.
+
+row_span() {
+  if [ "$1" = "$2" ]; then printf '%s' "$1"; else printf '%s-%s' "$1" "$2"; fi
+}
+
+if [ -n "$topology_line" ] && [ -n "${uniq_nums:-}" ]; then
+  join_phases=$(awk '
+    /^```/ { fence = !fence; next }
+    fence { next }
+    /^###[ \t]+Phase[ \t]+[0-9]+[.[:space:]]/ {
+      n = $0; sub(/^###[ \t]+Phase[ \t]+/, "", n); sub(/[^0-9].*$/, "", n)
+      phase = n + 0; infield = 0; next
+    }
+    /^##[ \t]+/ && $0 !~ /^###/ { infield = 0; next }
+    /^\*\*[A-Za-z][^*]*\*\*[ \t]*$/ {
+      infield = ($0 ~ /^\*\*Verification\*\*[ \t]*$/) ? 1 : 0
+      next
+    }
+    infield && /^- joins: phases [0-9]+-[0-9]+[ \t]*$/ { if (phase) print phase }
+  ' "$plan" | LC_ALL=C sort -n -u)
+
+  topo_rows=$(awk -v start="$topology_line" '
+    /^```/ { fence = !fence; next }
+    fence { next }
+    NR == start { intopo = 1; next }
+    intopo && /^##[ \t]+/ { exit }
+    intopo && /^\|/ { print; started = 1; next }
+    intopo && started { exit }
+  ' "$plan" | tail -n +2 | awk -F'|' '
+    {
+      sep = 1
+      for (i = 1; i <= NF; i++) {
+        cell = $i; gsub(/^[ \t]+|[ \t]+$/, "", cell)
+        if (cell != "" && cell !~ /^:?-+:?$/) sep = 0
+      }
+      if (sep) next
+      c = $2; gsub(/^[ \t]+|[ \t]+$/, "", c)
+      print c
+    }
+  ')
+
+  actual_rows=""
+  while IFS= read -r cell; do
+    [ -n "$cell" ] || continue
+    if [[ "$cell" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      actual_rows="${actual_rows}${actual_rows:+$'\n'}${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+    elif [[ "$cell" =~ ^[0-9]+$ ]]; then
+      actual_rows="${actual_rows}${actual_rows:+$'\n'}${cell}-${cell}"
+    else
+      actual_rows="${actual_rows}${actual_rows:+$'\n'}?${cell}"
+    fi
+  done <<< "$topo_rows"
+
+  last_phase=$(printf '%s\n' "$uniq_nums" | tail -1)
+  expected_rows=""
+  acc_lo=""
+  for ((rp = 1; rp <= last_phase; rp++)); do
+    if printf '%s\n' "$join_phases" | grep -qx -- "$rp"; then
+      if [ -n "$acc_lo" ]; then
+        expected_rows="${expected_rows}${expected_rows:+$'\n'}${acc_lo}-$((rp - 1))"
+        acc_lo=""
+      fi
+      expected_rows="${expected_rows}${expected_rows:+$'\n'}${rp}-${rp}"
+    elif [ -z "$acc_lo" ]; then
+      acc_lo=$rp
+    fi
+  done
+  if [ -n "$acc_lo" ]; then
+    expected_rows="${expected_rows}${expected_rows:+$'\n'}${acc_lo}-${last_phase}"
+  fi
+
+  if [ -n "$join_phases" ] && [ "$actual_rows" != "$expected_rows" ]; then
+    exp_display=""
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      exp_display="${exp_display}${exp_display:+, }$(row_span "${r%%-*}" "${r##*-}")"
+    done <<< "$expected_rows"
+    act_display=""
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      case "$r" in
+        \?*) act_display="${act_display}${act_display:+, }'${r#\?}'" ;;
+        *) act_display="${act_display}${act_display:+, }$(row_span "${r%%-*}" "${r##*-}")" ;;
+      esac
+    done <<< "$actual_rows"
+    findings+=("the '## Topology' rows in ${plan} are ${act_display:-(none)}, but the joins in this plan induce ${exp_display} — the join is the only barrier, so every phase between two joins shares one row and every join stands alone. A boundary anywhere else is a barrier the model does not have. ${DONT_READ}")
+  fi
+fi
+
+# --- check 11: every phase's '**Implementer**' names one model -------------
+#
+# Check 8's shape, on the field that replaced the Topology table's column:
+# the model is a property of the work, not of the band it happens to land in.
+# Exactly one bullet, naming Sonnet or Opus, alone or with its reason.
+
+implementer_issues=$(awk '
+  /^```/ { fence = !fence; next }
+  fence { next }
+
+  function close_field() {
+    if (!infield) return
+    if (content == 0) printf "IEMPTY\t%s\t\n", phase
+    else if (content > 1) printf "IMULTI\t%s\t%s\n", phase, content
+    infield = 0
+  }
+
+  /^###[ \t]+Phase[ \t]+[0-9]+[.[:space:]]/ {
+    close_field()
+    n = $0; sub(/^###[ \t]+Phase[ \t]+/, "", n); sub(/[^0-9].*$/, "", n)
+    phase = n + 0
+    next
+  }
+
+  /^##[ \t]+/ && $0 !~ /^###/ { close_field(); next }
+
+  /^\*\*[A-Za-z][^*]*\*\*[ \t]*$/ {
+    close_field()
+    if ($0 ~ /^\*\*Implementer\*\*[ \t]*$/) { infield = 1; content = 0 }
+    next
+  }
+
+  infield {
+    if ($0 ~ /^[ \t]*$/) next
+    if ($0 ~ /^[ \t]+/) next
+    content++
+    if ($0 !~ /^- (Sonnet|Opus)([ \t]+—[ \t]+.+)?[ \t]*$/)
+      printf "IBAD\t%s\t%s\n", phase, $0
+  }
+
+  END { close_field() }
+' "$plan")
+
+if [ -n "$implementer_issues" ]; then
+  while IFS=$'\t' read -r i_kind i_phase i_extra; do
+    [ -n "$i_kind" ] || continue
+    case "$i_kind" in
+      IEMPTY)
+        findings+=("phase ${i_phase}'s **Implementer** in ${plan} is empty — write '- Sonnet' or '- Opus', optionally followed by ' — <why>'. There is no dash form here: every phase is built by something. ${DONT_READ}")
+        ;;
+      IMULTI)
+        findings+=("phase ${i_phase}'s **Implementer** in ${plan} carries ${i_extra} bullets — a phase is built by one model, so the field holds exactly one. ${DONT_READ}")
+        ;;
+      IBAD)
+        findings+=("phase ${i_phase}'s **Implementer** in ${plan} has a bullet that names no model: '${i_extra}' — expected '- Sonnet' or '- Opus', alone or followed by ' — <why>', with an em dash and one space on either side. ${DONT_READ}")
+        ;;
+    esac
+  done <<< "$implementer_issues"
 fi
 
 # --- report ------------------------------------------------------------------

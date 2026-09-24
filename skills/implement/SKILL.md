@@ -188,6 +188,12 @@ A Topology row carrying more than one phase runs at once. Every phase of it is
 dispatched together, each in a git worktree of its own, on a branch of its own,
 all cut from one base.
 
+The rows are not a judgement call the plan made: per ADR-0005 the join is the
+only barrier, so a row is everything between two joins and `plan-check` refuses
+a table that puts a boundary anywhere else. A row that looks too wide to be
+true usually is not — the phases build against a contract the plan froze, not
+against each other's files.
+
 The plan admits such a row only where all three of its conditions hold — the
 contract frozen by an earlier phase, disjoint write-sets, and a named join
 phase. The second is yours to check mechanically before anything is dispatched,
@@ -239,8 +245,8 @@ which leaves the branch alone.
 
 ### The join
 
-A join is a phase like any other — the plan authors it, the Topology assigns it
-a model, and it is dispatched with the same command. What is different is what
+A join is a phase like any other — the plan authors it, its **Implementer**
+field names the model, and it is dispatched with the same command. What is different is what
 it does: it is the first place in the run where anything is compiled or run.
 Every join goes this way, whether the phases before it ran as a row or one after
 another.

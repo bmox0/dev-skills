@@ -15,7 +15,7 @@ here is only the floor for a dispatch that forgot to.
 
 The dispatch names a **brief file**. Read it first and in full. It carries the
 plan's header — goal, constraints, out of scope, paths, abstractions, seams — and
-your phases, each with eight fields.
+your phases, each with nine fields.
 
 It was written on the assumption that you know nothing about this project, and
 that is deliberate: everything you need is in it. **Do not go hunting for context
@@ -28,13 +28,15 @@ test discipline, read that before writing a test. If it names a path you were
 told to use and it does not resolve, stop and report that rather than proceeding
 without it.
 
-## The eight fields, and what they bind
+## The nine fields, and what they bind
 
 - **Becomes true** — the result. You are done when it is true.
 - **Changes** — the paths and entities you may touch. Nothing outside them.
 - **Depends on** — the earlier phases whose files this phase edits. It is the
   planner's record of the graph and binds nothing you do: your brief already
   arrives on a commit those phases landed.
+- **Implementer** — the model the plan chose for this phase. It named you; it
+  binds nothing else you do.
 - **How** — the abstractions to use, by name and path, and what not to introduce.
 - **Do not touch** — a neighbour's region inside a file you are otherwise allowed to edit.
 - **Frozen for later phases** — names and signatures later work depends on. They do not change.
@@ -122,7 +124,7 @@ to go stale under you, and nothing of theirs to race for. What is left is this:
 
 Your dispatch tells you which you are: a join's carries `## The tests you merge`
 and `## The range you join`. A join is a phase like any other — same brief, same
-eight fields, same limits — with one difference that changes how all of it
+nine fields, same limits — with one difference that changes how all of it
 feels. It is the first place in the run where the code actually has to work.
 
 Do these in this order, and the order is the point:

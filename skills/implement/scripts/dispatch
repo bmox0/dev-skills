@@ -157,11 +157,10 @@ FENCE_RE = re.compile(r"^```")
 
 
 class Segment:
-    def __init__(self, phases_raw, first, last, model, why):
+    def __init__(self, phases_raw, first, last, why):
         self.phases_raw = phases_raw
         self.first = first
         self.last = last
-        self.model = model
         self.why = why
 
 
@@ -192,20 +191,20 @@ def parse_table(table_lines):
                 return i
         return None
 
-    phase_i, model_i, why_i = (
-        col("phase"), col("implementer"), col("why"))
-    if None in (phase_i, model_i, why_i):
+    phase_i, why_i = col("phase"), col("why")
+    if None in (phase_i, why_i):
         die("the Topology table is missing an expected column "
-            "(Phases, Implementer, Why the boundary is here); "
+            "(Phases, Why the boundary is here); "
             "header found: %s" % header, 3)
-    if len(header) != 3:
+    if len(header) != 2:
         die("the Topology table carries an unexpected column "
-            "(want exactly Phases, Implementer, Why the boundary is here); "
+            "(want exactly Phases, Why the boundary is here — the model "
+            "moved to each phase's **Implementer** field); "
             "header found: %s" % header, 3)
 
     segments = []
     for r in body:
-        width = max(phase_i, model_i, why_i)
+        width = max(phase_i, why_i)
         if len(r) <= width:
             continue
         phase_nums = [int(x) for x in re.findall(r"\d+", r[phase_i])]
@@ -214,7 +213,7 @@ def parse_table(table_lines):
         segments.append(Segment(
             r[phase_i].strip(),
             min(phase_nums), max(phase_nums),
-            r[model_i].strip(), r[why_i].strip()))
+            r[why_i].strip()))
     return segments
 
 
@@ -283,6 +282,7 @@ def find_owner(segments, first, last):
 PHASE_HEADING_RE = re.compile(r"^###[ \t]+Phase[ \t]+(\d+)[.\s]")
 BOLD_FIELD_RE = re.compile(r"^\*\*[A-Za-z][^*]*\*\*[ \t]*$")
 JOINS_BULLET_RE = re.compile(r"^- joins: phases (\d+)-(\d+)[ \t]*$")
+IMPLEMENTER_BULLET_RE = re.compile(r"^- (Sonnet|Opus)([ \t]+—[ \t]+.+)?[ \t]*$")
 
 
 def verification_join(lines, phase):
@@ -323,6 +323,70 @@ def verification_join(lines, phase):
         if jm:
             return int(jm.group(1)), int(jm.group(2))
     return None
+
+
+def range_model(lines, first, last):
+    """The model named by every phase in first..last, or a refusal.
+
+    The Topology row used to carry it, which tied the model to the band a
+    phase happened to land in; the band is now read off the joins, so the
+    model lives on the phase. A dispatch covering several phases needs one
+    answer, so phases that disagree are refused rather than reconciled here.
+    """
+    found = {}
+    in_fence = False
+    phase = None
+    in_field = False
+    for line in lines:
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        m = PHASE_HEADING_RE.match(line)
+        if m:
+            phase = int(m.group(1))
+            in_field = False
+            continue
+
+        if line.startswith("##") and not line.startswith("###"):
+            phase = None
+            in_field = False
+            continue
+
+        if phase is None or not (first <= phase <= last):
+            continue
+
+        if BOLD_FIELD_RE.match(line):
+            in_field = line.strip() == "**Implementer**"
+            continue
+
+        if not in_field:
+            continue
+
+        im = IMPLEMENTER_BULLET_RE.match(line.strip())
+        if im and phase not in found:
+            found[phase] = im.group(1)
+
+    missing = [p for p in range(first, last + 1) if p not in found]
+    if missing:
+        die("phase%s %s name%s no model: every phase carries an "
+            "**Implementer** field holding '- Sonnet' or '- Opus'.\n"
+            "  run plan-check on the plan — it names the phase and the fix"
+            % ("" if len(missing) == 1 else "s",
+               ", ".join(str(p) for p in missing),
+               "s" if len(missing) == 1 else ""), 3)
+
+    models = sorted(set(found.values()))
+    if len(models) > 1:
+        spread = ", ".join("phase %d: %s" % (p, found[p])
+                           for p in sorted(found))
+        die("phases %d-%d are dispatched as one unit but name different "
+            "models (%s).\n"
+            "  one dispatch is built by one implementer, so either they "
+            "agree or they are dispatched apart" % (first, last, spread), 3)
+    return models[0]
 
 
 def tests_branch(plan, first, last):
@@ -438,8 +502,8 @@ def existing_reports(workspace, before=None):
             for name in reports_before(os.listdir(workspace), before)]
 
 
-def build_implementer_body(plan, first, last, rng, owner, workspace, agent_file,
-                            worktree=None, join_range=None):
+def build_implementer_body(plan, first, last, rng, owner, model, workspace,
+                            agent_file, worktree=None, join_range=None):
     brief_path = extract_written_path(run_sibling("brief", plan, rng))
     report_path = os.path.join(workspace, "report-%s.md" % rng)
 
@@ -486,7 +550,7 @@ def build_implementer_body(plan, first, last, rng, owner, workspace, agent_file,
         "",
         "## Where this work sits",
         "Phases %s of this run — the Topology row is phases %s. Model: %s."
-        % (rng, owner.phases_raw, owner.model),
+        % (rng, owner.phases_raw, model),
         "The boundary is here because: %s" % owner.why,
         "",
         "## Brief",
@@ -778,9 +842,9 @@ def main():
 
         segments = topology_segments(lines)
         if segments is None:
-            die("no '## Topology' section in %s\n  the model per group of "
-                "phases and the reason its boundary sits there live in that "
-                "table; without it there is nothing to dispatch against"
+            die("no '## Topology' section in %s\n  the rows the joins "
+                "induce, and the reason each boundary sits there, live in "
+                "that table; without it there is nothing to dispatch against"
                 % plan, 3)
 
         owner, spanning = find_owner(segments, first, last)
@@ -796,10 +860,11 @@ def main():
                 % (rng, plan, existing or "(none)"), 3)
 
         join_range = verification_join(lines, last)
+        model = range_model(lines, first, last)
 
         body = build_implementer_body(
-            plan, first, last, rng, owner, workspace, agent_file, worktree,
-            join_range)
+            plan, first, last, rng, owner, model, workspace, agent_file,
+            worktree, join_range)
 
     hole_count = body.count(FILL)
     header = HEADER_TMPL % (

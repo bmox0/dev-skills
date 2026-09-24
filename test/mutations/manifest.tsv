@@ -4,7 +4,7 @@ dispatch-bare-number-not-expanded	skills/implement/scripts/dispatch	test/mutatio
 dispatch-is-separator-always-false	skills/implement/scripts/dispatch	test/mutations/dispatch-is-separator-always-false.patch	test_separator_row_is_true
 dispatch-parse-table-drops-last-row	skills/implement/scripts/dispatch	test/mutations/dispatch-parse-table-drops-last-row.patch	test_yields_three_segments_first_and_last_present_no_separator
 dispatch-topology-no-break	skills/implement/scripts/dispatch	test/mutations/dispatch-topology-no-break.patch	test_a_later_sections_table_does_not_leak_in
-dispatch-find-owner-first-unconditional	skills/implement/scripts/dispatch	test/mutations/dispatch-find-owner-first-unconditional.patch	test_exact_match_returns_owner_with_correct_model
+dispatch-find-owner-first-unconditional	skills/implement/scripts/dispatch	test/mutations/dispatch-find-owner-first-unconditional.patch	test_exact_match_returns_the_owning_row
 dispatch-extract-written-path-no-anchor	skills/implement/scripts/dispatch	test/mutations/dispatch-extract-written-path-no-anchor.patch	test_ignores_a_path_shaped_first_line_that_is_not_a_wrote_line
 contract-inseg-inverted	skills/implement/scripts/parallel-contract	test/mutations/contract-inseg-inverted.patch	phase 2 frozen missing
 contract-fence-toggle-deleted	skills/implement/scripts/parallel-contract	test/mutations/contract-fence-toggle-deleted.patch	the fenced block inside phase 1's How field must not leak into the output

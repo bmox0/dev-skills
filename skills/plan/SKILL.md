@@ -76,9 +76,9 @@ dash — the dash is an assertion by the planner, not tidiness.
 | **Test seams** | where we check. Existing beats new, highest level that works, the ideal number of new seams is zero | implementer, reviewer |
 | **Paths and existing abstractions** | so nobody researches the codebase again | implementer, reviewer |
 | **Test cases** | what gets checked — and nothing outside it is; the join names the ones it proves | tester, both gates |
-| **Topology** | how the phases are grouped, their relations, the model per group | orchestrator |
+| **Topology** | the rows the joins induce, and why each boundary sits where it does | orchestrator |
 | **Graph** | the picture of what waits on what, rendered from the phases' `Depends on` fields | the human at approval |
-| **Phases** | bounded units of execution, eight fields each; a join is one of them | implementer, reviewer |
+| **Phases** | bounded units of execution, nine fields each; a join is one of them | implementer, reviewer |
 | **Final-gate scenarios** | the runtime projection of the test cases | the runtime gate, the human at acceptance |
 | **Ledger** | the run's record and its resume point after a compaction | orchestrator |
 
@@ -235,7 +235,7 @@ reviewer closes that against the repository's conventions.
 Do not economise on density. A thin plan is paid for twice: once in a bad
 decision, and again in the rework.
 
-### The eight fields
+### The nine fields
 
 The subheadings are **fixed strings**. This is not formatting: the orchestrator
 cuts a phase into a brief mechanically, and mechanical assembly needs stable
@@ -246,19 +246,24 @@ anchors.
 | **Becomes true** | the observable result of the phase; it also sets the phase's size |
 | **Changes** | paths *and* entities: a symbol, a function, a region — not only a file |
 | **Depends on** | the earlier phases whose files this phase edits — never a shape, never an ordering preference |
+| **Implementer** | the model that builds this phase: Sonnet, or Opus where the phase is genuinely hard |
 | **How** | named abstractions with paths, plus the negative side: what not to introduce |
 | **Do not touch** | only conflicts *inside* paths already granted |
 | **Frozen for later phases** | the names, signatures and data shapes later phases build on — written out, never referred to |
 | **Verification** | the join that proves this phase — or, on the join itself, the range it joins and the cases it proves |
 | **Steps** | the order of work, with checkboxes |
 
-**All eight are mandatory; absence is written as a dash.** `Do not touch: —` means
+**All nine are mandatory; absence is written as a dash.** `Do not touch: —` means
 "there is no neighbouring conflict", not "I forgot to think about it". There is no
 other way to tell forgetfulness from a considered nothing, and in *Frozen for
 later phases* that slip costs the next phase range a stop. The presence of all
-eight subheadings is checked by grep, with no model judgement involved.
+nine subheadings is checked by grep, with no model judgement involved.
 
-In a typical phase four of the eight are dashes. That is cheaper than one
+*Implementer* is the one field with no dash form: every phase is built by
+something, so it holds `- Sonnet` or `- Opus`, alone or with its reason after an
+em dash.
+
+In a typical phase four of the nine are dashes. That is cheaper than one
 invisible omission.
 
 **A phase whose *Changes* names a script under `skills/*/scripts/` also names
@@ -308,6 +313,9 @@ rather than a check the phase could have run itself.
 **Depends on**
 - —
 
+**Implementer**
+- Sonnet
+
 **How**
 - use the existing `useTheme` (`src/shared/theme/useTheme.ts`); it already holds
   `setTheme` and persists to `localStorage`
@@ -327,7 +335,7 @@ rather than a check the phase could have run itself.
 - [ ] hang the toggle on `onClick`
 ````
 
-And the join those phases name, written with the same eight fields and nothing
+And the join those phases name, written with the same nine fields and nothing
 extra:
 
 ````markdown
@@ -345,6 +353,9 @@ extra:
 - phase 1 — `useTheme`
 - phase 2 — the button's markup
 - phase 3 — the `onClick` handler
+
+**Implementer**
+- Opus — the join is the most expensive seat in the run
 
 **How**
 - merge the tester's branch first, then compile the range, then run
@@ -449,30 +460,41 @@ are checked by grep and deserve no case of their own. The one meaningful case
 belongs to the join that covers all three. The *Verification* field is still
 written on all three, because all three name that join.
 
-You **propose** where the boundaries go and which model builds each group; the
-human approves and corrects. This is one of the points where a human in the loop
-is mandatory.
+**You do not choose the rows.** ADR-0005 settled it: the join is the only
+barrier, and everything between two joins dispatches at once. So the rows are
+read off the joins — every phase between two joins shares one row, every join
+stands alone in its own — and `plan-check` refuses a table that says otherwise.
+What you propose, and the human approves, is **where the joins go**; the table
+follows from that with nothing left to decide.
 
-Two relations, marked by you and approved by the human:
+This matters because the instinct it replaces is expensive. Left to judgement,
+a boundary appears wherever a phase produces something a later phase consumes —
+and that is almost every pair of phases, so the plan queues work that had no
+reason to wait. The barrier you did not write is the width you did not lose.
 
 | Relation | Meaning |
 |---|---|
-| **Sequential** | starts only once the work it depends on has landed as a commit |
-| **Parallel** | every phase of the row is dispatched at once, all from one base, and a later phase joins them |
+| **Parallel** | every phase of the row is dispatched at once, all from one base, and the join after it joins them |
+| **The join** | its own row, dispatched alone: the one place the row's phases have to meet |
 
 There was a third, *Asynchronous* — start the next unit without waiting for the
 intermediate verdict. It was an optimisation on a wait, and the run no longer
-takes that wait.
+takes that wait. *Sequential* went the same way: it named a barrier the model
+does not have.
 
-A Topology row carrying more than one phase is a parallel row, and its **width**
-is the number of phases it dispatches at once. Width needs no column of its own:
-a row's phases run at once unless one of them declares a `Depends on` naming a
-sibling in the same row, in which case the row is one dispatch, built in order
-by one implementer. `Depends on` is validated by `plan-check` already, so the
-information is in the plan and it is checked. Narrowing a row further is the
-orchestrator's to do, recorded with its reason under `## Corrections during
-execution` and never done quietly. **Do not add a fourth Topology column**: the
-three headings are fixed, and `dispatch` refuses a table carrying any other.
+A row's **width** is the number of phases it dispatches at once. Width needs no
+column of its own: a row's phases run at once unless one of them declares a
+`Depends on` naming a sibling in the same row, in which case the row is one
+dispatch, built in order by one implementer. `Depends on` is validated by
+`plan-check` already, so the information is in the plan and it is checked.
+Narrowing a row further is the orchestrator's to do, recorded with its reason
+under `## Corrections during execution` and never done quietly. **Do not add a
+third Topology column**: the two headings are fixed, and `dispatch` refuses a
+table carrying any other. The model used to be the third, and it moved to the
+phase — a phase is hard or not on its own merits, whichever band it lands in.
+
+A row is named by its range, `<a>-<b>`, or by a bare number when it carries one
+phase. That spelling is the one `plan-check` reads.
 
 ### Parallel is contractual, or it does not happen
 
@@ -480,12 +502,16 @@ three headings are fixed, and `dispatch` refuses a table carrying any other.
 to avoid touching shared files, which turns one meaningful checkable phase into
 thirty file-disjoint fragments.
 
-Mark phases Parallel only where **all three** of these hold. Two out of three is
-Sequential.
+Phases share a row by construction, so these are not a permission you grant —
+they are three things that must be true of every row, and a plan where one of
+them fails is wrong before it runs.
 
-1. **The contract between the sides is already frozen** — by an earlier phase's
-   *Frozen for later phases*. Both sides build against names, signatures and data
-   shapes that neither of them invents, and neither reads the other's code.
+1. **The contract between the sides is frozen in the plan** — written out in a
+   *Frozen for later phases* field, which is a field of the document and not an
+   artifact of a run. Both sides build against names, signatures and data shapes
+   that neither of them invents, and neither reads the other's code. The phase
+   that will create the module does not have to run first: the sentence is there
+   at approval, and that is what the other side builds against.
 2. **Their write-sets do not intersect.** Take the union of the *Changes* fields
    on each side and check that the two unions are disjoint. That is checkable at
    approval, by you and by the human, with no judgement in it.
@@ -499,50 +525,73 @@ Sequential.
 Condition 1 read backwards is the decision procedure, and it decides every case:
 
 ```text
-the later phase needs the earlier one's CODE   → Sequential
+the later phase needs the earlier one's CODE   → same row, one dispatch,
+                                                  built in order by one
+                                                  implementer — a Depends on
 the later phase needs only its SHAPE           → write the shape down,
-                                                  and it is Parallel
+                                                  and the row runs wide
 ```
+
+Neither answer is a barrier. A barrier is a join, and nothing else.
 
 Almost every chain that looks sequential is really the second line. "I do not
 know the implementation yet" is not a dependency — it is a missing sentence in
 *Frozen for later phases*, and writing that sentence is the whole difference
-between two phases that queue and two that run at once. Ask it of every
-Sequential pair before you settle: does this phase need what the earlier one
+between two phases that queue and two that run at once. Ask it of every pair
+that feels ordered before you settle: does this phase need what the earlier one
 *wrote*, or only the shape it exposes?
 
-The canonical shape:
+The canonical shape — and note where the row ends, because the instinct is to
+end it one line higher:
 
 ```text
-phase 1  lands the module, and freezes the contract
-phase 2  builds one side of it   ┐ parallel — disjoint paths, neither sees the
-phase 3  builds the other side   ┘ other's code, both see the contract
-phase 4  joins them
+phase 1  lands the module, freezing the contract   ┐ one row. The plan carries
+phase 2  builds one side of it                     │ the contract, so nobody
+phase 3  builds the other side                     ┘ waits for the file
+phase 4  joins them                                  the row's one barrier
 ```
+
+Phase 2 writing `import { loadConfig } from "./config"` before phase 1 has
+created `config.ts` is not a race and not a gamble — it is the model working.
+The file arrives when the row merges, and the join is where the import first has
+to resolve.
 
 Disjoint paths are a **precondition**, not a hope. This file used to permit two
 phases to edit one file at once — "parallel by purpose, not by file" — and that
 permission is exactly where the collisions came from. Where paths intersect, the
-phases run Sequential.
+phases share one dispatch and are built in order — still one row, still no
+barrier.
 
-Assign the **model per row**. **Sonnet by default; Opus only where the phase is
-genuinely hard** — the densest document in the tree, a design the plan could not
-fully fix, a phase whose failure mode is quiet. There is nothing below Sonnet:
-one fix round costs an implementer pass and a gate pass, which
-`dev-skills:implement` calls the largest single cost in the run, and no cheaper
-model saves that much. The orchestrator executes the assignment and does not
-change it silently.
+Assign the **model per phase**, in that phase's *Implementer* field. **Sonnet by
+default; Opus only where the phase is genuinely hard** — the densest document in
+the tree, a design the plan could not fully fix, a phase whose failure mode is
+quiet. There is nothing below Sonnet: one fix round costs an implementer pass
+and a gate pass, which `dev-skills:implement` calls the largest single cost in
+the run, and no cheaper model saves that much. The orchestrator executes the
+assignment and does not change it silently.
 
-The `Implementer` column is filled on every row, even when every row says the
-same thing. A column that appears only sometimes makes the reader work out the
-table's shape before reading it; a column always there is one cell to change.
+It sits on the phase and not on the row because a phase is hard, or not, on its
+own merits — and the rows are no longer yours to draw, so a model on the row
+would be a property attached to whichever band the phase happened to land in.
+Put the reason after an em dash whenever the answer is Opus; `- Sonnet` alone
+needs none.
 
 ```markdown
-| Phases | Implementer | Why the boundary is here |
-|---|---|---|
-| 1 | Sonnet | everything downstream builds on this contract |
-| 2, 3 | Sonnet | the two sides of that contract, parallel, joined by 4 |
-| 4 | Sonnet | the join, and the last work before the gates |
+**Implementer**
+- Opus — the densest file in the tree, and its failure mode is silent
+```
+
+A row may hold phases that disagree, and `dispatch` refuses to build them as one
+unit when they do. That is a real refusal, not a nuisance: it means the row was
+about to be handed to one implementer under two answers.
+
+The table itself carries only the split and its reason:
+
+```markdown
+| Phases | Why the boundary is here |
+|---|---|
+| 1-3 | the module and the two sides of its contract, joined by 4 |
+| 4 | the join, and the last work before the gates |
 ```
 
 The column headings are fixed: the orchestrator reads this table mechanically.
@@ -553,7 +602,7 @@ A **join** compiles the phases before it, merges the tester's branch, runs the
 tests and the checks, and repairs what did not meet. It is the only place before
 the gates where anything is verified.
 
-**It is a phase.** The same eight fields, written by you and never computed by a
+**It is a phase.** The same nine fields, written by you and never computed by a
 script, with its own row in the Topology table, dispatched with the same
 `dispatch <plan> <n>` as any other phase. It is not a mode, a marker or a fourth
 column — a phase whose *Verification* carries `- joins:` is the join, and that
@@ -638,12 +687,12 @@ graph is acyclic by construction and `plan-check` needs no cycle detector.
 The dash is an assertion, the same way a dash in any other field is: `- —` says
 there is no dependency, not that nobody thought about it.
 
-**This field does not change how Sequential and Parallel are marked.** The
-Topology table says how phases are *dispatched*; `Depends on` says which
-earlier phase's file this one edits. Needing that file is what makes a phase
-Sequential, and it is the whole of it — a phase compiles nothing, so there is
-no green build to wait on, and the join is where anything is proved. Write
-both: the row in the table, the bullet in the phase.
+**This field does not draw the rows.** The rows come from the joins; `Depends on`
+says which earlier phase's *file* this one edits. Needing that file never pushes
+a phase into a later row — it makes its row a single dispatch, built in order by
+one implementer, because a phase compiles nothing, there is no green build to
+wait on, and the join is where anything is proved. Write both: the row in the
+table, the bullet in the phase.
 
 `plan-graph` renders the plan's picture from those fields, so the picture is
 never drawn by hand and never edited by hand once written — written by
@@ -811,7 +860,7 @@ epic:
 2. **Placeholders.** No "TBD", no "handle edge cases", no "similar to phase N".
 3. **Name consistency.** A symbol frozen in phase 1 is spelled the same way in
    phase 4.
-4. **Dashes.** `plan-check` proves the eight subheadings are present; only you
+4. **Dashes.** `plan-check` proves the nine subheadings are present; only you
    can tell a dash that means "there is no neighbouring conflict" from one that
    means the field was never thought about. *Verification* has one of its own: a
    join's `- cases: —` asserts that this join proves no approved case, which is a

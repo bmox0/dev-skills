@@ -42,10 +42,10 @@ PLAN_WITH_TOPOLOGY = """# Some Plan
 
 ## Topology
 
-| Phases | Implementer | Why the checkpoint is here |
-|---|---|---|
-| 1-3 | Sonnet | first checkpoint |
-| 4-8 | Sonnet | last one before the final gate |
+| Phases | Why the checkpoint is here |
+|---|---|
+| 1-3 | first checkpoint |
+| 4-8 | last one before the final gate |
 
 ## Phases
 
@@ -62,14 +62,14 @@ PLAN_TWO_TABLES = """# Plan
 
 ## Topology
 
-| Phases | Implementer | Why the checkpoint is here |
-|---|---|---|
-| 1-3 | Sonnet | first checkpoint |
-| 4-8 | Sonnet | last one before the final gate |
+| Phases | Why the checkpoint is here |
+|---|---|
+| 1-3 | first checkpoint |
+| 4-8 | last one before the final gate |
 ## Not Topology
-| Phases | Implementer | Why the checkpoint is here |
-|---|---|---|
-| 20-21 | Opus | should never appear |
+| Phases | Why the checkpoint is here |
+|---|---|
+| 20-21 | should never appear |
 """
 
 PLAN_NO_TOPOLOGY = """# Plan
@@ -142,11 +142,11 @@ ROW_PLAN = """# Row Plan
 
 ## Topology
 
-| Phases | Implementer | Why the boundary is here |
-|---|---|---|
-| 1 | Sonnet | why_row_one |
-| 2, 3, 4 | Opus | why_row_two_three_four |
-| 5 | Sonnet | why_row_five |
+| Phases | Why the boundary is here |
+|---|---|
+| 1 | why_row_one |
+| 2-4 | why_row_two_three_four |
+| 5 | why_row_five |
 
 ## Phases
 
@@ -160,6 +160,9 @@ ROW_PLAN = """# Row Plan
 
 **Depends on**
 - —
+
+**Implementer**
+- Opus — the row's one hard phase
 
 **How**
 - plain implementation
@@ -272,11 +275,11 @@ class IsSeparatorTests(unittest.TestCase):
 
 class ParseTableTests(unittest.TestCase):
     TABLE_LINES = [
-        "| Phases | Implementer | Why the checkpoint is here |",
-        "|---|---|---|",
-        "| 1 | Sonnet | first |",
-        "| 2, 3, 4 | Sonnet | second |",
-        "| 5-6 | Opus | third |",
+        "| Phases | Why the checkpoint is here |",
+        "|---|---|",
+        "| 1 | first |",
+        "| 2, 3, 4 | second |",
+        "| 5-6 | third |",
     ]
 
     def test_yields_three_segments_first_and_last_present_no_separator(self):
@@ -314,14 +317,14 @@ class TopologySegmentsTests(unittest.TestCase):
 class FindOwnerTests(unittest.TestCase):
     def setUp(self):
         self.segments = [
-            sd.Segment("1-3", 1, 3, "Sonnet", "first checkpoint"),
-            sd.Segment("4-8", 4, 8, "Opus", "last one before the final gate"),
+            sd.Segment("1-3", 1, 3, "first checkpoint"),
+            sd.Segment("4-8", 4, 8, "last one before the final gate"),
         ]
 
-    def test_exact_match_returns_owner_with_correct_model(self):
+    def test_exact_match_returns_the_owning_row(self):
         owner, spanning = sd.find_owner(self.segments, 4, 8)
         self.assertIsNotNone(owner)
-        self.assertEqual(owner.model, "Opus")
+        self.assertEqual(owner.phases_raw, "4-8")
         self.assertIsNone(spanning)
 
     def test_range_spanning_two_segments(self):
@@ -332,7 +335,7 @@ class FindOwnerTests(unittest.TestCase):
     def test_range_strictly_inside_one_segment_but_not_equal_bounds(self):
         owner, spanning = sd.find_owner(self.segments, 5, 6)
         self.assertIsNotNone(owner)
-        self.assertEqual(owner.model, "Opus")
+        self.assertEqual(owner.phases_raw, "4-8")
         self.assertIsNone(spanning)
 
 
@@ -466,7 +469,7 @@ class DispatchRowCLITests(unittest.TestCase):
         proc = _run_dispatch(repo, plan, "4-5")
         self.assertEqual(proc.returncode, 3, proc.stdout + proc.stderr)
         self.assertIn("span more than one Topology row", proc.stderr)
-        self.assertIn("phases 2, 3, 4", proc.stderr)
+        self.assertIn("phases 2-4", proc.stderr)
         self.assertIn("phases 5", proc.stderr)
 
 
