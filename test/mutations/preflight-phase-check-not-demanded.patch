@@ -1,0 +1,12 @@
+diff --git a/skills/implement/scripts/preflight b/skills/implement/scripts/preflight
+index 1fa9bc5..8b45164 100755
+--- a/skills/implement/scripts/preflight
++++ b/skills/implement/scripts/preflight
+@@ -277,7 +277,6 @@ if [ -z "$contract" ]; then
+ else
+   grep -qiE '^\*\*bootstrap' "$contract" || add "no 'bootstrap' field in $(basename "$contract") — ask how a fresh tree is prepared, then record it"
+   grep -qiE '^\*\*link'      "$contract" || add "no 'link' field in $(basename "$contract") — ask which untracked paths to symlink (default .env*), then record it"
+-  grep -qiE '^\*\*[Pp]hase check' "$contract" || add "no 'Phase check' field in $(basename "$contract") — ask which one command a phase runs on its own work (a formatter, or none), then record it"
+ fi
+
+ # --- the plan has to exist, and has to have the right shape ----------------

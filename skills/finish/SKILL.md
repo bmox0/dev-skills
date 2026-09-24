@@ -1,6 +1,6 @@
 ---
 name: finish
-description: Close out a run — squash it into one commit, put exactly that commit in front of the human for the run's one acceptance, and integrate it. Invoke once both gates are green.
+description: Close out a run — squash it into one commit, put exactly that commit in front of the human for the run's one acceptance, and integrate it. Invoke once the judge returns GREEN.
 disable-model-invocation: true
 ---
 
@@ -19,7 +19,7 @@ exactly what `finish-guard` blocks while a run is open.
 ## The order
 
 ```text
-gate A green, gate B green
+the judge returns GREEN
 → scripts/finish preflight   branch, run base, range, clean tree, no half-done ops
 → a numbered recovery ref on the current HEAD
 → git reset --soft <run base>
@@ -116,8 +116,7 @@ written once, here:
 the human refuses, or a BLOCKER is still open after two rounds
 → back to the orchestrator
 → a remediation round ON TOP OF the squashed commit, ordinary implementer
-→ gate A over what was affected
-→ gate B over the affected cases
+→ the judge, dispatched again over what was affected
 → dev-skills:finish again, squashing the two commits into one
 ```
 
@@ -134,7 +133,7 @@ clean rebase, base changes do not touch the run's paths
 → the acceptance stands, integrate
 
 clean rebase, base touched the same paths
-→ gate B re-runs the affected cases
+→ the judge re-runs the affected cases
 → the acceptance covers only those
 
 rebase with conflicts

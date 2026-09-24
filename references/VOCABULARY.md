@@ -32,15 +32,37 @@ _Avoid_: session, execution, pass
 ### Phase
 
 A numbered unit inside a **plan**, and nothing else — `### Phase <n>.` under
-`## Phases`, carrying the seven fields (*Becomes true*, *Changes*, *How*, *Do
-not touch*, *Frozen for later phases*, *Verification*, *Steps*). The word
-collides with conversational use, and the collision is closed by declaration,
-not by a rename: in any artifact "phase" is the numbered unit. The stages of a
+`## Phases`, carrying the nine fields (*Becomes true*, *Changes*, *Depends
+on*, *Implementer*, *How*, *Do not touch*, *Frozen for later phases*,
+*Verification*, *Steps*). It compiles nothing, tests nothing and lints nothing: the one command
+it runs on its own work is the **Phase Check**, and what it builds is not proved
+until the **Join** its *Verification* names. The word collides with
+conversational use, and the collision is closed by declaration, not by a rename:
+in any artifact "phase" is the numbered unit. The stages of a
 **run** are named by their skill instead — `grill`, `plan`, `implement`,
 `finish` — and "the planning phase" or "the implementation phase" is
 conversation; it does not appear in a document.
 
 _Avoid_: step, stage, the planning phase, the implementation phase
+
+### Join
+
+A **phase** that compiles the phase range before it, merges the **Tester**'s
+branch, runs its tests and its checks, and repairs what did not meet. The only
+place before the gates where anything is verified, and the only barrier between
+phases. A phase whose *Verification* carries `- joins: phases <a>-<b>` **is**
+the join — there is no other marker, no heading suffix and no `## Topology`
+column for it.
+
+_Avoid_: checkpoint (retired), milestone, integration phase, merge phase
+
+### Phase Check
+
+The one command a **phase** runs on its own work, named by the **plan**'s
+environment contract — a formatter, or a dash. Anything that needs the tree to
+resolve is the **Join**'s, not the phase's.
+
+_Avoid_: self-check, lint step, verification
 
 ### Plan
 
@@ -52,6 +74,23 @@ proves, the test seams, the paths and existing abstractions, the test cases),
 the **phase**s under `## Phases`, a `## Topology` table, and a `## Ledger`.
 
 _Avoid_: epic, design doc, ticket
+
+### Test Case
+
+What a **Join** must prove about the surface it assembles, approved by the human
+before any test is written. Scoped to what a consumer of the joined result
+observes — never to a method, and never to one **phase**'s internals.
+
+_Avoid_: test, scenario, acceptance criterion
+
+### Attribution Check
+
+A **phase**'s actual written paths compared against **its own** declared
+**Write-Set**. Distinct from comparing actuals against the union of every
+phase's write-sets, which is blind to one phase writing into another's
+declaration.
+
+_Avoid_: path check, diff check
 
 ## The Documents
 
@@ -72,13 +111,15 @@ _Avoid_: spec, design doc, ticket, epic doc
 The slice of the **plan** one **implementer** actually reads: the plan's
 header plus the phases in its assigned range, and nothing else. Cut by the
 `brief` script; hard-stops on a plan with no `## Phases`. Named by the
-**artifact naming convention** below.
+**artifact naming convention** below. The **Tester** gets no brief: it is
+dispatched with the **plan**, the **test case**s of the **Join** it writes for,
+and the environment contract.
 
 _Avoid_: instructions, epic, ticket
 
 ### Dispatch
 
-The file that hands one **implementer**, the **test writer**, or a gate its
+The file that hands one **implementer**, the **Tester**, or a gate its
 task: the **brief** path, what already exists (the **frozen contract** and
 earlier **report**s), the model to run on, and the report path it must write
 to. Derived mechanically by the `dispatch` script, which marks what it cannot
@@ -92,7 +133,7 @@ task, ticket
 
 ### Report
 
-The file an **implementer**, the **test writer**, or a gate writes back: what
+The file an **implementer**, the **Tester**, or a gate writes back: what
 it built or found, its self-check, its divergences, and the checks it ran.
 Named by the **artifact naming convention** below.
 
@@ -134,28 +175,29 @@ _Avoid_: author, planning agent
 ### Orchestrator
 
 The session running `dev-skills:implement`. Dispatches every **implementer**,
-the **test writer**, and both gates; classifies every **fact** and **decision**
-it meets; records the **Ledger**. Does not write code and does not review it.
+one **Tester** per **Join**, and the **Judge**; classifies every **fact** and
+**decision** it meets; records the **Ledger**. Does not write code and does not
+review it.
 
 _Avoid_: coordinator, controller, manager
 
 ### Implementer
 
 The subagent that builds every **phase** in its **brief**, in order, on the
-model the plan's `## Topology` assigns. Commits its own work, unless it is one
-side of a parallel group, in which case it edits only its own paths and does
-not commit.
+model the plan's `## Topology` assigns. Commits its own work in the tree its
+dispatch names, on the branch it finds checked out there, and never merges.
 
 _Avoid_: builder, coder, dev
 
-### Test Writer
+### Tester
 
-The subagent that turns the plan's human-approved test cases into executable
-tests, before the production code they check exists. Writes tests and nothing
-else — no architecture, no product decision — and commits them as their own
-commit, before the phases that make them green.
+The seat that turns the approved **test case**s into executable tests — once,
+after they are approved, against the **Frozen Contract**, at the granularity of
+a **Join**. Writes tests and nothing else — no architecture, no product
+decision — and commits them on a branch of its own, which the join merges. Its
+output is neither reviewed nor approved.
 
-_Avoid_: QA, tester
+_Avoid_: QA, test author, and the retired name it replaces — see `## Retired`
 
 ### Prototyper
 
@@ -167,20 +209,34 @@ ends the offer without changing the interview's shape.
 _Avoid_: prototype (the existing skill that writes throwaway code into a
 project — a different thing), mockup tool
 
+### Judge
+
+The run's verdict seat — Opus, on a context of its own. Dispatched once by the
+**orchestrator** after the last **phase**, and the only seat it dispatches at
+the end of a **run**. Owns **Gate A**, **Gate B** and the remediation loop:
+dispatches each gate itself, dispatches any remediation **implementer** against
+a **blocker**, holds the loop to a mechanical two-round cap, and returns a
+verdict — `GREEN`, `BLOCKED`, `PLAN_CONFLICT` or `NEEDS_CONTEXT` — rather than
+findings. Writes no code and never talks to the human.
+
+_Avoid_: reviewer, gate runner, arbiter
+
 ### Gate A
 
-The run's code gate — Opus, on a clean context. Reads the whole `BASE..HEAD`
-range against the **plan**, in order: checks, then conformance, then
-integrity. Judges whether the code is what the plan asked for, built the way
-the project builds things; never whether the running system works.
+The run's code gate — Opus, on a clean context, dispatched by the **Judge**.
+Reads the whole `BASE..HEAD` range against the **plan**, in order: checks, then
+conformance, then integrity. Judges whether the code is what the plan asked
+for, built the way the project builds things; never whether the running system
+works.
 
 _Avoid_: code review, static gate
 
 ### Gate B
 
-The run's one runtime gate — Opus, on a clean context. Drives the plan's
-executable test cases on a live system and writes one evidence file per case.
-Judges behaviour, never code quality — that question belongs to gate A.
+The run's one runtime gate — Opus, on a clean context, dispatched by the
+**Judge** once **Gate A** is green. Drives the plan's executable test cases on
+a live system and writes one evidence file per case. Judges behaviour, never
+code quality — that question belongs to gate A.
 
 _Avoid_: e2e gate, runtime review, functional gate
 
@@ -191,8 +247,11 @@ _Avoid_: e2e gate, runtime review, functional gate
 The union of every **phase**'s *Frozen for later phases* field — the names,
 signatures and shapes a parallel group's two sides build against without
 reading each other's code, and the one thing an ordinary gate finding may not
-change. A frozen name, signature or shape that has to change is a
-**PLAN_CONFLICT**, never a quiet adapter in the join phase.
+change. Complete enough to write a compiling import against — module paths and
+exported names, not only types — because a **phase** writes imports for modules
+that are not in the tree yet, and neither goes looking for them nor creates
+them. A frozen name, signature or shape that has to change is a
+**PLAN_CONFLICT**, never a quiet adapter in the **Join**.
 
 _Avoid_: interface, API, contract (bare)
 
@@ -204,6 +263,25 @@ disjoint; `scripts/preflight --parallel` checks that mechanically, and
 intersecting write-sets stop the group before anything is dispatched.
 
 _Avoid_: touched files, scope (bare), footprint
+
+### Dependency
+
+One **phase** needing another's *file* in order to edit it. Needing another's
+shape is **not** a dependency: the shape is in the **Frozen Contract**, and code
+is written against it before it exists. Declared by the depending phase, never
+inferred from an import.
+
+_Avoid_: prerequisite, ordering constraint, edge (bare)
+
+### Width
+
+How many **phase**s of a parallel row actually run at once. Declared by the
+**plan** through the row itself and its *Depends on* bullets rather than by a
+column of its own: a row's phases run at once unless one of them declares a
+*Depends on* naming a sibling. Narrowing it is permitted and is recorded with
+its reason.
+
+_Avoid_: concurrency, fan-out, parallelism
 
 ## Findings
 
@@ -287,6 +365,16 @@ plus the cross-phase duplication they structurally could not.
 
 _Avoid_: — retired; do not use it in a new artifact
 
+### Test Writer
+
+Retired. Named the seat that rendered the approved **test case**s as executable
+tests once for a whole **run**, at the granularity of a **phase** range. What
+replaced it: the **Tester**, which does it once per **Join**, on a branch of its
+own that the join merges. A document still saying "test writer" is describing
+the shape before that split.
+
+_Avoid_: — retired; do not use it in a new artifact
+
 ## Fixed strings
 
 The literal strings the scripts in `skills/implement/scripts/` anchor on —
@@ -295,12 +383,39 @@ exactly as later phases must produce and check them:
 - `## Phases` — the container heading, on its own line
 - `### Phase <n>.` — a phase heading; the number is followed by `.` or
   whitespace
-- the seven field headings, verbatim, each bold on its own line:
-  `**Becomes true**`, `**Changes**`, `**How**`, `**Do not touch**`,
-  `**Frozen for later phases**`, `**Verification**`, `**Steps**`
+- the nine field headings, verbatim, each bold on its own line:
+  `**Becomes true**`, `**Changes**`, `**Depends on**`, `**Implementer**`,
+  `**How**`, `**Do not touch**`, `**Frozen for later phases**`,
+  `**Verification**`, `**Steps**`
+- `**Depends on**` — a field heading, bold on its own line, written
+  immediately below `**Changes**`
+- a dependency bullet — `- phase <n> — <why this phase needs its file>` — an em
+  dash with one space on either side, and `<n>` always lower than the number of
+  the phase carrying it
+- `- —` alone under `**Depends on**` — the assertion that the phase depends on
+  nothing; it never shares the field with a dependency bullet
+- `- proved by: phase <n>` — an ordinary phase's whole `**Verification**` field:
+  one bullet, naming the **Join** that proves the phase, with no trailing prose
+- `- joins: phases <a>-<b>` — the bullet that makes a phase the **Join**; always
+  a two-number span, never a bare number, and never in the same field as
+  `- proved by:`
+- `- cases: TC-<n>[, TC-<n>…]` — the approved **test case**s a join proves,
+  written beside its `- joins:` bullet; `- cases: —` alone is the join asserting
+  it proves none, and a join always carries one form or the other
+- `## Graph` — the section a plan carries between `## Topology` and `## Phases`,
+  written by `plan-graph` and by nobody else
+- `<!-- rendered by skills/implement/scripts/plan-graph — do not edit by hand -->`
+  — the marker line directly under `## Graph`
 - `## Topology`, and its table columns, in this order and no others:
-  `| Phases | Implementer | Why the boundary is here |`
+  `| Phases | Why the boundary is here |`
+- `**Implementer**` — the phase field naming the model, holding `- Sonnet` or
+  `- Opus`, alone or followed by ` — <why>`
 - `## Ledger`
+- `` - [ ] Judge — `HEAD` at dispatch: `` — the **Ledger** line a plan carries
+  for the **Judge**, with the cap origin written into the slot at the end
+- `` - [ ] Phase <n> — the join; base at dispatch: `` — the **Ledger** line a
+  plan carries for each **Join**, with the commit it was dispatched at written
+  into the slot, because the two-repair cap is counted from there
 - `## Moments` — the section heading, on its own line, between `## User
   stories` and `## Constraints`
 - a moment heading — `- **M-<n>. <what the person is doing>** · US-<n>[, …]` —
@@ -310,18 +425,34 @@ exactly as later phases must produce and check them:
   `  1. <step, in the person's own words>`
 - `## Moments` holding a single `—` is well-formed and means "no new moment";
   an absent section is equally well-formed
+- `**Phase check.**` — the environment contract's field in `CLAUDE.md`, bold at
+  the start of its own line, which `preflight` demands of every contract; the
+  same thing is spelled **Phase Check** where it is the term in prose
 
 ## Artifact naming convention
 
 Every file a script derives from a phase range is `<kind>-<first>-<last>.md` —
 `brief-1-3.md`, `dispatch-1-3.md`, `report-1-3.md`. Files not derived from a
-range keep their own names: `gate-a-dispatch.md`, `contracts/<range>.md`,
-`review-<sha>..<sha>.diff`.
+range keep their own names: `gate-a-dispatch.md`, `judge-dispatch.md`,
+`contracts/<range>.md`, `review-<sha>..<sha>.diff`. The **Judge**'s own
+artifacts sit in a directory of its own: `judge/report.md` and
+`judge/review-package.diff`, beside `gate-a/` and `gate-b/`.
 
 A file derived from a **moment** instead of a phase range is named by its
 number: `.ai-workflow/plans/<plan>/prototypes/M-<n>.html` for the drawing, and
 `.ai-workflow/run/<plan>/gate-b/M-<n>.md` for gate B's evidence.
 
+A branch and a worktree are derived from a phase range too, and `worker` is the
+one place either is named. `worker add <plan> <first>-<last> <base>` cuts branch
+`run/<slug>/<first>-<last>` and worktree
+`<checkout's parent>/<repo>-work/<slug>/<first>-<last>`, where `<slug>` is the
+plan's filename without `.md`. The same call with `--tests` cuts the
+**Tester**'s own instead — `run/<slug>/tests-<first>-<last>` and
+`…/<slug>/tests-<first>-<last>` — and `worker rm <plan> <first>-<last>` gives
+one back, carrying `--tests` when it was the tester's. The `tests-` prefix is
+what keeps a tester's branch clear of a Topology row legitimately spelled `1-8`.
+
 ## Script names
 
-`brief`, `dispatch`, `plan-check`, all in `skills/implement/scripts/`.
+`brief`, `dispatch`, `plan-check`, `plan-graph`, `worker`, all in
+`skills/implement/scripts/`.

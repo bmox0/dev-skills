@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# A worker's own git worktree and branch, cut from one base, so a Topology
+# row's phases can be dispatched at once without racing each other's working
+# tree. `.ai-workflow` is symlinked in rather than copied, for the same
+# reason preflight symlinks it into a worktree that is missing it: the plan
+# is the ledger, and a copy would diverge.
+#
+# add is idempotent: running it again for the same plan and range finds the
+# worktree already registered on its branch and prints the same five lines,
+# so a resumed run never has to ask whether it already exists. The same holds
+# after a worker rm: if the branch it left behind is still at BASE, add
+# re-attaches a worktree to it and prints the same five lines; if a commit
+# landed on that branch since, add refuses instead of guessing whose work
+# that commit is. It never deletes what it finds occupying that path
+# instead — that is a refusal, not a cleanup.
+#
+# rm gives the worktree back and leaves the branch alone. A worktree with
+# uncommitted work is left in place and named, never forced — that work
+# never reached a commit, and losing it silently would be worse than a stop.
+#
+# The main checkout is derived from `git rev-parse --git-common-dir`, not
+# `--show-toplevel`, so `worker add` run from inside another worktree still
+# finds the one tree every worktree shares .ai-workflow with.
+#
+# --tests cuts a tester's own worktree and branch instead of a worker's: the
+# same range, the same base, but range_id carries a tests- prefix so the two
+# never share a path or a branch name. worker stays the one place a branch
+# is named — the flag changes what name cmd_add and cmd_rm build, nothing
+# about how a worktree is cut or given back.
+#
+# Usage: worker add PLAN_FILE RANGE BASE [--tests]
+#        worker rm  PLAN_FILE RANGE [--tests]
+set -euo pipefail
+
+common="$(git rev-parse --git-common-dir 2>/dev/null)" || { echo "not a git repository" >&2; exit 2; }
+main_checkout="$(cd "$common/.." && pwd -P)"
+work_root="$(cd "$main_checkout/.." && pwd -P)/$(basename "$main_checkout")-work"
+
+contract_value() {
+  local field="$1" contract="" f line
+  for f in "$main_checkout/CLAUDE.md" "$main_checkout/AGENTS.md"; do
+    [ -f "$f" ] && contract="$f" && break
+  done
+  if [ -z "$contract" ]; then
+    echo "(not in the contract)"
+    return
+  fi
+  line="$(grep -iE "^\*\*${field}\." "$contract" | head -n1)" || true
+  if [ -z "$line" ]; then
+    echo "(not in the contract)"
+    return
+  fi
+  printf '%s\n' "$line" | sed -E 's/^\*\*[^*]*\*\*[[:space:]]*//'
+}
+
+parse_range() {
+  local range="$1"
+  case "$range" in
+    *[0-9]-[0-9]*) first=${range%%-*}; last=${range##*-} ;;
+    *[!0-9]*)      echo "bad RANGE: $range (want 3 or 2-4)" >&2; exit 2 ;;
+    *)             first=$range; last=$range ;;
+  esac
+  [ "$first" -le "$last" ] 2>/dev/null || { echo "bad RANGE: $range" >&2; exit 2; }
+}
+
+cmd_add() {
+  local tests=0 pos=() a
+  for a in "$@"; do
+    case "$a" in
+      --tests) tests=1 ;;
+      --*) echo "usage: worker add PLAN_FILE RANGE BASE [--tests]" >&2; exit 2 ;;
+      *) pos+=("$a") ;;
+    esac
+  done
+  [ "${#pos[@]}" -eq 3 ] || { echo "usage: worker add PLAN_FILE RANGE BASE [--tests]" >&2; exit 2; }
+  local plan="${pos[0]}" range="${pos[1]}" base="${pos[2]}" first last
+  [ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
+  parse_range "$range"
+  git rev-parse --verify --quiet "$base" >/dev/null || { echo "bad BASE: $base" >&2; exit 2; }
+  local base_sha
+  base_sha="$(git rev-parse "$base")"
+
+  local slug range_id branch path
+  slug="$(basename "$plan" .md)"
+  range_id="${first}-${last}"
+  [ "$tests" -eq 1 ] && range_id="tests-${range_id}"
+  branch="run/${slug}/${range_id}"
+  path="$work_root/$slug/$range_id"
+
+  print_worker_lines() {
+    echo "worktree: $path"
+    echo "branch: $branch"
+    echo "base: $base_sha"
+    echo "bootstrap: $(contract_value bootstrap)"
+    echo "link: $(contract_value link)"
+  }
+
+  local existing_branch
+  existing_branch="$(git -C "$main_checkout" worktree list --porcelain | awk -v want="worktree $path" '
+    $0 == want { found=1; next }
+    found && /^branch / { sub(/^branch refs\/heads\//, ""); print; exit }
+    found && (/^$/ || /^bare$/) { exit }
+  ')"
+
+  if [ -n "$existing_branch" ]; then
+    if [ "$existing_branch" = "$branch" ]; then
+      print_worker_lines
+      exit 0
+    fi
+    echo "$path exists and is not ${branch}'s worktree (registered on $existing_branch)" >&2
+    exit 1
+  fi
+
+  if [ -e "$path" ]; then
+    echo "$path exists and is not ${branch}'s worktree" >&2
+    exit 1
+  fi
+
+  local existing_tip
+  existing_tip="$(git -C "$main_checkout" rev-parse --verify --quiet "refs/heads/$branch")" || true
+  if [ -n "$existing_tip" ]; then
+    if [ "$existing_tip" = "$base_sha" ]; then
+      git -C "$main_checkout" worktree add -q "$path" "$branch"
+      ln -s "$main_checkout/.ai-workflow" "$path/.ai-workflow"
+      print_worker_lines
+      exit 0
+    fi
+    echo "$branch already exists and is not at $base_sha (it is at $existing_tip)" >&2
+    echo "worker never resets or deletes a branch: remove it yourself (git branch -D $branch) if that commit is not needed, or add with a different RANGE" >&2
+    exit 1
+  fi
+
+  git -C "$main_checkout" worktree add -q -b "$branch" "$path" "$base_sha"
+  ln -s "$main_checkout/.ai-workflow" "$path/.ai-workflow"
+  print_worker_lines
+  exit 0
+}
+
+cmd_rm() {
+  local tests=0 pos=() a
+  for a in "$@"; do
+    case "$a" in
+      --tests) tests=1 ;;
+      --*) echo "usage: worker rm PLAN_FILE RANGE [--tests]" >&2; exit 2 ;;
+      *) pos+=("$a") ;;
+    esac
+  done
+  [ "${#pos[@]}" -eq 2 ] || { echo "usage: worker rm PLAN_FILE RANGE [--tests]" >&2; exit 2; }
+  local plan="${pos[0]}" range="${pos[1]}" first last
+  [ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
+  parse_range "$range"
+
+  local slug range_id path
+  slug="$(basename "$plan" .md)"
+  range_id="${first}-${last}"
+  [ "$tests" -eq 1 ] && range_id="tests-${range_id}"
+  path="$work_root/$slug/$range_id"
+
+  if ! git -C "$main_checkout" worktree list --porcelain | grep -qxF "worktree $path"; then
+    echo "no worktree: $path"
+    exit 0
+  fi
+
+  local dirty
+  dirty="$(git -C "$path" status --porcelain 2>/dev/null)" || true
+  if [ -n "$dirty" ]; then
+    echo "$path has uncommitted changes:" >&2
+    printf '%s\n' "$dirty" | sed 's/^/  /' >&2
+    echo "commit or discard them first — worker rm never forces a removal" >&2
+    exit 1
+  fi
+
+  git -C "$main_checkout" worktree remove "$path"
+  echo "removed: $path"
+  exit 0
+}
+
+case "${1:-}" in
+  add) shift; cmd_add "$@" ;;
+  rm)  shift; cmd_rm "$@" ;;
+  *)
+    echo "usage: worker add PLAN_FILE RANGE BASE [--tests] | worker rm PLAN_FILE RANGE [--tests]" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,12 @@
+diff --git a/skills/implement/scripts/plan-check b/skills/implement/scripts/plan-check
+index 568abf9..5f0af78 100755
+--- a/skills/implement/scripts/plan-check
++++ b/skills/implement/scripts/plan-check
+@@ -449,7 +449,6 @@ depends_issues=$(awk '
+       n2 = line
+       sub(/^- phase /, "", n2)
+       sub(/ —.*$/, "", n2)
+-      if ((n2 + 0) >= phase) { nfwd++; fwd_n[nfwd] = n2 + 0 }
+       next
+     }
+     nbad++; bad_line[nbad] = line

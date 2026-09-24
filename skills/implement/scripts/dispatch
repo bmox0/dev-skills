@@ -26,12 +26,31 @@ contains, so the agent that reads it (which has to read it anyway) can refuse
 to proceed on an incomplete dispatch without relying on the orchestrator to
 remember to check.
 
-Usage: dispatch PLAN_FILE RANGE [--force]
+Usage: dispatch PLAN_FILE RANGE [--worktree PATH] [--force]
        dispatch PLAN_FILE --gate-a [--force]
-  RANGE   a single phase (3) or an inclusive span (2-4), as brief takes
+       dispatch PLAN_FILE --judge [--force]
+  RANGE   a single phase (3) or an inclusive span (2-4), contained in exactly
+          one Topology row — the model and the boundary reason come from
+          that row, and so do the frozen contract and the earlier reports,
+          which are those of everything before the row's first phase
 
 --gate-a builds the code gate's dispatch instead, and takes no RANGE: the gate
 holds the whole BASE..HEAD, not one row of the Topology table.
+
+--judge builds the judge's dispatch instead, and also takes no RANGE: the
+judge owns the whole run, the same way --gate-a owns the whole range. --judge
+and --gate-a are mutually exclusive.
+
+--worktree PATH marks an implementer dispatch as built in a worktree of its
+own: the file carries a "## Where you work" section naming that path. Omitted,
+the section says the work happens in the current checkout. Not valid with
+--gate-a or --judge.
+
+A phase whose own **Verification** field carries '- joins: phases <a>-<b>' is
+a join, and no flag says so — the plan already does. Its dispatch gains two
+more sections, derived rather than a hole: "## The tests you merge", naming
+the branch worker add --tests cut for that range, and "## The range you
+join", naming the range itself. An ordinary phase's dispatch is unchanged.
 """
 
 import os
@@ -72,6 +91,21 @@ def run_sibling(name, *args):
     return proc.stdout
 
 
+def git_head():
+    """The resolved HEAD sha — the judge's cap origin. Printed on stdout by
+    the same call that writes it into the dispatch file, so the two can
+    never name different commits."""
+    try:
+        proc = subprocess.run(["git", "rev-parse", "HEAD"],
+                               capture_output=True, text=True)
+    except OSError as exc:
+        die("cannot run git rev-parse HEAD: %s" % exc, 2)
+    if proc.returncode != 0:
+        die("git rev-parse HEAD failed:\n%s"
+            % indent(proc.stderr.strip() or "(no stderr)"))
+    return proc.stdout.strip()
+
+
 def parse_range(raw):
     m = re.fullmatch(r"(\d+)-(\d+)", raw)
     if m:
@@ -83,6 +117,32 @@ def parse_range(raw):
     if first > last:
         die("bad RANGE: %s (want 3 or 2-4)" % raw, 2)
     return first, last
+
+
+def parse_run_base(text):
+    """The RUN marker's contents as a string -> the value of its base= line,
+    or None when the text is empty, has no such line, or the line has no
+    value. No filesystem here, so this is what test/unit/test_dispatch.py
+    pins directly."""
+    if not text:
+        return None
+    for line in text.splitlines():
+        if line.startswith("base="):
+            value = line[len("base="):].strip()
+            if value:
+                return value
+    return None
+
+
+def read_run_base(workspace):
+    """The thin caller: reads <workspace>/RUN and returns None when the file
+    is absent — a missing marker is a dispatch built outside a run, not a
+    failure."""
+    path = os.path.join(workspace, "RUN")
+    if not os.path.isfile(path):
+        return None
+    with open(path, "r", encoding="utf-8") as fh:
+        return parse_run_base(fh.read())
 
 
 # ---------------------------------------------------------------------------
@@ -97,11 +157,10 @@ FENCE_RE = re.compile(r"^```")
 
 
 class Segment:
-    def __init__(self, phases_raw, first, last, model, why):
+    def __init__(self, phases_raw, first, last, why):
         self.phases_raw = phases_raw
         self.first = first
         self.last = last
-        self.model = model
         self.why = why
 
 
@@ -132,20 +191,20 @@ def parse_table(table_lines):
                 return i
         return None
 
-    phase_i, model_i, why_i = (
-        col("phase"), col("implementer"), col("why"))
-    if None in (phase_i, model_i, why_i):
+    phase_i, why_i = col("phase"), col("why")
+    if None in (phase_i, why_i):
         die("the Topology table is missing an expected column "
-            "(Phases, Implementer, Why the boundary is here); "
+            "(Phases, Why the boundary is here); "
             "header found: %s" % header, 3)
-    if len(header) != 3:
+    if len(header) != 2:
         die("the Topology table carries an unexpected column "
-            "(want exactly Phases, Implementer, Why the boundary is here); "
+            "(want exactly Phases, Why the boundary is here — the model "
+            "moved to each phase's **Implementer** field); "
             "header found: %s" % header, 3)
 
     segments = []
     for r in body:
-        width = max(phase_i, model_i, why_i)
+        width = max(phase_i, why_i)
         if len(r) <= width:
             continue
         phase_nums = [int(x) for x in re.findall(r"\d+", r[phase_i])]
@@ -154,7 +213,7 @@ def parse_table(table_lines):
         segments.append(Segment(
             r[phase_i].strip(),
             min(phase_nums), max(phase_nums),
-            r[model_i].strip(), r[why_i].strip()))
+            r[why_i].strip()))
     return segments
 
 
@@ -200,15 +259,142 @@ def topology_segments(lines):
 
 
 def find_owner(segments, first, last):
-    """(owner, None) on an exact match; (None, spanning) when the requested
-    range overlaps more than one segment; (None, []) when nothing covers it."""
+    """(owner, None) on an exact match, or when the range is contained in
+    exactly one segment; (None, spanning) when the range overlaps more than
+    one segment; (None, []) when nothing covers it."""
     exact = [s for s in segments if s.first == first and s.last == last]
     if exact:
         return exact[0], None
+    contained = [s for s in segments if s.first <= first and last <= s.last]
+    if len(contained) == 1:
+        return contained[0], None
     overlapping = [s for s in segments if not (s.last < first or s.first > last)]
     if len(overlapping) > 1:
         return None, overlapping
     return None, []
+
+
+# A join is a phase like any other: '### Phase <n>.' names it, and its
+# **Verification** field either proves some other phase or, when it carries
+# '- joins: phases <a>-<b>', is the join for that range. Fence-aware the way
+# topology_segments is, for the same reason — an example bullet quoted for a
+# reader inside a fenced block must not be read as the real one.
+PHASE_HEADING_RE = re.compile(r"^###[ \t]+Phase[ \t]+(\d+)[.\s]")
+BOLD_FIELD_RE = re.compile(r"^\*\*[A-Za-z][^*]*\*\*[ \t]*$")
+JOINS_BULLET_RE = re.compile(r"^- joins: phases (\d+)-(\d+)[ \t]*$")
+IMPLEMENTER_BULLET_RE = re.compile(r"^- (Sonnet|Opus)([ \t]+—[ \t]+.+)?[ \t]*$")
+
+
+def verification_join(lines, phase):
+    """(first, last) when phase <phase>'s **Verification** carries a
+    '- joins: phases <a>-<b>' bullet, else None."""
+    in_fence = False
+    in_phase = False
+    in_field = False
+    for line in lines:
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        m = PHASE_HEADING_RE.match(line)
+        if m:
+            if in_phase:
+                break  # the next phase heading ends this phase's section
+            if int(m.group(1)) == phase:
+                in_phase = True
+            continue
+
+        if not in_phase:
+            continue
+
+        if line.startswith("##") and not line.startswith("###"):
+            break  # a level-2 heading ends the phase section
+
+        if BOLD_FIELD_RE.match(line):
+            in_field = line.strip() == "**Verification**"
+            continue
+
+        if not in_field:
+            continue
+
+        jm = JOINS_BULLET_RE.match(line.strip())
+        if jm:
+            return int(jm.group(1)), int(jm.group(2))
+    return None
+
+
+def range_model(lines, first, last):
+    """The model named by every phase in first..last, or a refusal.
+
+    The Topology row used to carry it, which tied the model to the band a
+    phase happened to land in; the band is now read off the joins, so the
+    model lives on the phase. A dispatch covering several phases needs one
+    answer, so phases that disagree are refused rather than reconciled here.
+    """
+    found = {}
+    in_fence = False
+    phase = None
+    in_field = False
+    for line in lines:
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        m = PHASE_HEADING_RE.match(line)
+        if m:
+            phase = int(m.group(1))
+            in_field = False
+            continue
+
+        if line.startswith("##") and not line.startswith("###"):
+            phase = None
+            in_field = False
+            continue
+
+        if phase is None or not (first <= phase <= last):
+            continue
+
+        if BOLD_FIELD_RE.match(line):
+            in_field = line.strip() == "**Implementer**"
+            continue
+
+        if not in_field:
+            continue
+
+        im = IMPLEMENTER_BULLET_RE.match(line.strip())
+        if im and phase not in found:
+            found[phase] = im.group(1)
+
+    missing = [p for p in range(first, last + 1) if p not in found]
+    if missing:
+        die("phase%s %s name%s no model: every phase carries an "
+            "**Implementer** field holding '- Sonnet' or '- Opus'.\n"
+            "  run plan-check on the plan — it names the phase and the fix"
+            % ("" if len(missing) == 1 else "s",
+               ", ".join(str(p) for p in missing),
+               "s" if len(missing) == 1 else ""), 3)
+
+    models = sorted(set(found.values()))
+    if len(models) > 1:
+        spread = ", ".join("phase %d: %s" % (p, found[p])
+                           for p in sorted(found))
+        die("phases %d-%d are dispatched as one unit but name different "
+            "models (%s).\n"
+            "  one dispatch is built by one implementer, so either they "
+            "agree or they are dispatched apart" % (first, last, spread), 3)
+    return models[0]
+
+
+def tests_branch(plan, first, last):
+    """run/<slug>/tests-<first>-<last> — the branch worker add --tests cuts."""
+    slug = os.path.basename(plan)
+    if slug.endswith(".md"):
+        slug = slug[: -len(".md")]
+    return "run/%s/tests-%d-%d" % (slug, first, last)
 
 
 # ---------------------------------------------------------------------------
@@ -230,10 +416,11 @@ WARNING_HOLE = hole(
     "an earlier phase range nearly went wrong? Say \"none\" if there is nothing.")
 
 TDD_HOLE = hole(
-    "Does this phase range write tests? Check the Verification field of each "
-    "phase in the brief above. If yes, name dev-skills:tdd here as the "
-    "implementer's test discipline; if no, say so explicitly rather than "
-    "leaving the question unanswered.")
+    "Is this range a join — the one seat that runs a test? Check the "
+    "Verification field of the phase in the brief above for a '- joins:' "
+    "bullet. If it is, name dev-skills:tdd here as the discipline for the "
+    "repairs it makes; if it is not, say so explicitly — an ordinary phase "
+    "writes none.")
 
 
 BASELINE_HOLE = hole(
@@ -241,6 +428,12 @@ BASELINE_HOLE = hole(
     "plan's `Baseline:` line here, or say \"everything was green\" if the plan "
     "carries no such line — the gate judges the delta, and without this it "
     "judges the absolute and bounces on inherited red.")
+
+
+JUDGE_BASE_HOLE = hole(
+    "What is this run's BASE commit? It is the one `run-state` recorded, "
+    "never `HEAD~1`. Run `%s %s <BASE> %s %s` with it to produce the review "
+    "package, then replace this line with the path it prints.")
 
 
 def commit_range_hole(plan_abs):
@@ -283,48 +476,81 @@ def contracts_dir(workspace):
     return path
 
 
-def existing_reports(workspace):
-    """The reports already written in this run, in numeric order by their
-    first phase. A later phase reads these and the plan — never an earlier
-    phase's diff."""
-    if not os.path.isdir(workspace):
-        return []
+def reports_before(names, before):
+    """Report file names (report-<first>-<last>.md) among `names` whose
+    first phase number is lower than `before`, in numeric order by that
+    number. With before=None every report name is included, unfiltered —
+    what a gate or a judge wants, since it owns the whole range. No
+    filesystem here, so test/unit/test_dispatch.py can pin it directly."""
     found = []
-    for name in os.listdir(workspace):
+    for name in names:
         m = re.fullmatch(r"report-(\d+)-(\d+)\.md", name)
         if m:
-            found.append((int(m.group(1)), os.path.join(workspace, name)))
-    return [p for _n, p in sorted(found)]
+            n = int(m.group(1))
+            if before is None or n < before:
+                found.append((n, name))
+    return [name for _n, name in sorted(found)]
 
 
-def build_implementer_body(plan, first, last, rng, owner, workspace, agent_file):
+def existing_reports(workspace, before=None):
+    """The reports already written in this run, before phase `before` (all
+    of them when before is None), in numeric order by their first phase. A
+    later phase reads these and the plan — never an earlier phase's diff."""
+    if not os.path.isdir(workspace):
+        return []
+    return [os.path.join(workspace, name)
+            for name in reports_before(os.listdir(workspace), before)]
+
+
+def build_implementer_body(plan, first, last, rng, owner, model, workspace,
+                            agent_file, worktree=None, join_range=None):
     brief_path = extract_written_path(run_sibling("brief", plan, rng))
     report_path = os.path.join(workspace, "report-%s.md" % rng)
 
-    if first == 1:
+    if owner.first == 1:
         contract_text = (
             "Nothing precedes this work; no earlier contract binds it. This "
-            "is derived from the range — its first phase is 1 — not from a "
+            "is derived from the row — its first phase is 1 — not from a "
             "failed lookup.")
         reports_text = (
             "No earlier report exists yet. Same reason: nothing precedes this.")
     else:
-        prior_range = "1-%d" % (first - 1)
+        prior_range = "1-%d" % (owner.first - 1)
         contract_path = os.path.join(
             contracts_dir(workspace), "%s.md" % prior_range)
         run_sibling("parallel-contract", plan, prior_range, contract_path)
         contract_text = contract_path
 
-        reports = existing_reports(workspace)
+        reports = existing_reports(workspace, owner.first)
         reports_text = "\n".join(reports) if reports else (
             "No earlier report is on disk. If that surprises you, say so and "
             "stop — do not go reading diffs to work out what was built.")
 
+    if worktree:
+        where_you_work = [worktree, "Work there, not in the current checkout."]
+    else:
+        where_you_work = ["The work happens in the current checkout."]
+
+    join_sections = []
+    if join_range:
+        j_first, j_last = join_range
+        branch = tests_branch(plan, j_first, j_last)
+        join_sections = [
+            "",
+            "## The tests you merge",
+            "Branch %s — the tester's own. Merging it is the join's first "
+            "act, before it compiles or runs anything else." % branch,
+            "",
+            "## The range you join",
+            "phases %d-%d" % (j_first, j_last),
+        ]
+
     parts = [
-        "# Implementer dispatch — phases %s" % owner.phases_raw,
+        "# Implementer dispatch — phases %s" % rng,
         "",
         "## Where this work sits",
-        "Phases %s of this run. Model: %s." % (owner.phases_raw, owner.model),
+        "Phases %s of this run — the Topology row is phases %s. Model: %s."
+        % (rng, owner.phases_raw, model),
         "The boundary is here because: %s" % owner.why,
         "",
         "## Brief",
@@ -343,6 +569,9 @@ def build_implementer_body(plan, first, last, rng, owner, workspace, agent_file)
         "## Report",
         "Write the full report to:",
         report_path,
+        "",
+        "## Where you work",
+    ] + where_you_work + join_sections + [
         "",
         "## Corrections",
         CORRECTED_HOLE,
@@ -389,8 +618,9 @@ def build_gate_a_body(plan, workspace, agent_file):
         plan,
         "",
         "## Implementers' reports",
-        "Each one names the SHA its static checks ran at. Compare that against "
-        "HEAD before you re-run anything:",
+        "Only the join's report names the SHA its checks ran at — an "
+        "ordinary phase runs none. Compare that SHA against HEAD before you "
+        "re-run anything:",
         reports_text,
         "",
         "## Baseline",
@@ -424,6 +654,106 @@ def build_gate_a_body(plan, workspace, agent_file):
     return "\n".join(parts) + "\n"
 
 
+def build_judge_body(plan, workspace, agent_file, head):
+    criteria_path = find_criteria()
+    if not criteria_path:
+        die("cannot find CRITERIA.md under %s"
+            % os.path.join(SKILLS_DIR, "review-criteria"))
+
+    contract_path = os.path.join(contracts_dir(workspace), "all.md")
+    run_sibling("parallel-contract", plan, "1-9999", contract_path)
+
+    reports = existing_reports(workspace)
+    reports_text = "\n".join(reports) if reports else (
+        "No implementer report is on disk. That is not normal after a run: "
+        "say so and stop rather than judging it without them.")
+
+    judge_dir = os.path.join(workspace, "judge")
+    os.makedirs(judge_dir, exist_ok=True)
+
+    base = read_run_base(workspace)
+    review_package_script = os.path.join(HERE, "review-package")
+    outfile = os.path.join(judge_dir, "review-package.diff")
+
+    if base is not None:
+        run_sibling("review-package", plan, base, head, outfile)
+        review_lines = [
+            "## Review package",
+            "This run's whole diff, base to HEAD, already generated:",
+            outfile,
+            "",
+        ]
+    else:
+        review_lines = [
+            "## Review package",
+            JUDGE_BASE_HOLE % (review_package_script, plan, head, outfile),
+            "",
+        ]
+
+    seats = [os.path.join(PLUGIN_ROOT, "agents", "gate-a.md"),
+             os.path.join(PLUGIN_ROOT, "agents", "gate-b.md"),
+             os.path.join(PLUGIN_ROOT, "agents", "implementer.md")]
+    scripts = [os.path.join(HERE, "dispatch"),
+               os.path.join(HERE, "brief"),
+               os.path.join(HERE, "review-package")]
+
+    parts = [
+        "# Judge dispatch — the whole run",
+        "",
+        "## Plan",
+        "Read it whole: the Norms: and Baseline: lines, the stories, the test "
+        "cases, every phase.",
+        plan,
+        "",
+        "## Implementers' reports",
+        "Every phase's, in range order. Only a join's report names the SHA "
+        "its checks ran at — an ordinary phase runs none:",
+        reports_text,
+        "",
+        "## Baseline",
+        BASELINE_HOLE,
+        "",
+    ] + review_lines + [
+        "## Frozen contracts",
+        contract_path,
+        "",
+        "## Review criteria",
+        criteria_path,
+        "",
+        "## The seats you dispatch",
+        "Dispatch each with the Agent tool. Absolute paths, so nothing here "
+        "has to be re-derived:",
+    ] + ["- " + s for s in seats] + [
+        "",
+        "## The scripts you run",
+        "Absolute paths, siblings of each other on disk:",
+    ] + ["- " + s for s in scripts] + [
+        "",
+        "## Cap origin",
+        "This run's HEAD at dispatch time — the fix-round cap counts from "
+        "this sha, and it is the same value this script printed on stdout "
+        "as `cap origin: <sha>`:",
+        head,
+        "",
+        "## Your report",
+        os.path.join(judge_dir, "report.md"),
+        "",
+        "## Corrections",
+        CORRECTED_HOLE,
+        "",
+        "## Run-specific warning",
+        WARNING_HOLE,
+        "",
+        "## Everything else",
+        "The fact/decision protocol, git staging discipline, never-amend, "
+        "the self-check, the report contract, the order of work and the fix "
+        "loop are already in this agent's own definition:",
+        agent_file,
+        "Nothing above restates them. Do not restate them back either.",
+    ]
+    return "\n".join(parts) + "\n"
+
+
 HEADER_TMPL = """This file contains %d `%s` marker%s.
 
 If you find any `%s` marker anywhere in this file, **stop and tell the
@@ -435,17 +765,38 @@ and do not proceed on the rest.
 """
 
 
-USAGE = ("usage: dispatch PLAN_FILE RANGE [--force]\n"
-         "       dispatch PLAN_FILE --gate-a [--force]")
+USAGE = ("usage: dispatch PLAN_FILE RANGE [--worktree PATH] [--force]\n"
+         "       dispatch PLAN_FILE --gate-a [--force]\n"
+         "       dispatch PLAN_FILE --judge [--force]")
 
 
 def main():
     argv = sys.argv[1:]
     gate_a = "--gate-a" in argv
+    judge = "--judge" in argv
     force = "--force" in argv
-    positional = [a for a in argv if a not in ("--gate-a", "--force")]
 
-    want = 1 if gate_a else 2
+    worktree = None
+    positional = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--worktree":
+            if i + 1 >= len(argv):
+                die(USAGE, 2)
+            worktree = argv[i + 1]
+            i += 2
+            continue
+        if a not in ("--gate-a", "--judge", "--force"):
+            positional.append(a)
+        i += 1
+
+    if gate_a and judge:
+        die(USAGE, 2)
+    if worktree is not None and (gate_a or judge):
+        die(USAGE, 2)
+
+    want = 1 if (gate_a or judge) else 2
     if len(positional) != want:
         die(USAGE, 2)
 
@@ -457,10 +808,17 @@ def main():
     if not workspace:
         die("workspace produced no output for %s" % plan)
 
-    agent_name = "gate-a" if gate_a else "implementer"
+    if judge:
+        agent_name = "judge"
+    elif gate_a:
+        agent_name = "gate-a"
+    else:
+        agent_name = "implementer"
     agent_file = os.path.join(PLUGIN_ROOT, "agents", "%s.md" % agent_name)
 
-    if gate_a:
+    if judge:
+        out_path = os.path.join(workspace, "judge-dispatch.md")
+    elif gate_a:
         out_path = os.path.join(workspace, "gate-a-dispatch.md")
     else:
         first, last = parse_range(positional[1])
@@ -472,7 +830,11 @@ def main():
             "already filled its holes; pass --force to overwrite anyway"
             % out_path, 4)
 
-    if gate_a:
+    head = None
+    if judge:
+        head = git_head()
+        body = build_judge_body(plan, workspace, agent_file, head)
+    elif gate_a:
         body = build_gate_a_body(plan, workspace, agent_file)
     else:
         with open(plan, "r", encoding="utf-8") as fh:
@@ -480,9 +842,9 @@ def main():
 
         segments = topology_segments(lines)
         if segments is None:
-            die("no '## Topology' section in %s\n  the model per group of "
-                "phases and the reason its boundary sits there live in that "
-                "table; without it there is nothing to dispatch against"
+            die("no '## Topology' section in %s\n  the rows the joins "
+                "induce, and the reason each boundary sits there, live in "
+                "that table; without it there is nothing to dispatch against"
                 % plan, 3)
 
         owner, spanning = find_owner(segments, first, last)
@@ -497,8 +859,12 @@ def main():
             die("no Topology row covers phases %s exactly.\n  rows in %s: %s"
                 % (rng, plan, existing or "(none)"), 3)
 
+        join_range = verification_join(lines, last)
+        model = range_model(lines, first, last)
+
         body = build_implementer_body(
-            plan, first, last, rng, owner, workspace, agent_file)
+            plan, first, last, rng, owner, model, workspace, agent_file,
+            worktree, join_range)
 
     hole_count = body.count(FILL)
     header = HEADER_TMPL % (
@@ -509,6 +875,8 @@ def main():
 
     print("wrote %s: %d hole%s to fill"
           % (out_path, hole_count, "" if hole_count == 1 else "s"))
+    if judge:
+        print("cap origin: %s" % head)
 
 
 if __name__ == "__main__":

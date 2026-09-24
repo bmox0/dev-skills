@@ -29,6 +29,7 @@ Only the permanent part is described here.
 **E2E.** `<command>` — or: none
 **Runtime.** <how the observable behaviour is driven here: a browser, a request,
 a simulator build, a CLI invocation>
+**Phase check.** `<the one command a phase runs on its own work>` — or: none
 
 **bootstrap.** `<commands to run in a fresh working tree>`
 **link.** `<untracked paths to symlink from the main checkout>`
@@ -57,6 +58,15 @@ not carry. The mechanism is the one already used for `.ai-workflow`:
 ```bash
 ln -s "$MAIN_CHECKOUT/<path>" "$WORKTREE/<path>"
 ```
+
+## The Phase Check
+
+**Phase Check** is the one command a phase runs on its own work: a formatter,
+or `none`. Anything that needs the tree to resolve — compiling, typechecking,
+linting, running a test — is not a phase's to run; that belongs to the
+**join**, the phase that merges the range before it and proves it against the
+full contract. `none` is a real answer and worth a line: most phases have
+nothing of their own to run at all.
 
 ## When a field is missing
 

@@ -4,7 +4,7 @@ dispatch-bare-number-not-expanded	skills/implement/scripts/dispatch	test/mutatio
 dispatch-is-separator-always-false	skills/implement/scripts/dispatch	test/mutations/dispatch-is-separator-always-false.patch	test_separator_row_is_true
 dispatch-parse-table-drops-last-row	skills/implement/scripts/dispatch	test/mutations/dispatch-parse-table-drops-last-row.patch	test_yields_three_segments_first_and_last_present_no_separator
 dispatch-topology-no-break	skills/implement/scripts/dispatch	test/mutations/dispatch-topology-no-break.patch	test_a_later_sections_table_does_not_leak_in
-dispatch-find-owner-first-unconditional	skills/implement/scripts/dispatch	test/mutations/dispatch-find-owner-first-unconditional.patch	test_exact_match_returns_owner_with_correct_model
+dispatch-find-owner-first-unconditional	skills/implement/scripts/dispatch	test/mutations/dispatch-find-owner-first-unconditional.patch	test_exact_match_returns_the_owning_row
 dispatch-extract-written-path-no-anchor	skills/implement/scripts/dispatch	test/mutations/dispatch-extract-written-path-no-anchor.patch	test_ignores_a_path_shaped_first_line_that_is_not_a_wrote_line
 contract-inseg-inverted	skills/implement/scripts/parallel-contract	test/mutations/contract-inseg-inverted.patch	phase 2 frozen missing
 contract-fence-toggle-deleted	skills/implement/scripts/parallel-contract	test/mutations/contract-fence-toggle-deleted.patch	the fenced block inside phase 1's How field must not leak into the output
@@ -33,3 +33,14 @@ plan-check-phases-repair-noop	skills/implement/scripts/plan-check	test/mutations
 plan-check-exit-relaxed	skills/implement/scripts/plan-check	test/mutations/plan-check-exit-relaxed.patch	got 0: phase 2 is missing
 preflight-parallel-locale	skills/implement/scripts/preflight	test/mutations/preflight-parallel-locale.patch	an intersection must be found whatever the locale
 moments-check-shape-relaxed	skills/implement/scripts/plan-check	test/mutations/moments-check-shape-relaxed.patch	TC-1 (moments): a moment with one step should exit 1, got 0
+dispatch-judge-run-base-blind	skills/implement/scripts/dispatch	test/mutations/dispatch-judge-run-base-blind.patch	judge TC-2: no-BASE-hole assertion — a <<< FILL marker in judge-dispatch.md names BASE even though the RUN marker's base= line resolved
+plan-check-depends-forward-allowed	skills/implement/scripts/plan-check	test/mutations/plan-check-depends-forward-allowed.patch	graph TC-4: a Depends on naming a later phase should exit 1, got 0
+preflight-attribution-violation-not-counted	skills/implement/scripts/preflight	test/mutations/preflight-attribution-violation-not-counted.patch	attribution TC-8: an undeclared write should exit 1, got 0:
+worker-add-not-idempotent	skills/implement/scripts/worker	test/mutations/worker-add-not-idempotent.patch	worker TC-2: a repeated worker add should exit 0, got 1:
+worker-tests-prefix-dropped	skills/implement/scripts/worker	test/mutations/worker-tests-prefix-dropped.patch	tester TC-3: worktree path should end in tester-plan/tests-1-8, got:
+dispatch-row-containment-removed	skills/implement/scripts/dispatch	test/mutations/dispatch-row-containment-removed.patch	test_tc11_a_range_contained_in_one_row_is_dispatched_alone
+preflight-phase-check-not-demanded	skills/implement/scripts/preflight	test/mutations/preflight-phase-check-not-demanded.patch	phase check TC-2: Phase check finding missing
+plan-check-verification-not-checked	skills/implement/scripts/plan-check	test/mutations/plan-check-verification-not-checked.patch	join TC-7: a plan naming no join should exit 1, got 0:
+plan-check-join-coverage-ignored	skills/implement/scripts/plan-check	test/mutations/plan-check-join-coverage-ignored.patch	join TC-10: a join whose range does not cover the phase should exit 1, got 0:
+dispatch-verification-join-blind	skills/implement/scripts/dispatch	test/mutations/dispatch-verification-join-blind.patch	test_returns_range_for_a_join_phase
+worker-add-after-rm-unguarded	skills/implement/scripts/worker	test/mutations/worker-add-after-rm-unguarded.patch	worker TC-5: worker add after worker rm should exit 0, got

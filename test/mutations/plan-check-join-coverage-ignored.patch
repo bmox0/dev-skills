@@ -1,0 +1,13 @@
+diff --git a/skills/implement/scripts/plan-check b/skills/implement/scripts/plan-check
+index 9ff2480..bf938eb 100755
+--- a/skills/implement/scripts/plan-check
++++ b/skills/implement/scripts/plan-check
+@@ -607,8 +607,6 @@ verification_issues=$(awk '
+         printf "VNOJOIN\t%s\t%s\n", rph[i], j
+         continue
+       }
+-      if (j in range_a && (range_a[j] > rph[i] || range_b[j] < rph[i]))
+-        printf "VNOTCOVERED\t%s\t%s %s-%s\n", rph[i], j, range_a[j], range_b[j]
+     }
+   }
+ ' "$plan")

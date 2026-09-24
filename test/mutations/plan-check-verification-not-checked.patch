@@ -1,0 +1,12 @@
+diff --git a/skills/implement/scripts/plan-check b/skills/implement/scripts/plan-check
+index 9ff2480..2dec8b4 100755
+--- a/skills/implement/scripts/plan-check
++++ b/skills/implement/scripts/plan-check
+@@ -562,7 +562,6 @@ verification_issues=$(awk '
+   /^\*\*[A-Za-z][^*]*\*\*[ \t]*$/ {
+     close_field()
+     reset_field()
+-    if ($0 ~ /^\*\*Verification\*\*[ \t]*$/) infield = 1
+     next
+   }
+ 

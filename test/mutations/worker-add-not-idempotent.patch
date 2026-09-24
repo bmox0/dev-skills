@@ -1,0 +1,13 @@
+diff --git a/skills/implement/scripts/worker b/skills/implement/scripts/worker
+index 18dd3a4..f7521bf 100755
+--- a/skills/implement/scripts/worker
++++ b/skills/implement/scripts/worker
+@@ -87,7 +87,7 @@ cmd_add() {
+   if [ -n "$existing_branch" ]; then
+     if [ "$existing_branch" = "$branch" ]; then
+       print_worker_lines
+-      exit 0
++      exit 1
+     fi
+     echo "$path exists and is not ${branch}'s worktree (registered on $existing_branch)" >&2
+     exit 1

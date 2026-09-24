@@ -13,6 +13,33 @@ fail() {
   exit 1
 }
 
+manifest="$repo_root/test/mutations/manifest.tsv"
+
+# mutation_targets_dirty — true while any manifest target differs from HEAD,
+# which is true exactly while some row's patch is applied mid-sweep.
+mutation_targets_dirty() {
+  local t
+  while IFS=$'\t' read -r _id t _patch _fail; do
+    [ -n "$t" ] || continue
+    git -C "$repo_root" diff --quiet -- "$t" 2>/dev/null || return 0
+  done < <(tail -n +2 "$manifest")
+  return 1
+}
+
+if [ -n "${DEV_SKILLS_MUTATION_ROW:-}" ]; then
+  echo "skip: row $DEV_SKILLS_MUTATION_ROW owns the tree"
+  exit 0
+fi
+
+if mutation_targets_dirty; then
+  while IFS=$'\t' read -r _id t _patch _fail; do
+    [ -n "$t" ] || continue
+    git -C "$repo_root" diff --quiet -- "$t" 2>/dev/null \
+      || echo "harness.test.sh: dirty target: $t" >&2
+  done < <(tail -n +2 "$manifest")
+  fail "a sweep may have been interrupted with a patch left applied"
+fi
+
 # --- assert_eq -------------------------------------------------------------
 
 assert_eq a a "a should equal a" || fail "assert_eq a a should pass"
@@ -56,6 +83,67 @@ rc=$?
 [ "$rc" -eq 0 ] || fail "scripts/test --mutations on a header-only manifest should exit 0"
 assert_contains "$out" "no mutations" \
   "scripts/test --mutations on a header-only manifest should say so" || fail "no mutations text missing"
+
+# --- TC-1: an interrupted mutation sweep reverts its own patch -------------
+#
+# given: a throwaway repository holding scripts/test, one manifest row whose
+# patch applies to a tracked file, and one test file that sleeps. when:
+# scripts/test --mutations is interrupted with SIGINT about two seconds in,
+# while that row's patch is still applied. then: the sweep exits non-zero,
+# and the row's target matches HEAD again — nothing is left applied.
+#
+# `set -m` is turned on only for the subshell below: without job control, a
+# backgrounded command started from a non-interactive script has SIGINT
+# ignored by bash itself (bash(1), Signals — "when job control is not
+# active, asynchronous commands ignore SIGINT"), so the interrupt below
+# would never reach it and this case would prove nothing.
+
+fixture_tc1=$(mktemp_dir)
+mkdir -p "$fixture_tc1/scripts" "$fixture_tc1/test/mutations" "$fixture_tc1/test/cli"
+git -C "$fixture_tc1" init -q -b main
+git -C "$fixture_tc1" config user.email "fixture@example.com"
+git -C "$fixture_tc1" config user.name "fixture"
+cp "$repo_root/scripts/test" "$fixture_tc1/scripts/test"
+chmod +x "$fixture_tc1/scripts/test"
+
+printf 'original\n' > "$fixture_tc1/target.txt"
+cat > "$fixture_tc1/test/cli/slow.test.sh" <<'EOF'
+#!/usr/bin/env bash
+sleep 5
+echo ok
+EOF
+chmod +x "$fixture_tc1/test/cli/slow.test.sh"
+
+git -C "$fixture_tc1" add -A
+git -C "$fixture_tc1" commit -q -m "chore: initial commit"
+
+printf 'mutated\n' > "$fixture_tc1/target.txt"
+git -C "$fixture_tc1" diff -- target.txt > "$fixture_tc1/test/mutations/row.patch"
+git -C "$fixture_tc1" checkout -- target.txt
+
+printf 'id\ttarget\tpatch\texpect-fail\n' > "$fixture_tc1/test/mutations/manifest.tsv"
+printf 'row1\ttarget.txt\ttest/mutations/row.patch\tirrelevant\n' >> "$fixture_tc1/test/mutations/manifest.tsv"
+
+rc_dir_tc1=$(mktemp_dir)
+rc_file_tc1="$rc_dir_tc1/rc"
+
+(
+  set -m
+  cd "$fixture_tc1"
+  ./scripts/test --mutations >"$fixture_tc1/sweep.log" 2>&1 &
+  pid=$!
+  sleep 2
+  kill -INT "$pid" 2>/dev/null
+  wait "$pid"
+  echo $? > "$rc_file_tc1"
+) >/dev/null 2>&1
+
+rc_tc1=$(cat "$rc_file_tc1")
+[ "$rc_tc1" -ne 0 ] || fail "TC-1: an interrupted mutation sweep should exit non-zero, got $rc_tc1"
+
+dirty_tc1=$(git -C "$fixture_tc1" status --porcelain -- target.txt)
+[ -z "$dirty_tc1" ] \
+  || fail "TC-1: the row's target should match HEAD again after an interrupted sweep, but git status --porcelain reports: $dirty_tc1"
 
 # --- mktemp_dir --------------------------------------------------------------
 
@@ -166,6 +254,56 @@ checkpoint_out=$(cd "$repo_root" && grep -rn 'Checkpoint [0-9]' skills/ 2>/dev/n
 segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
 [ -z "$segment_col_out" ] || fail "TC-11: expected no match for '| Segment |', found: $segment_col_out"
 
+# --- gate-b.md TC-11: gate B forbids writing to the range it judges -------
+#
+# given: agents/gate-b.md as the run left it. when: it is read. then: it
+# forbids writing to the range under judgement, naming git checkout, git
+# restore and git stash as examples; allows writes only under the evidence
+# directory; and gives a read-only way to answer a liveness question.
+#
+# Labelled by target file, not by a bare TC-n: TC-9 through TC-12 immediately
+# above and below this block already name a different, unrelated group in
+# this file (scripts/check, haiku, Checkpoint/Segment, the mutation floor).
+
+gate_b_content=$(cat "$repo_root/agents/gate-b.md")
+for phrase_tc11 in "git checkout" "git restore" "git stash" "read-only" "git status --porcelain"; do
+  assert_contains "$gate_b_content" "$phrase_tc11" \
+    "gate-b.md TC-11: agents/gate-b.md should mention '$phrase_tc11'" \
+    || fail "gate-b.md TC-11: '$phrase_tc11' not found in agents/gate-b.md"
+done
+
+# --- judge.md TC-12: the report header is rewritten in full every dispatch -
+#
+# given: agents/judge.md as the run left it. when: it is read. then: it
+# carries the report header verbatim, beginning with a Range: line, says the
+# header is rewritten in full on every dispatch, says the round sections
+# below it are not, and still carries the seven-line return block unchanged.
+
+judge_content=$(cat "$repo_root/agents/judge.md")
+assert_contains "$judge_content" "Range:" \
+  "judge.md TC-12: the report header should carry a Range: line" || fail "judge.md TC-12: 'Range:' not found in agents/judge.md"
+assert_contains "$judge_content" "Cap origin:" \
+  "judge.md TC-12: the report header should carry a Cap origin: line" || fail "judge.md TC-12: 'Cap origin:' not found in agents/judge.md"
+printf '%s' "$judge_content" | grep -qi 'rewrit' \
+  || fail "judge.md TC-12: should state the header is rewritten in full on every dispatch (no 'rewrit' found)"
+printf '%s' "$judge_content" | grep -qi 'regenerat' \
+  || fail "judge.md TC-12: should use this tree's 'regenerated, not edited in place' framing (no 'regenerat' found)"
+
+expected_return_block_j12=$(cat <<'BLOCK'
+VERDICT: <one of the four above>
+HEAD: <the sha this verdict is about>
+Fix rounds spent: <n> of 2
+Unresolved advisories: <n>
+Gate A report: <path>
+Gate B evidence: <dir>
+Judge report: <path>
+BLOCK
+)
+actual_return_block_j12=$(sed -n '/^VERDICT: /,/^Judge report: /p' "$repo_root/agents/judge.md")
+assert_eq "$expected_return_block_j12" "$actual_return_block_j12" \
+  "judge.md TC-12: the seven-line return block should be unchanged" \
+  || fail "judge.md TC-12: seven-line block mismatch, got: $actual_return_block_j12"
+
 # --- TC-12: the whole net is green, and the mutation floor is met ----------
 #
 # scripts/test discovers this very file, so calling the bulk, self-discovering
@@ -178,24 +316,24 @@ segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
 # report every such row FAILED — turning a real, correct
 # "scripts/test --mutations" run red by the mere act of checking it.
 #
-# The two checks below are structured to make each of those impossible, not
-# just unlikely:
+# The decision at the top of this file is what makes each of those
+# impossible, not just unlikely — and it tells the two cases apart by
+# DEV_SKILLS_MUTATION_ROW alone, never by inferring a sweep from git state:
 #
-# - "scripts/test" is re-proved by calling scripts/test once per discovered
-#   file *other than this one*, in single-file mode. Single-file mode never
-#   calls the discovery this file is caught by, so there is nothing here for
-#   it to recurse into, in either direction.
-# - "scripts/test --mutations" is called once, in full, but only when no
-#   manifest target currently differs from HEAD — which is true exactly when
-#   nothing is mid-mutation. Every child scripts/test --mutations spawns
-#   while a row's patch is applied sees that row's target as dirty and skips
-#   this block entirely, so the real, human- or gate-invoked sweep this test
-#   exists to prove never triggers a nested one of itself.
+# - a nested inner run has DEV_SKILLS_MUTATION_ROW set before this file is
+#   spawned, so that run exits at "skip" long before reaching this line —
+#   there is nothing here for it to recurse into, in either direction.
+# - an interrupted sweep leaves a manifest target dirty with the marker
+#   unset, so that run refuses before reaching this line either.
+# - reaching this line at all means both were ruled out: the marker was
+#   unset and every target already matched HEAD. "scripts/test" is re-proved
+#   below by calling scripts/test once per discovered file *other than this
+#   one*, in single-file mode, and "scripts/test --mutations" is called once,
+#   in full, knowing it cannot be nested inside another sweep's own row.
 #
 # The manifest's own shape — every row naming a target and a patch that
 # exist — needs neither guard: it is a local file read, nothing runs.
 
-manifest="$repo_root/test/mutations/manifest.tsv"
 [ -f "$manifest" ] || fail "TC-12: manifest.tsv should exist at $manifest"
 
 row_count=0
@@ -208,38 +346,26 @@ done < <(tail -n +2 "$manifest")
 [ "$row_count" -ge 31 ] \
   || fail "TC-12: expected at least 31 mutation rows (29 baseline + plan-check's new ones), got $row_count"
 
-# mutation_targets_dirty — true while any manifest target differs from HEAD,
-# which is true exactly while some row's patch is applied mid-sweep.
-mutation_targets_dirty() {
-  local t
-  while IFS=$'\t' read -r _id t _patch _fail; do
-    [ -n "$t" ] || continue
-    git -C "$repo_root" diff --quiet -- "$t" 2>/dev/null || return 0
-  done < <(tail -n +2 "$manifest")
-  return 1
+self_path="test/cli/harness.test.sh"
+discover_other_test_paths() {
+  ( cd "$repo_root" && find test -type f -name '*.test.sh' 2>/dev/null | LC_ALL=C sort
+    cd "$repo_root" && find test/unit -type f -name 'test_*.py' 2>/dev/null | LC_ALL=C sort ) \
+    | grep -vF "$self_path"
 }
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  out=$("$repo_root/scripts/test" "$f" 2>&1)
+  rc=$?
+  [ "$rc" -eq 0 ] || fail "TC-12: scripts/test $f should be green, got exit $rc: $out"
+done < <(discover_other_test_paths)
 
-if ! mutation_targets_dirty; then
-  self_path="test/cli/harness.test.sh"
-  discover_other_test_paths() {
-    ( cd "$repo_root" && find test -type f -name '*.test.sh' 2>/dev/null | LC_ALL=C sort
-      cd "$repo_root" && find test/unit -type f -name 'test_*.py' 2>/dev/null | LC_ALL=C sort ) \
-      | grep -vF "$self_path"
-  }
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    out=$("$repo_root/scripts/test" "$f" 2>&1)
-    rc=$?
-    [ "$rc" -eq 0 ] || fail "TC-12: scripts/test $f should be green, got exit $rc: $out"
-  done < <(discover_other_test_paths)
+mut_out=$("$repo_root/scripts/test" --mutations 2>&1)
+mut_rc=$?
+[ "$mut_rc" -eq 0 ] \
+  || fail "TC-12: scripts/test --mutations should be green (0 survivors), got exit $mut_rc: $mut_out"
+mut_count=$(printf '%s\n' "$mut_out" | grep -cE '^MUTATION ')
+[ "$mut_count" -ge 31 ] \
+  || fail "TC-12: expected at least 31 mutations reported, got $mut_count"
 
-  mut_out=$("$repo_root/scripts/test" --mutations 2>&1)
-  mut_rc=$?
-  [ "$mut_rc" -eq 0 ] \
-    || fail "TC-12: scripts/test --mutations should be green (0 survivors), got exit $mut_rc: $mut_out"
-  mut_count=$(printf '%s\n' "$mut_out" | grep -cE '^MUTATION ')
-  [ "$mut_count" -ge 31 ] \
-    || fail "TC-12: expected at least 31 mutations reported, got $mut_count"
-fi
-
+echo "mutations: $mut_count"
 echo "ok"

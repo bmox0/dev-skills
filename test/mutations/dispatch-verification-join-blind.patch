@@ -1,0 +1,13 @@
+diff --git a/skills/implement/scripts/dispatch b/skills/implement/scripts/dispatch
+index d549f05..c38c15d 100755
+--- a/skills/implement/scripts/dispatch
++++ b/skills/implement/scripts/dispatch
+@@ -313,7 +313,7 @@ def verification_join(lines, phase):
+             break  # a level-2 heading ends the phase section
+
+         if BOLD_FIELD_RE.match(line):
+-            in_field = line.strip() == "**Verification**"
++            in_field = False
+             continue
+
+         if not in_field:
