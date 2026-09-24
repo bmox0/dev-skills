@@ -132,7 +132,7 @@ are not something a script can cut: `brief` hard-stops, and `plan-check` — run
 before you present the plan, see below — repairs the omission rather than let a
 run start on it. Writing the container yourself is how it never comes up.
 
-The strings the scripts anchor on — the eight field names, the two *Verification*
+The strings the scripts anchor on — the nine field names, the two *Verification*
 grammars, the artifact names derived from a phase range — are written out once, in
 [`references/VOCABULARY.md`](../../references/VOCABULARY.md), together with the
 vocabulary every artifact in a run uses. The skeleton is the shape; that file is

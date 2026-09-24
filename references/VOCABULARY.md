@@ -383,11 +383,11 @@ exactly as later phases must produce and check them:
 - `## Phases` — the container heading, on its own line
 - `### Phase <n>.` — a phase heading; the number is followed by `.` or
   whitespace
-- the eight field headings, verbatim, each bold on its own line:
-  `**Becomes true**`, `**Changes**`, `**Depends on**`, `**How**`,
-  `**Do not touch**`, `**Frozen for later phases**`, `**Verification**`,
-  `**Steps**`
-- `**Depends on**` — the eighth field heading, bold on its own line, written
+- the nine field headings, verbatim, each bold on its own line:
+  `**Becomes true**`, `**Changes**`, `**Depends on**`, `**Implementer**`,
+  `**How**`, `**Do not touch**`, `**Frozen for later phases**`,
+  `**Verification**`, `**Steps**`
+- `**Depends on**` — a field heading, bold on its own line, written
   immediately below `**Changes**`
 - a dependency bullet — `- phase <n> — <why this phase needs its file>` — an em
   dash with one space on either side, and `<n>` always lower than the number of
