@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Refuses a malformed plan before a human ever dispatches work against it.
 #
-# Seven mechanical checks, fence-aware the way brief and preflight
+# Nine mechanical checks, fence-aware the way brief and preflight
 # already are (a heading inside a fenced example is not a heading):
 #   1. '## Phases' is present
 #   2. at least one '### Phase <n>.' heading exists
 #   3. phase numbers are contiguous starting at 1
-#   4. every '### Phase <n>.' carries all seven field headings — reported
+#   4. every '### Phase <n>.' carries all eight field headings — reported
 #      per phase, naming the phase and every field it lacks
 #   5. '## Topology' has a first table whose header is exactly
 #      '| Phases | Implementer | Why the boundary is here |', and every
@@ -15,6 +15,20 @@
 #   7. '## Moments', when present and not a bare '—', holds only moment
 #      headings ('- **M-<n>. <text>** · US-<n>[, ...]') each carrying at
 #      least one 'US-' reference and at least two numbered steps
+#   8. every phase's '**Depends on**' is well-formed — either a lone '- —'
+#      or one or more '- phase <n> — <why this phase needs its file>'
+#      bullets, each naming an earlier phase, never both
+#   9. every phase's '**Verification**' names the join that proves it — an
+#      ordinary phase carries one '- proved by: phase <n>', a join carries
+#      '- joins: phases <a>-<b>' and '- cases: TC-<n>[, TC-<n>...]' or
+#      '- cases: —', never both bullets in one field; and the join a phase
+#      names exists, is later, carries a '- joins:' bullet of its own and
+#      covers that phase
+#
+# Check 9 needs no cycle detector and none is wanted: '- proved by:' always
+# names a higher-numbered phase, '- joins:' always a lower-numbered range,
+# and phase numbers are contiguous from 1 (check 3), so every reference
+# resolves and the relation is acyclic by construction.
 #
 # Check 1 is the one fault with no decision in it: the heading always goes
 # immediately above the first '### Phase 1.', so it is inserted in place and
@@ -142,7 +156,7 @@ else
   fi
 fi
 
-# --- check 4: every phase carries all seven fields, reported per phase -----
+# --- check 4: every phase carries all eight fields, reported per phase -----
 
 field_issues=$(awk '
   /^```/ { fence = !fence; next }
@@ -150,14 +164,14 @@ field_issues=$(awk '
 
   function report(   i, out) {
     out = ""
-    for (i = 1; i <= 7; i++) {
+    for (i = 1; i <= 8; i++) {
       if (!(fields[i] in has)) out = out (out == "" ? "" : "|") fields[i]
     }
     if (out != "") print phase "\t" phase_line "\t" out
   }
 
   BEGIN {
-    split("Becomes true|Changes|How|Do not touch|Frozen for later phases|Verification|Steps", fields, "|")
+    split("Becomes true|Changes|Depends on|How|Do not touch|Frozen for later phases|Verification|Steps", fields, "|")
   }
 
   /^###[ \t]+Phase[ \t]+[0-9]+[.[:space:]]/ {
@@ -370,6 +384,267 @@ if [ -n "$moments_line" ]; then
       done <<< "$moments_issues"
     fi
   fi
+fi
+
+# --- check 8: every phase's '**Depends on**' is well-formed ----------------
+#
+# Numbered 8, not 5, so checks 1-7 keep the numbers the header comment, the
+# existing manifest rows and their patch context already use. It belongs
+# beside check 4 rather than after it: check 4 proves the field is there,
+# check 8 proves it says something.
+#
+# No cycle detector, and none is wanted: a dependency bullet always names a
+# lower-numbered phase and phase numbers are contiguous from 1 (check 3), so
+# the graph is acyclic by construction and every reference resolves to a
+# phase that exists. The one comparison below is the whole guarantee.
+#
+# A line inside the field that begins with whitespace is a wrapped bullet's
+# continuation and is skipped, not reported; a blank line is skipped too.
+# The field ends at the next bold field heading, the next phase heading, or
+# the next '##'. The em dash is matched as a literal byte sequence, the way
+# parallel-contract already matches '- —' — no character class, no locale
+# assumption, no LC_ALL change.
+
+depends_issues=$(awk '
+  /^```/ { fence = !fence; next }
+  fence { next }
+
+  function reset_field() {
+    infield = 0; has_dash = 0; has_dep = 0; content_lines = 0
+    nbad = 0; nfwd = 0
+  }
+
+  function close_field(   i) {
+    if (!infield) return
+    if (content_lines == 0) {
+      print "EMPTY\t" phase
+    } else if (has_dash && has_dep) {
+      print "MIXED\t" phase
+    } else {
+      for (i = 1; i <= nbad; i++) print "BAD\t" phase "\t" bad_line[i]
+      for (i = 1; i <= nfwd; i++) print "FORWARD\t" phase "\t" fwd_n[i]
+    }
+  }
+
+  BEGIN { reset_field() }
+
+  /^###[ \t]+Phase[ \t]+[0-9]+[.[:space:]]/ {
+    close_field()
+    n = $0; sub(/^###[ \t]+Phase[ \t]+/, "", n); sub(/[^0-9].*$/, "", n)
+    phase = n + 0
+    reset_field()
+    next
+  }
+
+  /^##[ \t]+/ && $0 !~ /^###/ {
+    close_field()
+    reset_field()
+    next
+  }
+
+  /^\*\*[A-Za-z][^*]*\*\*[ \t]*$/ {
+    close_field()
+    reset_field()
+    if ($0 ~ /^\*\*Depends on\*\*[ \t]*$/) infield = 1
+    next
+  }
+
+  infield {
+    line = $0
+    if (line ~ /^[ \t]*$/) next
+    if (line ~ /^[ \t]+/) next
+    content_lines++
+    if (line ~ /^-[ \t]*—[ \t]*$/) { has_dash = 1; next }
+    if (line ~ /^- phase [0-9]+ — .+$/) {
+      has_dep = 1
+      n2 = line
+      sub(/^- phase /, "", n2)
+      sub(/ —.*$/, "", n2)
+      if ((n2 + 0) >= phase) { nfwd++; fwd_n[nfwd] = n2 + 0 }
+      next
+    }
+    nbad++; bad_line[nbad] = line
+  }
+
+  END { close_field() }
+' "$plan")
+
+if [ -n "$depends_issues" ]; then
+  while IFS=$'\t' read -r dp_kind dp_phase dp_extra; do
+    [ -n "$dp_kind" ] || continue
+    case "$dp_kind" in
+      EMPTY)
+        findings+=("phase ${dp_phase}'s **Depends on** in ${plan} is empty — write '- —' when the phase depends on nothing, or '- phase <n> — <why this phase needs its file>' for each phase whose file it edits. ${DONT_READ}")
+        ;;
+      BAD)
+        findings+=("phase ${dp_phase}'s **Depends on** in ${plan} has a bullet that is not a dependency: '${dp_extra}' — expected '- phase <n> — <why this phase needs its file>', with an em dash and one space on either side, or a single '- —'. ${DONT_READ}")
+        ;;
+      FORWARD)
+        findings+=("phase ${dp_phase}'s **Depends on** in ${plan} names phase ${dp_extra} — a dependency is always on an earlier phase, so the number must be lower than ${dp_phase}. A phase cannot depend on itself, or on one that runs after it. ${DONT_READ}")
+        ;;
+      MIXED)
+        findings+=("phase ${dp_phase}'s **Depends on** in ${plan} carries both '- —' and a dependency — the dash is the assertion that there is none, so it stands alone or not at all. ${DONT_READ}")
+        ;;
+    esac
+  done <<< "$depends_issues"
+fi
+
+# --- check 9: every phase's '**Verification**' names the join that proves it
+#
+# Check 8's twin, and deliberately built the same way: one fence-aware awk
+# pass that walks phases and latches on '**Verification**', then one bash
+# loop turning each 'KIND\tphase\textra' tuple into a sentence. The field
+# ends at the next bold field heading, the next phase heading, or the next
+# '##'; a blank line and a wrapped bullet's indented continuation are
+# skipped, not reported. The em dash is matched as a literal byte sequence,
+# the way check 8 and parallel-contract already match it.
+#
+# Reports only, never repairs: which join proves a phase is a decision, and
+# check 1 stays the only repair in this script.
+
+verification_issues=$(awk '
+  /^```/ { fence = !fence; next }
+  fence { next }
+
+  function reset_field() {
+    infield = 0; content_lines = 0
+    n_proved = 0; n_joins = 0; n_cases = 0; nbad = 0
+    proved_n = 0; joins_a = 0; joins_b = 0
+  }
+
+  function close_field(   i) {
+    if (!infield) return
+    nrec++
+    rbuf[nrec] = ""
+    rph[nrec] = phase
+    rproved[nrec] = ""
+    if (content_lines == 0) {
+      rbuf[nrec] = "VEMPTY\t" phase "\t\n"
+      return
+    }
+    if (n_proved > 0 && n_joins > 0) {
+      rbuf[nrec] = "VMIXED\t" phase "\t\n"
+      return
+    }
+    rproved[nrec] = (n_proved > 0 ? proved_n : "")
+    if (n_joins == 0) {
+      for (i = 1; i <= n_cases; i++) { nbad++; bad_line[nbad] = case_line[i] }
+    }
+    for (i = 1; i <= nbad; i++) rbuf[nrec] = rbuf[nrec] "VBAD\t" phase "\t" bad_line[i] "\n"
+    if (n_joins > 0) {
+      isjoin[phase] = 1
+      if (n_cases == 0) rbuf[nrec] = rbuf[nrec] "VNOCASES\t" phase "\t" joins_a "-" joins_b "\n"
+      if (joins_b >= phase || joins_a > joins_b) {
+        rbuf[nrec] = rbuf[nrec] "VBACKWARD\t" phase "\t" joins_a "-" joins_b "\n"
+      } else {
+        range_a[phase] = joins_a; range_b[phase] = joins_b
+      }
+    }
+  }
+
+  BEGIN { reset_field(); nrec = 0 }
+
+  /^###[ \t]+Phase[ \t]+[0-9]+[.[:space:]]/ {
+    close_field()
+    n = $0; sub(/^###[ \t]+Phase[ \t]+/, "", n); sub(/[^0-9].*$/, "", n)
+    phase = n + 0
+    seen[phase] = 1
+    reset_field()
+    next
+  }
+
+  /^##[ \t]+/ && $0 !~ /^###/ {
+    close_field()
+    reset_field()
+    next
+  }
+
+  /^\*\*[A-Za-z][^*]*\*\*[ \t]*$/ {
+    close_field()
+    reset_field()
+    if ($0 ~ /^\*\*Verification\*\*[ \t]*$/) infield = 1
+    next
+  }
+
+  infield {
+    line = $0
+    if (line ~ /^[ \t]*$/) next
+    if (line ~ /^[ \t]+/) next
+    content_lines++
+    if (line ~ /^- proved by: phase [0-9]+[ \t]*$/) {
+      n_proved++
+      pn = line
+      sub(/^- proved by: phase /, "", pn)
+      proved_n = pn + 0
+      next
+    }
+    if (line ~ /^- joins: phases [0-9]+-[0-9]+[ \t]*$/) {
+      n_joins++
+      jn = line
+      sub(/^- joins: phases /, "", jn)
+      split(jn, jr, "-")
+      joins_a = jr[1] + 0; joins_b = jr[2] + 0
+      next
+    }
+    if (line ~ /^- cases: —[ \t]*$/ || line ~ /^- cases: TC-[0-9]+(, TC-[0-9]+)*[ \t]*$/) {
+      n_cases++; case_line[n_cases] = line
+      next
+    }
+    nbad++; bad_line[nbad] = line
+  }
+
+  END {
+    close_field()
+    for (i = 1; i <= nrec; i++) {
+      printf "%s", rbuf[i]
+      if (rproved[i] == "") continue
+      j = rproved[i] + 0
+      if (j <= rph[i] || !(j in seen)) {
+        printf "VFORWARD\t%s\t%s\n", rph[i], j
+        continue
+      }
+      if (!(j in isjoin)) {
+        printf "VNOJOIN\t%s\t%s\n", rph[i], j
+        continue
+      }
+      if (j in range_a && (range_a[j] > rph[i] || range_b[j] < rph[i]))
+        printf "VNOTCOVERED\t%s\t%s %s-%s\n", rph[i], j, range_a[j], range_b[j]
+    }
+  }
+' "$plan")
+
+if [ -n "$verification_issues" ]; then
+  while IFS=$'\t' read -r v_kind v_phase v_extra; do
+    [ -n "$v_kind" ] || continue
+    case "$v_kind" in
+      VEMPTY)
+        findings+=("phase ${v_phase}'s **Verification** in ${plan} is empty — write '- proved by: phase <n>' naming the join that proves this phase, or, if this phase is the join, '- joins: phases <a>-<b>' and '- cases: TC-<n>[, TC-<n>...]'. ${DONT_READ}")
+        ;;
+      VBAD)
+        findings+=("phase ${v_phase}'s **Verification** in ${plan} has a bullet that is neither form: '${v_extra}' — an ordinary phase's **Verification** is one '- proved by: phase <n>' bullet naming the join that proves it; a join's is '- joins: phases <a>-<b>' with '- cases: TC-<n>[, TC-<n>...]' or '- cases: —'. ${DONT_READ}")
+        ;;
+      VMIXED)
+        findings+=("phase ${v_phase}'s **Verification** in ${plan} carries both '- proved by:' and '- joins:' — a phase is one or the other: either a join proves it, or it is the join. ${DONT_READ}")
+        ;;
+      VFORWARD)
+        findings+=("phase ${v_phase}'s **Verification** in ${plan} names phase ${v_extra} as the join that proves it — a join is always later than what it proves, so the number must be higher than ${v_phase} and name a phase this plan has. ${DONT_READ}")
+        ;;
+      VBACKWARD)
+        findings+=("phase ${v_phase}'s **Verification** in ${plan} joins phases ${v_extra} — a join's range is always earlier than the join itself, so the last number must be lower than ${v_phase} and the first must not be higher than the last. ${DONT_READ}")
+        ;;
+      VNOJOIN)
+        findings+=("phase ${v_phase}'s **Verification** in ${plan} names phase ${v_extra} as the join that proves it, but phase ${v_extra} carries no '- joins: phases <a>-<b>' bullet, so it is not a join — a phase carrying '- joins:' is the join, and there is no other marker. ${DONT_READ}")
+        ;;
+      VNOTCOVERED)
+        nc_join="${v_extra%% *}"
+        nc_range="${v_extra#* }"
+        findings+=("phase ${v_phase}'s **Verification** in ${plan} names phase ${nc_join} as the join that proves it, but phase ${nc_join} joins phases ${nc_range}, which does not cover phase ${v_phase} — a phase is proved by a join whose range contains it. ${DONT_READ}")
+        ;;
+      VNOCASES)
+        findings+=("phase ${v_phase}'s **Verification** in ${plan} joins phases ${v_extra} but carries no '- cases:' bullet — a join names the approved cases it proves, as '- cases: TC-<n>[, TC-<n>...]', or '- cases: —' to assert it proves none. ${DONT_READ}")
+        ;;
+    esac
+  done <<< "$verification_issues"
 fi
 
 # --- report ------------------------------------------------------------------

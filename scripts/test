@@ -13,11 +13,15 @@
 # never a silent fallback to the whole suite.
 #
 # --mutations reads test/mutations/manifest.tsv and, for each row, proves the
-# red it records still exists: apply the patch, run the full suite, confirm
-# the named test fails, revert the patch, confirm the working tree is clean
-# again at the row's target path. A patch that no longer applies is a stale
-# row — reported as such, not skipped — because after a rewrite of the code
-# it targets, that IS the signal this plan exists to produce.
+# red it records still exists: apply the patch, export DEV_SKILLS_MUTATION_ROW
+# with that row's id for the duration of the inner suite run, run the full
+# suite, confirm the named test fails, unset the marker, revert the patch,
+# confirm the working tree is clean again at the row's target path. A patch
+# that no longer applies is a stale row — reported as such, not skipped —
+# because after a rewrite of the code it targets, that IS the signal this plan
+# exists to produce. An interrupt — SIGINT, SIGTERM, or the shell exiting —
+# reverts whichever patch is still applied before the process dies and exits
+# non-zero: an interrupted sweep proved nothing and must not report success.
 #
 # Usage: scripts/test [PATH | --mutations]
 # Exit:  0 everything held (or the one named file passed)
@@ -142,6 +146,23 @@ run_mutations() {
 
   local rows=0
   local id target patch expect_fail
+  local applied_patch=""
+
+  trap '
+    if [ -n "$applied_patch" ]; then
+      git apply -R "$applied_patch" 2>/dev/null
+      applied_patch=""
+    fi
+  ' EXIT
+
+  trap '
+    if [ -n "$applied_patch" ]; then
+      git apply -R "$applied_patch" 2>/dev/null
+      applied_patch=""
+    fi
+    exit 1
+  ' INT TERM
+
   while IFS=$'\t' read -r id target patch expect_fail; do
     [ -n "$id" ] || continue
     rows=$((rows + 1))
@@ -151,9 +172,12 @@ run_mutations() {
       status=1
       continue
     fi
+    applied_patch="$patch"
 
     local combined
+    export DEV_SKILLS_MUTATION_ROW="$id"
     combined=$( { run_all; } 2>&1 )
+    unset DEV_SKILLS_MUTATION_ROW
 
     if printf '%s\n' "$combined" | grep -qF -- "$expect_fail"; then
       echo "MUTATION $id: ok — $expect_fail failed as expected"
@@ -163,6 +187,7 @@ run_mutations() {
     fi
 
     git apply -R "$patch"
+    applied_patch=""
 
     if [ -n "$(git status --porcelain -- "$target")" ]; then
       echo "MUTATION $id: tree not clean after revert ($target)" >&2

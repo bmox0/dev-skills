@@ -1,20 +1,24 @@
 ---
 name: tdd
-description: "Use when writing tests — the red-green-refactor cycle and the discipline around it: one test at a time, verify red before green, the simplest code that passes. Read by the implementer when its phases have tests."
+description: "Use when writing or repairing tests — the red-green-refactor cycle and the discipline around it: one test at a time, verify red before green, the simplest code that passes. Read by the join, for the tests it merges and the repairs it makes; an ordinary phase writes none and runs none."
 user-invocable: false
 ---
 
 # Test discipline
 
-Handed to the implementer when the plan says its phases have tests. **Whether
-there are tests is the plan's decision, not yours** — the plan names the seam,
-the file, and the cases. This file is how you write them once it has.
+Handed to a **join** — the one seat in a run that runs a test. Its tests arrive
+already written, from the human-approved `## Test cases`, and having never been
+run; this file is how you read their red and what you may change to clear it.
+**An ordinary phase writes no test and runs none**, and is never handed this
+file. Outside a run — a bug fix, or tests as the goal — this is how you write a
+test in the first place, and the cycle below is the same either way.
 
 ## The cases are given; the code is yours
 
-The phase's *verification* field names the level, the file, and each case with
-the assertion it expects. That is a decision, and it was made before you were
-dispatched.
+The cases are the plan's human-approved `## Test cases`, and the join's
+*Verification* names which of them it proves — `- cases: TC-1, TC-2`. Each one
+carries the assertion it expects. That is a decision, and it was made before
+anyone was dispatched.
 
 Everything around it is mechanics and is yours: `describe` blocks, fixtures,
 mocks, render helpers, setup. Write them the way the neighbouring tests in this

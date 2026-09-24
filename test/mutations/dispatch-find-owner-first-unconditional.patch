@@ -1,19 +1,22 @@
 diff --git a/skills/implement/scripts/dispatch b/skills/implement/scripts/dispatch
-index 602e03d..f750456 100755
+index d549f05..65a9446 100755
 --- a/skills/implement/scripts/dispatch
 +++ b/skills/implement/scripts/dispatch
-@@ -202,13 +202,7 @@ def topology_segments(lines):
- def find_owner(segments, first, last):
-     """(owner, None) on an exact match; (None, spanning) when the requested
-     range overlaps more than one segment; (None, []) when nothing covers it."""
+@@ -263,16 +263,7 @@ def find_owner(segments, first, last):
+     """(owner, None) on an exact match, or when the range is contained in
+     exactly one segment; (None, spanning) when the range overlaps more than
+     one segment; (None, []) when nothing covers it."""
 -    exact = [s for s in segments if s.first == first and s.last == last]
 -    if exact:
 -        return exact[0], None
+-    contained = [s for s in segments if s.first <= first and last <= s.last]
+-    if len(contained) == 1:
+-        return contained[0], None
 -    overlapping = [s for s in segments if not (s.last < first or s.first > last)]
 -    if len(overlapping) > 1:
 -        return None, overlapping
 -    return None, []
 +    return segments[0], None
- 
- 
- # ---------------------------------------------------------------------------
+
+
+ # A join is a phase like any other: '### Phase <n>.' names it, and its

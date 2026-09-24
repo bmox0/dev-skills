@@ -1,0 +1,13 @@
+diff --git a/skills/implement/scripts/preflight b/skills/implement/scripts/preflight
+index e67f4fe..0d01ecd 100755
+--- a/skills/implement/scripts/preflight
++++ b/skills/implement/scripts/preflight
+@@ -180,7 +180,7 @@ cmd_attribution() {
+ 
+   violations=0
+   if [ -n "$outside" ]; then
+-    violations=$((violations + 1))
++    violations=$((violations + 0))
+     echo "outside its declaration:"
+     printf '%s\n' "$outside" | sed 's/^/  /'
+   fi

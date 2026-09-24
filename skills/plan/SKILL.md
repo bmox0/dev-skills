@@ -75,9 +75,10 @@ dash — the dash is an assertion by the planner, not tidiness.
 | **What the final gate proves** | the verification contract for this kind of task | the runtime gate |
 | **Test seams** | where we check. Existing beats new, highest level that works, the ideal number of new seams is zero | implementer, reviewer |
 | **Paths and existing abstractions** | so nobody researches the codebase again | implementer, reviewer |
-| **Test cases** | what gets checked — and nothing outside it is | test writer, both gates |
+| **Test cases** | what gets checked — and nothing outside it is; the join names the ones it proves | tester, both gates |
 | **Topology** | how the phases are grouped, their relations, the model per group | orchestrator |
-| **Phases** | bounded units of execution, seven fields each | implementer, reviewer |
+| **Graph** | the picture of what waits on what, rendered from the phases' `Depends on` fields | the human at approval |
+| **Phases** | bounded units of execution, eight fields each; a join is one of them | implementer, reviewer |
 | **Final-gate scenarios** | the runtime projection of the test cases | the runtime gate, the human at acceptance |
 | **Ledger** | the run's record and its resume point after a compaction | orchestrator |
 
@@ -118,6 +119,7 @@ Baseline: …
 ## Paths and existing abstractions
 ## Test cases
 ## Topology
+## Graph
 ## Phases
 ### Phase 1. <what becomes true>
 ### Phase 2. <what becomes true>
@@ -130,11 +132,11 @@ are not something a script can cut: `brief` hard-stops, and `plan-check` — run
 before you present the plan, see below — repairs the omission rather than let a
 run start on it. Writing the container yourself is how it never comes up.
 
-The strings the scripts anchor on — these headings, the seven field names, the
-Topology columns, the artifact names derived from a phase range — are written out
-once, in [`references/VOCABULARY.md`](../../references/VOCABULARY.md), together
-with the vocabulary every artifact in a run uses. The skeleton is the shape; that
-file is the letter. Neither is a copy of the other.
+The strings the scripts anchor on — the eight field names, the two *Verification*
+grammars, the artifact names derived from a phase range — are written out once, in
+[`references/VOCABULARY.md`](../../references/VOCABULARY.md), together with the
+vocabulary every artifact in a run uses. The skeleton is the shape; that file is
+the letter. Neither is a copy of the other.
 
 ## Two lines in the header
 
@@ -214,11 +216,12 @@ follows from who reads it: *Frozen for later phases* when a later phase builds o
 it, *How* when it is this phase's own surface and nothing downstream depends on
 the shape.
 
-**Fixed in prose:** every other decision — every path touched, including test
-paths; the abstractions used, by name and with their path; which test cases the
-phase makes true; edge cases and the behaviour on them; what counts as an error
-and how it shows; what not to touch and what not to introduce; order, where order
-carries meaning.
+**Fixed in prose:** every other decision — every path touched, and on a **join**
+the test paths it may repair, which an ordinary phase never has; the
+abstractions used, by name and with their path; the join that proves the phase,
+as `- proved by: phase <n>`; edge cases and the behaviour on them; what counts
+as an error and how it shows; what not to touch and what not to introduce;
+order, where order carries meaning.
 
 **Never appears:** function bodies, test code, imports, style. That is typing,
 not deciding. The planner saves nothing by omitting it, because the planner
@@ -232,7 +235,7 @@ reviewer closes that against the repository's conventions.
 Do not economise on density. A thin plan is paid for twice: once in a bad
 decision, and again in the rework.
 
-### The seven fields
+### The eight fields
 
 The subheadings are **fixed strings**. This is not formatting: the orchestrator
 cuts a phase into a brief mechanically, and mechanical assembly needs stable
@@ -242,20 +245,53 @@ anchors.
 |---|---|
 | **Becomes true** | the observable result of the phase; it also sets the phase's size |
 | **Changes** | paths *and* entities: a symbol, a function, a region — not only a file |
+| **Depends on** | the earlier phases whose files this phase edits — never a shape, never an ordering preference |
 | **How** | named abstractions with paths, plus the negative side: what not to introduce |
 | **Do not touch** | only conflicts *inside* paths already granted |
 | **Frozen for later phases** | the names, signatures and data shapes later phases build on — written out, never referred to |
-| **Verification** | the approved test cases this phase makes true, by ID |
+| **Verification** | the join that proves this phase — or, on the join itself, the range it joins and the cases it proves |
 | **Steps** | the order of work, with checkboxes |
 
-**All seven are mandatory; absence is written as a dash.** `Do not touch: —` means
+**All eight are mandatory; absence is written as a dash.** `Do not touch: —` means
 "there is no neighbouring conflict", not "I forgot to think about it". There is no
 other way to tell forgetfulness from a considered nothing, and in *Frozen for
 later phases* that slip costs the next phase range a stop. The presence of all
-seven subheadings is checked by grep, with no model judgement involved.
+eight subheadings is checked by grep, with no model judgement involved.
 
-In a typical phase three of the seven are dashes. That is cheaper than one
+In a typical phase four of the eight are dashes. That is cheaper than one
 invisible omission.
+
+**A phase whose *Changes* names a script under `skills/*/scripts/` also names
+that script's mutation patches**, because editing the script is what makes them
+stale.
+
+*Verification* is written in one of exactly two grammars, and `plan-check`
+refuses anything else. On an ordinary phase — one bullet, naming the join, no
+trailing prose:
+
+````markdown
+**Verification**
+- proved by: phase 9
+````
+
+On the join itself — the range it joins and the cases it proves, the range always
+a two-number span and never a bare number:
+
+````markdown
+**Verification**
+- joins: phases 1-8
+- cases: TC-1, TC-2, TC-3
+````
+
+`- cases: —` alone is the join asserting it proves no approved case, the same way
+a dash asserts in every other field. A phase carrying `- joins:` **is** the join:
+there is no other marker, no heading suffix and no Topology column for it.
+
+Beside *Verification* sits the **Phase Check** — the one command a phase runs on
+its own work, named by the environment contract rather than by you: a formatter,
+or none. A phase compiles nothing, tests nothing and lints nothing, which is why
+its result is not proved until its join — and why *Verification* names that join
+rather than a check the phase could have run itself.
 
 ### The form
 
@@ -269,6 +305,9 @@ invisible omission.
 **Changes**
 - `src/features/theme/ThemeToggle.tsx` — the `onClick` handler
 
+**Depends on**
+- —
+
 **How**
 - use the existing `useTheme` (`src/shared/theme/useTheme.ts`); it already holds
   `setTheme` and persists to `localStorage`
@@ -281,12 +320,53 @@ invisible omission.
 - —
 
 **Verification**
-- cases: TC-4, TC-5, TC-6, TC-7
+- proved by: phase 4
 
 **Steps**
 - [ ] wire `useTheme` into `ThemeToggle`
 - [ ] hang the toggle on `onClick`
-- [ ] take TC-4 through TC-7 green
+````
+
+And the join those phases name, written with the same eight fields and nothing
+extra:
+
+````markdown
+### Phase 4. The theme toggle works end to end
+
+**Becomes true**
+- phases 1–3 compile together, their tests run, and what did not meet is repaired
+
+**Changes**
+- `src/shared/theme/useTheme.ts`, `src/features/theme/ThemeToggle.tsx` — the
+  union of phases 1–3's write-sets
+- `src/features/theme/theme.test.tsx` — mechanics only
+
+**Depends on**
+- phase 1 — `useTheme`
+- phase 2 — the button's markup
+- phase 3 — the `onClick` handler
+
+**How**
+- merge the tester's branch first, then compile the range, then run
+- repair a test's mechanics — a spy's placement, a timeout, the order of a render
+  — and never what it asserts
+- no adapter for a frozen name: a frozen name that has to change is a
+  `PLAN_CONFLICT`
+
+**Do not touch**
+- —
+
+**Frozen for later phases**
+- —
+
+**Verification**
+- joins: phases 1-3
+- cases: TC-4, TC-5, TC-6, TC-7
+
+**Steps**
+- [ ] merge the tester's branch
+- [ ] compile the range, then run its tests and its checks
+- [ ] repair what did not meet, and record each repair
 ````
 
 ### Sizing a phase
@@ -363,10 +443,11 @@ of phases** — the range is the name, and every artifact derived from one is na
 after it. A separate noun for something the reader can already see is one more
 mapping to hold, and the mapping is what goes stale when the boundaries move.
 
-**Verification is not needed after every phase.** Three phases — "add the icon
-file", "put the icon in the header", "clicking switches the theme" — where the
-first two are checked by grep and deserve no test of their own. The one
-meaningful case goes after the third and closes all three.
+**A case is not needed after every phase.** Three phases — "add the icon file",
+"put the icon in the header", "clicking switches the theme" — where the first two
+are checked by grep and deserve no case of their own. The one meaningful case
+belongs to the join that covers all three. The *Verification* field is still
+written on all three, because all three name that join.
 
 You **propose** where the boundaries go and which model builds each group; the
 human approves and corrects. This is one of the points where a human in the loop
@@ -377,11 +458,21 @@ Two relations, marked by you and approved by the human:
 | Relation | Meaning |
 |---|---|
 | **Sequential** | starts only once the work it depends on has landed as a commit |
-| **Parallel** | a group of phases runs at once from one HEAD, and a later phase joins them |
+| **Parallel** | every phase of the row is dispatched at once, all from one base, and a later phase joins them |
 
 There was a third, *Asynchronous* — start the next unit without waiting for the
 intermediate verdict. It was an optimisation on a wait, and the run no longer
 takes that wait.
+
+A Topology row carrying more than one phase is a parallel row, and its **width**
+is the number of phases it dispatches at once. Width needs no column of its own:
+a row's phases run at once unless one of them declares a `Depends on` naming a
+sibling in the same row, in which case the row is one dispatch, built in order
+by one implementer. `Depends on` is validated by `plan-check` already, so the
+information is in the plan and it is checked. Narrowing a row further is the
+orchestrator's to do, recorded with its reason under `## Corrections during
+execution` and never done quietly. **Do not add a fourth Topology column**: the
+three headings are fixed, and `dispatch` refuses a table carrying any other.
 
 ### Parallel is contractual, or it does not happen
 
@@ -398,8 +489,12 @@ Sequential.
 2. **Their write-sets do not intersect.** Take the union of the *Changes* fields
    on each side and check that the two unions are disjoint. That is checkable at
    approval, by you and by the human, with no judgement in it.
-3. **A later phase joins them.** Name it. Without a join, nothing ever proves the
-   two sides meet.
+3. **A later phase joins them.** Naming it is not loose prose: every phase of the
+   row names it in its own *Verification*, as `- proved by: phase <n>`, and the
+   join names the range back, as `- joins: phases <a>-<b>`. `plan-check` checks
+   that the range covers every phase that points at it, so the claim is read off
+   the fields rather than asserted. Without a join, nothing ever proves the two
+   sides meet.
 
 Condition 1 read backwards is the decision procedure, and it decides every case:
 
@@ -452,6 +547,48 @@ table's shape before reading it; a column always there is one cell to change.
 
 The column headings are fixed: the orchestrator reads this table mechanically.
 
+### The join
+
+A **join** compiles the phases before it, merges the tester's branch, runs the
+tests and the checks, and repairs what did not meet. It is the only place before
+the gates where anything is verified.
+
+**It is a phase.** The same eight fields, written by you and never computed by a
+script, with its own row in the Topology table, dispatched with the same
+`dispatch <plan> <n>` as any other phase. It is not a mode, a marker or a fourth
+column — a phase whose *Verification* carries `- joins:` is the join, and that
+bullet is the whole declaration.
+
+**Its *Changes* is the union of the write-sets of the range it joins**, plus the
+test paths it may repair. That is not bookkeeping: one
+`preflight --attribution <plan> <a>-<n> <BASE> <branch>` over the inclusive range
+is what checks the join, and it checks against exactly what this field declares.
+So the test seams have to appear there too, or the repair the join is there to
+make lands outside its own declaration.
+
+**Its *How* carries the negative half.** No adapter for a frozen name, ever — not
+a re-export, not a wrapper, not a rename at the call site. A frozen name that has
+to change is a `PLAN_CONFLICT`, because the whole row was built against it and
+two phases already wrote it down.
+
+**It repairs a test's mechanics and never its intent.** A spy's placement, a
+timeout, the order of a render — those are the join's. What a test asserts is the
+approved case, and the case belongs to the plan. Two identical implementations of
+one thing arriving from two phases of one row are mechanics: the join collapses
+them and records it. Two *different* approaches to one thing are intent, and that
+is a `PLAN_CONFLICT` rather than something to reconcile.
+
+**Two repairs and it goes to the human**, counted the way the judge's cap is —
+from the base recorded on its Ledger line, `git log --format=%s <it>..HEAD |
+grep -c '^fix('`. A join that is still red after two attempts is a plan defect,
+and a plan defect is not something an implementer may fix.
+
+**Size it deliberately.** The join is the most expensive seat in the run:
+every phase before it is cheap precisely because it compiles nothing. The width
+of the row it joins multiplies the cost of a wrong contract, so a wide row with a
+thin *Frozen for later phases* is paid for here, at the one point in the run
+where the bill arrives all at once.
+
 ## Dependencies are expressed in the producing phase
 
 If phase 3 relies on an interface from phase 1, that is written **in phase 1** —
@@ -474,9 +611,61 @@ That is the *Frozen for later phases* field, and the union of those fields is th
 seeing each other's code, and the one thing a review may not change with an
 ordinary finding.
 
+**The completeness bar is a compiling import.** The frozen contract is what a
+later phase can write a compiling import against — module paths and exported
+names, not only types. A phase builds against modules that are not in the tree
+yet, and writes the import for one anyway; it does not go looking for the module
+and it does not create it. A path you leave out is therefore not a gap the
+implementer closes by inventing one — it is a stop, and it arrives at width,
+multiplied by every phase of the row.
+
 The rule doubles as a test of the split: if a constraint cannot be stated locally,
 the phases are cut in the wrong place and need regrouping — and that shows up at
 plan approval rather than at a fix.
+
+### A dependency is a file, not a shape
+
+A **dependency** is one phase needing another's *file* in order to edit it.
+Needing its *shape* is not a dependency — the shape is written out in *Frozen
+for later phases*, and code is written against it before the file exists.
+
+Declare it in the depending phase's own **Depends on** field, in the one
+grammar `plan-check` enforces: `- phase <n> — <why this phase needs its file>`
+for each phase whose file it edits, or `- —` alone when it edits no earlier
+phase's file. `<n>` is always lower than the phase carrying the bullet, so the
+graph is acyclic by construction and `plan-check` needs no cycle detector.
+
+The dash is an assertion, the same way a dash in any other field is: `- —` says
+there is no dependency, not that nobody thought about it.
+
+**This field does not change how Sequential and Parallel are marked.** The
+Topology table says how phases are *dispatched*; `Depends on` says which
+earlier phase's file this one edits. Needing that file is what makes a phase
+Sequential, and it is the whole of it — a phase compiles nothing, so there is
+no green build to wait on, and the join is where anything is proved. Write
+both: the row in the table, the bullet in the phase.
+
+`plan-graph` renders the plan's picture from those fields, so the picture is
+never drawn by hand and never edited by hand once written — written by
+`plan-graph`, edited by nobody:
+
+````markdown
+## Graph
+
+<!-- rendered by skills/implement/scripts/plan-graph — do not edit by hand -->
+
+```text
+1  --  The anchors are named in the shipped vocabulary
+2  --  A malformed `Depends on` is refused before approval
+3  --  `plan-graph` renders the picture from the fields
+4  --  The planner and the implementer are told what the field is
+
+4 phases · 4 with no dependency · longest chain: 1
+```
+````
+
+Everything between `## Graph` and the next heading is regenerated, so nothing
+hand-written survives there — commentary on the picture goes above the heading.
 
 ## Final-gate scenarios
 
@@ -507,29 +696,37 @@ through, so they never have to work out what to check.
 ## Ledger
 
 The run's record and the resume point after a compaction. **One line per row of
-the Topology table**, named by its phases, with the tests before them and the two
-gates after — so the table above and this list are the same split written twice,
-and a boundary that moves in one has an obvious place to move in the other:
+the Topology table**, named by its phases, with each join's tests before the
+range they cover and the judge after — so the table above and this list are the
+same split written twice, and a boundary that moves in one has an obvious place
+to move in the other:
 
 ```markdown
 - [ ] Plan approved
 - [ ] Test cases approved
-- [ ] Tests written
+- [ ] Tests for phases 1–3 written
 - [ ] Phase 1
 - [ ] Phases 2–3
-- [ ] Phase 4
-- [ ] Gate A — `HEAD` at the first gate dispatch:
-- [ ] Gate B
+- [ ] Phase 4 — the join; base at dispatch:
+- [ ] Judge — `HEAD` at dispatch:
 - [ ] Squash prepared
 - [ ] Accepted by the human
 - [ ] Integrated
 ```
 
-The blank on the `Gate A` line is a slot, not a stray colon. The fix-round cap is
+The tests line is the tester's, one per join and named by the range that join
+covers, because that is the granularity the tester is dispatched at.
+
+The blank on the `Judge` line is a slot, not a stray colon. The fix-round cap is
 counted from that commit — `git log --format=%s <it>..HEAD | grep -c '^fix('` —
 and a cap counted from a `HEAD` nobody wrote down is enforced by recollection,
-which is how a cap of two once ran to four. The orchestrator fills it in when it
-dispatches the first gate; leave it empty.
+which is how a cap of two once ran to four. The orchestrator fills it in from
+the `cap origin:` line `dispatch --judge` prints, and the judge counts from it;
+leave it empty.
+
+The blank on each join's line is the same slot for the same reason: the join's
+two-repair cap is counted from the commit it was dispatched at, by the same
+`grep -c '^fix('`, and an uncounted cap is the one that runs to four.
 
 **One human acceptance, and it sits after the squash.** The human approves
 exactly the object that lands on the base, not a range that is afterwards
@@ -553,18 +750,20 @@ discovered by the implementer. The expected testable scope is part of the plan.
 
 If the project has no tests, a case is still written — as an observation or a
 command rather than a test: "grep confirms the file exists and is imported".
-Without it, in a project without tests, phases have no check at all short of the
-final gate.
+Without it, in a project without tests, the join has nothing to run and nothing
+between plan approval and the final gate checks the work at all.
 
-**The plan names the cases; the code that checks them is written from them.**
-*Verification* carries the case IDs and nothing else. What counts as correct
-behaviour is a decision and lives once, in `## Test cases`; the scaffolding —
-`describe`, mocks, fixtures, render helpers — is mechanics and follows the
-repository's neighbouring tests.
+**The cases live once, in `## Test cases`.** The join names the ones it proves;
+an ordinary phase names only the join. That is the whole division: what counts as
+correct behaviour is a decision and it is written in one place, while the
+scaffolding — `describe`, mocks, fixtures, render helpers — is mechanics and
+follows the repository's neighbouring tests.
 
-Where red *is* the contract — a bug, or tests as the goal — say in the phase that
-the test lands as **its own commit before the implementation**, so the reviewer
-can run it there and watch it fail.
+**Phases write no tests.** The tester writes them, once, at the granularity of a
+join, against the frozen contract, on a branch of its own that the join merges.
+So no ordinary phase's *Changes* carries a test path and no ordinary phase's
+*Steps* takes a case green — only the join's does, for the mechanics it is
+allowed to repair.
 
 ## Before you present it
 
@@ -589,17 +788,34 @@ check runs again at preflight when `dev-skills:implement` starts, so nothing lef
 here is missed — it is found later instead, when the plan is no longer in front
 of you and the fix costs a stopped run.
 
+Then render the graph. `plan-check` first, always: `plan-graph` refuses a plan
+it cannot trust, and says so by naming `plan-check`.
+
+```bash
+skills/implement/scripts/plan-graph <plan file>
+```
+
+Its one line of output says which happened:
+
+- **`wrote:`** — the `## Graph` section was stale or missing, and has been
+  rewritten.
+- **`unchanged:`** — the picture already matched the fields.
+
 Then read the plan against the epic, or against the conversation if there is no
 epic:
 
 1. **Coverage.** Every story points at a phase, and every phase serves a story.
-   List anything on either side that does not.
+   List anything on either side that does not. Every phase also names a join, and
+   every join covers what names it — `plan-check` says so, and a plan that does
+   not exit `0` is not presented.
 2. **Placeholders.** No "TBD", no "handle edge cases", no "similar to phase N".
 3. **Name consistency.** A symbol frozen in phase 1 is spelled the same way in
    phase 4.
-4. **Dashes.** `plan-check` proves the seven subheadings are present; only you
+4. **Dashes.** `plan-check` proves the eight subheadings are present; only you
    can tell a dash that means "there is no neighbouring conflict" from one that
-   means the field was never thought about.
+   means the field was never thought about. *Verification* has one of its own: a
+   join's `- cases: —` asserts that this join proves no approved case, which is a
+   real answer and a rare one — read it twice before you leave it.
 5. **The header lines.** `Norms:` names every document a reviewer is allowed to
    hold the work to. `Baseline:` was measured, not guessed.
 
@@ -616,6 +832,9 @@ Present the plan and take approval before anything is built. Show:
 - the topology: how the phases are grouped, the model on each group, and the
   reason each boundary sits where it does — and for any Parallel group the frozen
   contract, the two disjoint path sets and the join phase;
+- the joins: which phase joins which range, and the write-set each one takes on —
+  the most expensive seat in the run, shown as such;
+- the graph, as rendered, and what it says about which phases wait on nothing;
 - the test seams, as their own question;
 - the `Norms:` and `Baseline:` lines;
 - that `plan-check` exits `0` on this file, and anything it repaired to get
@@ -635,6 +854,12 @@ Written **after** the plan is approved, in the same session, with the human in
 the room. Not drafted silently and handed over to be corrected forever — ask
 leading questions and write down the answers. "What should happen if the address
 is already taken?" is the shape of it.
+
+**The second approval exists because of the joins.** A case is scoped to what a
+consumer of a **join's** assembled result observes — never to a method, and never
+to one phase's internals. Cases at that scope cannot be written until the joins
+are known, and the joins are settled by the plan body. So the body is approved
+first and the cases second, in that order, for that reason.
 
 The human approves the **meaning** of a case. Test code, mocks and fixtures never
 reach them.
@@ -658,9 +883,14 @@ resolve it, do not leave it. The starting state is `RED`, `GREEN` or
 `NOT-YET-RUNNABLE`; `GREEN` is a real answer, because a case that already holds
 is how a regression becomes visible later.
 
+**The case line gains no `join:` field.** Which join proves which case is written
+once, in that join's own *Verification*, and a second copy here is a mapping that
+goes stale the first time a boundary moves.
+
 ### What the `gate-b:` label decides
 
-`browser`, `snapshot`, `simulator`, `http`, or `N/A`.
+`browser`, `snapshot`, `simulator`, `http`, `cli`, or `N/A`. `cli` is a runtime
+driven from a shell, where the evidence is the command and what it printed.
 
 **Whatever is not in the test cases is not checked on the running system.** The
 label is what makes that rule mechanical rather than aspirational: the runtime

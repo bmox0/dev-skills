@@ -1,0 +1,12 @@
+diff --git a/skills/implement/scripts/worker b/skills/implement/scripts/worker
+index 334fcd8..98e47ca 100755
+--- a/skills/implement/scripts/worker
++++ b/skills/implement/scripts/worker
+@@ -80,7 +80,6 @@ cmd_add() {
+   local slug range_id branch path
+   slug="$(basename "$plan" .md)"
+   range_id="${first}-${last}"
+-  [ "$tests" -eq 1 ] && range_id="tests-${range_id}"
+   branch="run/${slug}/${range_id}"
+   path="$work_root/$slug/$range_id"
+ 

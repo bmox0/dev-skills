@@ -1,0 +1,14 @@
+diff --git a/skills/implement/scripts/dispatch b/skills/implement/scripts/dispatch
+index 6a7285a..1a18e11 100755
+--- a/skills/implement/scripts/dispatch
++++ b/skills/implement/scripts/dispatch
+@@ -260,9 +260,6 @@ def find_owner(segments, first, last):
+     exact = [s for s in segments if s.first == first and s.last == last]
+     if exact:
+         return exact[0], None
+-    contained = [s for s in segments if s.first <= first and last <= s.last]
+-    if len(contained) == 1:
+-        return contained[0], None
+     overlapping = [s for s in segments if not (s.last < first or s.first > last)]
+     if len(overlapping) > 1:
+         return None, overlapping

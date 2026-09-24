@@ -1,0 +1,18 @@
+diff --git a/skills/implement/scripts/dispatch b/skills/implement/scripts/dispatch
+index b52b20b..2c37e9c 100755
+--- a/skills/implement/scripts/dispatch
++++ b/skills/implement/scripts/dispatch
+@@ -110,13 +110,6 @@ def parse_run_base(text):
+     or None when the text is empty, has no such line, or the line has no
+     value. No filesystem here, so this is what test/unit/test_dispatch.py
+     pins directly."""
+-    if not text:
+-        return None
+-    for line in text.splitlines():
+-        if line.startswith("base="):
+-            value = line[len("base="):].strip()
+-            if value:
+-                return value
+     return None
+
+

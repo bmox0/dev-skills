@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Execute an approved plan — create the workspace, run preflight, write the tests, dispatch the phases, join the parallel groups, drive both gates, and hand the run to the human. Invoke once the plan and its test cases are approved.
+description: Execute an approved plan — create the workspace, run preflight, dispatch the tester, dispatch the phases, dispatch each join, drive the judge, and hand the run to the human. Invoke once the plan and its test cases are approved.
 disable-model-invocation: true
 ---
 
@@ -128,21 +128,35 @@ Read the plan's **Ledger** before dispatching anything. A ticked line is done �
 do not re-dispatch its work. Conversation memory does not survive compaction; the
 ledger and `git log` do, and they are trusted over recollection.
 
-## The tests come first
+## The tests come first, one join at a time
 
-Dispatch **`dev-skills:test-writer`** before the first phase, with the plan's
-user stories, its test cases, the plan itself and the environment contract.
+A test belongs to a join, not to a phase, so there is one tester per join and it
+is dispatched **before the phases that join joins**:
 
-It writes the runnable cases as executable tests and commits them as their own
-commit. Tests written after the code they describe are written by someone who
-already knows the answer.
+```text
+per join, before the phases it joins:
+  scripts/worker add <plan> <a>-<b> <BASE> --tests    BASE = the integration
+                                                      branch's HEAD
+→ apply the contract's link and bootstrap in that tree
+→ dispatch dev-skills:tester on it: the plan, the join's cases, the
+  environment contract, the worktree path, the report path
+→ it renders the cases as executable tests and commits on that branch
+```
 
-A case marked `NOT-YET-RUNNABLE` waits for something that does not exist yet.
-Dispatch the test writer again **immediately before the parallel group that
-depends on it** — not at some convenient moment in between. A group starts from
-one `HEAD`; a test landing after that is a test half the group never saw.
+That is everything it gets, and nothing here runs what it writes: the join is
+where those tests are first run.
 
-The test writer does not make product decisions. A case it escalates goes to the
+**The workers of the range are cut from the integration branch, which does not
+contain the tester's branch.** That is a physical guarantee rather than a rule
+anyone is asked to respect, and it is why a phase cannot read the test that
+judges it. Do not merge a tester's branch anywhere yourself — the join merges
+it, and merging it earlier would hand the range the answers.
+
+Tests written after the code they describe are written by someone who already
+knows the answer. That is what buys the ordering, and it is the only reason the
+tester runs first.
+
+The tester does not make product decisions. A case it escalates goes to the
 human, because it means the case was not finished.
 
 ## The phase loop
@@ -155,53 +169,116 @@ earlier reports — **never the earlier diffs**.
 record BASE (git rev-parse HEAD)
 → scripts/brief <plan> <range>               the implementer's brief
 → dispatch the implementer on the model the plan assigns
-→ it builds, runs its checks last, commits, writes its report
+→ it builds, runs the Phase Check, commits, writes its report
 → next phase
 ```
+
+The **Phase Check** is the one command a phase runs on its own work — the
+environment contract names it, and `none` is a real answer. A phase compiles
+nothing, runs no test and lints nothing: everything that needs the whole tree to
+resolve belongs to the join.
 
 A cold start between phases is not a cost worth avoiding: even a warmed agent
 starting a new phase has to read what is wanted of it. The time is spent either
 way.
 
-### A parallel group
+### A parallel row
 
-The plan admits a group only where all three of its conditions hold — the
-contract frozen by an earlier phase, disjoint write-sets, and a named join phase.
-Check the second one yourself before dispatching anything:
+A Topology row carrying more than one phase runs at once. Every phase of it is
+dispatched together, each in a git worktree of its own, on a branch of its own,
+all cut from one base.
 
-```bash
-scripts/preflight --parallel <plan file> <range A> <range B> [...]
-```
-
-Intersecting write-sets **stop the group.** Either the plan is corrected or the
-phases run sequentially, and whichever it is, say so out loud and write it into
-the plan. Never quietly change the topology: a group the plan calls parallel and
-you ran sequentially is a plan nobody can read afterwards.
-
-Then:
+The plan admits such a row only where all three of its conditions hold — the
+contract frozen by an earlier phase, disjoint write-sets, and a named join
+phase. The second is yours to check mechanically before anything is dispatched,
+and it is `preflight --parallel`'s line in the sequence below:
 
 ```text
-one HEAD for the whole group
-→ scripts/parallel-contract <plan> <range>   the frozen contract both sides build against
-→ dispatch every side at once, each with its own brief
-→ each side edits only its own paths and returns a report — none of them commits
-→ you compare the actual paths against the union of the phases' Changes
-→ you run the phase checks
-→ you make ONE join commit
-→ the join phase is dispatched on that commit
+BASE = the integration branch's HEAD; every worker is cut from it
+→ scripts/parallel-contract <plan> 1-<row's first phase - 1>
+→ scripts/preflight --parallel <plan> <each phase of the row>
+→ per phase: scripts/worker add <plan> <n> <BASE>
+             apply the contract's link and bootstrap in that tree
+             scripts/dispatch <plan> <n> --worktree <its path>
+→ dispatch every phase at once; each commits on its own branch
+→ per phase: scripts/preflight --attribution <plan> <n> <BASE> <its branch>
+→ only when every phase is clean: git merge --no-ff, in phase order
+→ per phase: scripts/worker rm <plan> <n>
 ```
 
-**The agents in a group do not commit.** One join commit per group is what keeps
-the range readable and gives the path comparison a single place to happen.
-Letting each side commit would put a half-built group into a range that gate A
-may already be reading.
+Intersecting write-sets **stop the row** before anything is dispatched. Either
+the plan is corrected or the phases run one after another, and whichever it is,
+say so out loud and write it into the plan, under `## Corrections during
+execution`. Never quietly change the topology: a row the plan calls parallel and
+you ran one phase at a time is a plan nobody can read afterwards.
 
-The path comparison is yours and is not delegated. It is the only defence against
-a weak model that rests on nothing but git, and the actor it defends against is
-the one writing the report.
+**A worker's worktree is prepared before its phase is dispatched** — the
+environment contract's `link` and `bootstrap`, applied in that tree, because the
+**Phase Check** runs there, and because a tester's tree and a join's tree need
+the same preparation. At width that is one preparation per worker, and
+`worker add` prints both values so the cost is visible where it is paid. Where
+both are `none`, the row is free.
 
-If the actual paths fall outside the union, that is a `PLAN_CONFLICT` — do not
-join, and take it to the human.
+**The attribution check is per phase, against that phase's own declaration.**
+`preflight --attribution` compares what that branch wrote against the *Changes*
+of that phase alone — never against the union of the row's, which is blind to
+exactly the case that matters: one phase writing into another's declaration
+passes a union check untouched. This is the one mechanical guarantee the whole
+model rests on.
+
+A path outside a phase's declaration is a `PLAN_CONFLICT`. **The row does not
+merge** — not that phase and not its siblings — and it goes to the human. The
+check is yours and is not delegated: it is the only defence against a weak model
+that rests on nothing but git, and the actor it defends against is the one
+writing the report.
+
+Only when every phase is clean do you merge, `--no-ff` and in phase order, so
+the run's range afterwards reads as the plan's phases in order and `finish`
+squashes it unchanged. Then give each worktree back with `scripts/worker rm`,
+which leaves the branch alone.
+
+### The join
+
+A join is a phase like any other — the plan authors it, the Topology assigns it
+a model, and it is dispatched with the same command. What is different is what
+it does: it is the first place in the run where anything is compiled or run.
+Every join goes this way, whether the phases before it ran as a row or one after
+another.
+
+```text
+the row is merged in phase order
+→ scripts/worker add <plan> <join n> <the integration branch's HEAD>
+→ scripts/dispatch <plan> <join n>          same command as a phase
+→ the join merges run/<slug>/tests-<a>-<b>, compiles, runs the tests and
+  the checks, repairs mechanics, commits
+→ scripts/preflight --attribution <plan> <a>-<join n> <BASE> <its branch>
+→ git merge --no-ff
+→ scripts/worker rm <plan> <join n>
+```
+
+`dispatch` reads the join's `- joins:` bullet itself and writes
+`## The tests you merge` and `## The range you join` into the file, derived
+rather than as holes. The first names the tester's branch and says the merge is
+the join's first act, before it compiles or runs anything else; the holes that
+remain are filled exactly as a phase's are.
+
+**The attribution range includes the join.** A join's declared write-set is the
+union of the range it joins, and that is exactly what an inclusive range already
+returns — so you pass `<a>-<join n>`, the join's own number included, and there
+is no separate mode for it.
+
+**You never run a join yourself** — not the merge it performs, not the tests,
+not the checks, not the repair, and not a quick look at the red output to see
+how bad it is. A join in your context is the cost this design exists to keep out
+of it: it is the most expensive seat in the run, and what reaches you is its
+verdict, never its output.
+
+**The cap is two repairs, counted rather than remembered.** Write the join's
+base into its Ledger slot when you dispatch it, and the count is the judge's own
+command, `git log --format=%s <the join's base>..HEAD | grep -c '^fix('`. Two
+`fix(` commits on the join's branch and the third dispatch does not happen: a
+join still red after two repairs is a defect in the plan, and it goes to the
+human.
 
 ## What goes into a dispatch
 
@@ -216,9 +293,9 @@ staging discipline (stage only what you changed yourself; `commit-guard` refuses
 contract, the self-check, the split between what is returned to you and what goes
 in the report file, and — for a gate — its order of work, are already stated in
 the agent definitions each dispatched agent reads as its own system prompt:
-`agents/implementer.md`, `agents/test-writer.md`, `agents/gate-a.md`,
-`agents/gate-b.md`. Do not restate any of it — a dispatch that repeats it pays
-twice for something the agent already knows.
+`agents/implementer.md`, `agents/tester.md`, `agents/judge.md`,
+`agents/gate-a.md`, `agents/gate-b.md`. Do not restate any of it — a dispatch
+that repeats it pays twice for something the agent already knows.
 
 What goes in the dispatch is what varies. The implementer gets:
 
@@ -229,8 +306,10 @@ What goes in the dispatch is what varies. The implementer gets:
    `scripts/parallel-contract`, and the paths of the earlier reports. Mandatory:
    dependency between phases is the norm, and without it the implementer goes
    digging through diffs;
-4. the instruction to use **`dev-skills:tdd`**, if the plan says this work has tests —
-   it is a skill the implementer invokes, not a path you resolve;
+4. the instruction to use **`dev-skills:tdd`** — in a join's dispatch and
+   nowhere else, because a join is where a test is first run and where the
+   repairs are made, and an ordinary phase writes none; it is a skill the
+   implementer invokes, not a path you resolve;
 5. the **report file path** — its contents and the short return format are the
    agent definition's contract, not yours to restate;
 6. **which fields of the brief you corrected — by name, not by content.**
@@ -265,94 +344,74 @@ available.
 
 `scripts/dispatch <plan> <range>` derives everything above that is
 mechanical and writes it to a file — it never prints the dispatch body, only the
-path and how many holes remain. `--gate-a` builds the code gate's dispatch
-instead. What it cannot derive comes back as a visible `<<< FILL: ... >>>`
-marker. Fill every one before handing the path over; a dispatch with a marker
-still in it is not ready, whatever else it says.
+path and how many holes remain. `--judge` builds the judge's dispatch instead:
+it takes no range, and it prints a second line, `cap origin: <sha>`, which is the
+commit the fix rounds are counted from and belongs in the Ledger. What it cannot
+derive comes back as a visible `<<< FILL: ... >>>` marker. Fill every one before
+handing the path over; a dispatch with a marker still in it is not ready,
+whatever else it says.
 
 ## The seats
 
 | Seat | Model | Does | Does not |
 |---|---|---|---|
-| `dev-skills:test-writer` | Sonnet | turns approved cases into executable tests, each named with its `TC-ID` | does not touch architecture, paths or phases; makes no product decision |
-| `dev-skills:implementer` | assigned by the plan | its phases, TDD where the plan says there are tests; static checks last, at its final commit | E2E, runtime, a request to a live endpoint; does not commit inside a parallel group |
-| `dev-skills:gate-a` | Opus, cold context | checks, then conformance, then integrity, over the whole `BASE..HEAD` | does not debug stack traces or build noise — hands red straight back; does not compare the diff to the step list |
-| `dev-skills:gate-b` | Opus, cold context | does the system work: runtime, E2E, the plan's executable cases, one evidence file each | does not review code quality — gate A closed that |
+| `dev-skills:tester` | Sonnet | turns approved cases into executable tests, once per join, on a branch of its own | does not touch architecture, paths or phases; makes no product decision |
+| `dev-skills:implementer` | assigned by the plan | its phases, the **Phase Check** and nothing else — and a join, when its phase is one; commits in the tree its dispatch names | E2E, runtime, a request to a live endpoint; outside a join it never merges, never switches branch, never touches another worker's tree |
+| `dev-skills:judge` | Opus, cold context | dispatches gate A then gate B, owns the fix loop, returns a verdict | never writes code, never reviews it itself, never edits the plan, never talks to the human |
+| `dev-skills:gate-a` | Opus, cold context | **the judge dispatches it, not you**: checks, then conformance, then integrity, over the whole `BASE..HEAD` | does not debug stack traces or build noise — hands red straight back; does not compare the diff to the step list |
+| `dev-skills:gate-b` | Opus, cold context | **the judge dispatches it, not you**: does the system work — runtime, E2E, the plan's executable cases, one evidence file each | does not review code quality — gate A closed that |
 
 Two orthogonal questions, never asked twice of the same code: **is it well
 written** belongs to gate A, **does it work as intended** to gate B.
 
 The gate reads the diff without exception. An implementer can write hello world,
-pass a test on it, and formally have "completed" the phase.
+tick every step in its brief, and formally have "completed" the phase.
 
-## The two gates
+## The judge
 
 **There are no checkpoint reviews.** Four of them on a measured run produced
-nothing; one gate over the assembled range sees everything they could and the
-cross-phase duplication they structurally could not. What used to be spent
-between phases is spent once, at the end, on more.
+nothing; one judgement over the assembled range sees everything they could and
+the cross-phase duplication they structurally could not. What used to be spent
+between phases is spent once, at the end — and not in your context.
 
-After the last phase, in this order and never at once:
+After the last phase, four moves and no more:
 
 ```text
-scripts/review-package <plan> BASE HEAD   the whole range
-→ scripts/dispatch <plan> --gate-a
-→ dispatch gate A: checks, then conformance, then integrity
-→ green → dispatch gate B on the executable cases and the plan's moments
-→ green → squash, then the human
+scripts/dispatch <plan> --judge
+→ fill its holes; write the `cap origin:` line it printed into the Ledger
+→ dispatch the judge on Opus
+→ read the verdict; GREEN → the human types dev-skills:finish
 ```
 
-Gate A first because a failed check sends the range back **unread**, and gate B
-driving a system whose build is broken is the same waste one step later.
+The judge runs gate A first and gate B only on green, because a failed check
+sends the range back **unread**, and driving a system whose build is broken is
+the same waste one step later. They are two agents rather than one because gate B
+is the loudest actor in the run — builds, environment bring-up, e2e, logs,
+screenshots, a simulator — and all of that would settle in one shared context
+exactly where remediation and finishing still have to happen. You dispatch
+neither of them and you read neither report: how that runs is `agents/judge.md`'s
+business, and the whole point of the seat is that none of it lands here.
 
-They are two agents rather than one because gate B is the loudest actor in the
-run — builds, environment bring-up, e2e, logs, screenshots, a simulator — and all
-of that would settle in a shared context exactly before remediation and
-finishing. The second cold start is the price, and it was priced in.
+## The verdict
 
-Each gate returns **a verdict and a path**. You do not read its report into your
-context; you read the verdict, and the human reads the evidence.
+What comes back is **one of four verdicts** and the paths to the evidence. You
+read the verdict; the human reads the evidence.
 
-## The fix loop
-
-**Only a `BLOCKER` opens a fix round.**
-
-An `ADVISORY` travels to the human alongside the diff, counted on one line —
-`Unresolved advisories: n`. It never buys an implementer pass and a gate pass.
-This is the largest single saving in the redesign, and it is measured: on one run
-two fix rounds cost an hour and a quarter against thirty-seven minutes of
-implementation, and neither finding that bought them was blocking.
-
-For a `BLOCKER`:
-
-- the **same implementer** fixes first — it is warm, it does not need to re-read
-  the plan, and it is pointed at the specific place;
-- if that round does not close it, a **new implementer** on a cold context;
-- **two rounds, and the cap is checked mechanically.**
-
-### Checking the cap
-
-The cap has existed as prose since before this rewrite and it did not hold: a
-measured run took four fix rounds with no escalation at all. A rule enforced by
-judgement is a rule that goes when the judgement is busy.
-
-Record the `HEAD` at the first gate dispatch in the ledger. Before every later
-gate dispatch, count:
-
-```bash
-git log --format=%s <head at the first gate dispatch>..HEAD | grep -c '^fix('
+```text
+GREEN           stop. The human invokes dev-skills:finish
+BLOCKED         triage with the human: amend the plan or its cases, spend a
+                third round, or stop
+PLAN_CONFLICT   the human's, always — you do not amend the plan to close one
+NEEDS_CONTEXT   the dispatch was incomplete. Fill what it names, dispatch again
 ```
 
-Two comparable numbers, no model judgement — the same class of check as comparing
-paths. **At two, the third gate dispatch does not happen.** The run goes to
-triage: the human decides whether to amend the plan or its cases, spend a third
-round, or stop.
-
-Two rounds that do not converge almost always mean the problem is in the phase's
-wording, not in the code.
-
-Findings that conflict with what the plan mandates are not fixed and not
-dismissed: that is a `PLAN_CONFLICT`, and it goes to the human.
+Nothing else reaches you: no finding, no build output, no round. The judge owns
+the remediation loop and the cap on it, and the cap exists because it was
+measured — on one run two fix rounds cost an hour and a quarter against
+thirty-seven minutes of implementation, and neither finding that bought them was
+blocking. Two rounds that do not converge almost always mean the problem is in
+the phase's wording rather than in the code, which is why `BLOCKED` arrives here
+instead of buying a third round on its own.
 
 ## Git
 
@@ -365,9 +424,11 @@ one commit at the end anyway — but two things that exist only during the run: 
 **gate's range**, which must not contain half-finished work, and the **recovery
 point**, which is useless if it carries someone else's half-written file.
 
-- a sequential phase's implementer commits its own work when the phase is built;
-- **a parallel group's agents do not commit.** You compare the paths, run the
-  checks, and make one join commit for the group;
+- **an implementer commits its own work** when the phases in its brief are
+  built, in the tree its dispatch names and on the branch it finds checked out
+  there — at width that is one branch per phase, one worker to a branch;
+- **the merge is yours, and it waits** until every phase of the row has passed
+  its attribution check: `git merge --no-ff`, in phase order;
 - fixes land as **separate commits on top**, never `amend` — an amend would move
   a range the gate has already read;
 - a `fix(` subject on a remediation commit is what makes the round cap countable.
@@ -428,14 +489,14 @@ evidence and buys nothing; what you withhold is the join.
 
 **A frozen name, signature or shape that has to change is a `PLAN_CONFLICT` and
 stops the run.** It is not a gate finding — the code has not reached a gate yet —
-and it is never patched with an adapter in the join phase. The plan's join phase
-says so in the negative half of its *How* field, because an adapter inside a
+and it is never patched with an adapter in the join. The plan says so in the
+negative half of the join's own *How* field, because an adapter inside a
 permitted file passes the path comparison and nothing else would catch it.
 
 ## Handoff
 
-Both gates green → stop. The human invokes `dev-skills:finish`, which squashes
-the run and puts exactly the landing commit in front of them.
+The judge returns `GREEN` → stop. The human invokes `dev-skills:finish`, which
+squashes the run and puts exactly the landing commit in front of them.
 
 There is one human acceptance and it comes after the squash. Do not run a
 functional gate of your own first; that was two gates, and the second one always
@@ -446,11 +507,13 @@ arrived after the first had been spent.
 | Excuse | Reality |
 |---|---|
 | "I'll just fix this one myself" | Your fixes skip the gate and fill the context you need for coordination. Send it back to the implementer. |
-| "One more round will converge" | Past two rounds it does not. The failure is in the phase's wording; escalate. Count the `fix(` commits rather than trusting the feeling. |
-| "It's only an advisory, but it's quick" | Quick is not the cost. A round is an implementer pass plus a gate pass, and the human never sees the one that was not worth running. |
-| "The gate re-ran the same checks, that's waste" | It re-runs them only when the SHA moved. When it matches, it takes the report. That is the whole deal. |
-| "The implementer says the deviation was harmless" | Only the path comparison knows, and it does not read reports. |
-| "The paths overlap a bit, it'll be fine in parallel" | Disjoint write-sets are a precondition, not a hope. Run them sequentially and write down that you did. |
+| "I'll just read the gate's report, it's right there" | That is the 86% this whole change was measured against. Read the verdict. |
+| "The implementer says the deviation was harmless" | Only the attribution check knows, and it does not read reports. |
+| "The paths overlap a bit, it'll be fine in parallel" | Disjoint write-sets are a precondition, not a hope. Narrow the row, and write the reason into `## Corrections during execution`. |
+| "One tree for the whole row is simpler than a worktree each" | In one tree nothing can attribute a written path to the phase that wrote it, and every commit races for one `index.lock`. The worktree is what makes the attribution check a single `git diff`. |
+| "One phase failed attribution, the others are clean — I'll merge those" | The row does not merge at all. A path outside a phase's declaration stops every phase of it, siblings included. |
 | "It's obviously a fact, I'll just carry on" | Write the correction into the plan. Unrecorded, it disappears from the human's view at acceptance. |
 | "The plan says it, so the finding is wrong" | Neither the finding nor the plan wins by default. That is a PLAN_CONFLICT, and it belongs to the human. |
 | "The ledger is bookkeeping" | The ledger is what survives compaction. Without it, orchestrators re-dispatch finished work. |
+| "I'll just run the join's tests myself to see" | That is the join's context, not yours, and the reason the seat exists. You get the verdict; the red output is not yours to read. |
+| "The test is wrong, I'll fix what it asserts" | What it asserts is the approved case. Mechanics are the join's, intent is the human's. |

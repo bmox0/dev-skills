@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""Renders a plan's '## Graph' section from its phases' '**Depends on**'
+fields, so the picture and the fields cannot disagree.
+
+Parsing is fence-aware the way plan-check already is: a line opening a fence
+('```') flips a flag, and a line seen while the flag is set is skipped.
+Phases are '### Phase <n>.' headings; a phase's title is the heading text
+after the number and its '.', right-stripped. '**Depends on**' bullets are
+read by the same grammar plan-check's check 8 validates: a lone '- —' (no
+dependency), or one or more '- phase <n> — <why this phase needs its file>'
+bullets.
+
+It refuses, without touching the file, to draw a graph it cannot trust — each
+refusal exits 2 and ends by pointing at plan-check, which is where the fault
+is properly diagnosed:
+  - no '### Phase N.' heading at all
+  - a duplicated phase number
+  - a bullet under '**Depends on**' in any other shape
+  - a bullet naming a phase not lower than its own
+  - no '## Phases' heading to insert '## Graph' above, when there is no
+    existing '## Graph' section to replace
+
+What it does not refuse: a phase with no '**Depends on**' field, or with an
+empty one, is drawn as having no dependency. An absent field is unknown, not
+wrong — plan-check is the one that refuses the plan for that.
+
+The file is only written when its bytes would actually change, through a
+temp file in the plan's own directory, carrying the plan's mode across.
+Idempotent: a second run on an already-rendered plan writes nothing.
+
+Usage: plan-graph PLAN_FILE
+Exit:  0 rendered (written or already current)
+       2 usage, no such file, or a plan it will not draw
+"""
+
+import os
+import re
+import stat
+import sys
+import tempfile
+
+PROG = "plan-graph"
+
+PHASE_RE = re.compile(r'^### Phase (\d+)\.(.*)$')
+FENCE_RE = re.compile(r'^```')
+SECTION_RE = re.compile(r'^##[ \t]+')
+GRAPH_HEADING_RE = re.compile(r'^##[ \t]+Graph[ \t]*$')
+PHASES_HEADING_RE = re.compile(r'^##[ \t]+Phases[ \t]*$')
+BOLD_FIELD_RE = re.compile(r'^\*\*[A-Za-z][^*]*\*\*[ \t]*$')
+DEPENDS_HEADING_RE = re.compile(r'^\*\*Depends on\*\*[ \t]*$')
+NONE_BULLET_RE = re.compile(r'^-[ \t]*—[ \t]*$')
+DEP_BULLET_RE = re.compile(r'^- phase (\d+) — .+$')
+
+
+def die(msg):
+    sys.stderr.write(msg + "\n")
+    raise SystemExit(2)
+
+
+def refuse(msg, plan):
+    die("%s run skills/implement/scripts/plan-check %s first." % (msg, plan))
+
+
+def first_nonfenced(lines, pred, start=0):
+    """The index of the first non-fenced line in lines[start:] for which
+    pred(line) is true, or None."""
+    fence = False
+    for i in range(start, len(lines)):
+        line = lines[i]
+        if FENCE_RE.match(line):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        if pred(line):
+            return i
+    return None
+
+
+def parse_phases(lines, plan):
+    phases = {}
+    current = None
+    in_depends = False
+    fence = False
+
+    for line in lines:
+        if FENCE_RE.match(line):
+            fence = not fence
+            continue
+        if fence:
+            continue
+
+        m = PHASE_RE.match(line)
+        if m:
+            n = int(m.group(1))
+            title = m.group(2).strip()
+            if n in phases:
+                refuse("phase %d is duplicated in %s —" % (n, plan), plan)
+            phases[n] = {"title": title, "deps": []}
+            current = n
+            in_depends = False
+            continue
+
+        if SECTION_RE.match(line) and not line.startswith('###'):
+            current = None
+            in_depends = False
+            continue
+
+        if BOLD_FIELD_RE.match(line):
+            in_depends = bool(
+                current is not None and DEPENDS_HEADING_RE.match(line))
+            continue
+
+        if in_depends and current is not None:
+            if line.strip() == "":
+                continue
+            if re.match(r'^[ \t]+', line):
+                continue
+            if NONE_BULLET_RE.match(line):
+                continue
+            dm = DEP_BULLET_RE.match(line)
+            if dm:
+                target = int(dm.group(1))
+                if target >= current:
+                    refuse(
+                        "phase %d's **Depends on** in %s names phase %d, "
+                        "which is not earlier than phase %d —"
+                        % (current, plan, target, current),
+                        plan)
+                phases[current]["deps"].append(target)
+                continue
+            refuse(
+                "phase %d's **Depends on** in %s has a bullet that is not "
+                "a dependency: '%s' —" % (current, plan, line),
+                plan)
+
+    if not phases:
+        refuse("no '### Phase N.' heading found in %s —" % plan, plan)
+
+    return phases
+
+
+def longest_chain(phases):
+    """The longest path following dependency edges, phases joined ascending.
+    Among chains of equal maximum length, the one whose numbers are smallest
+    read left to right — enforced by always keeping, per phase, the
+    lexicographically smallest chain among those tied for the longest, which
+    (numbers only increasing along a chain) is what makes the final global
+    choice correct too."""
+    best = {}
+    for n in sorted(phases):
+        deps = phases[n]["deps"]
+        candidates = [best[d] + (n,) for d in deps]
+        if candidates:
+            max_len = max(len(c) for c in candidates)
+            candidates = [c for c in candidates if len(c) == max_len]
+            best[n] = min(candidates)
+        else:
+            best[n] = (n,)
+    max_len = max(len(c) for c in best.values())
+    chains = [c for c in best.values() if len(c) == max_len]
+    return min(chains)
+
+
+def render_rows(phases):
+    nums = sorted(phases)
+    num_width = max(len(str(n)) for n in nums)
+    cells = {}
+    for n in nums:
+        deps = sorted(phases[n]["deps"])
+        cells[n] = "--" if not deps else "<- " + ", ".join(str(d) for d in deps)
+    cell_width = max(len(cells[n]) for n in nums)
+
+    rows = []
+    for n in nums:
+        prefix = (str(n).ljust(num_width) + "  "
+                  + cells[n].ljust(cell_width) + "  ")
+        title = phases[n]["title"]
+        line = prefix + title
+        if len(line) > 78:
+            avail = max(0, 78 - len(prefix) - 3)
+            line = prefix + title[:avail] + "..."
+        rows.append(line.rstrip())
+    return rows
+
+
+def render_summary(phases):
+    n = len(phases)
+    r = sum(1 for p in phases.values() if not p["deps"])
+    chain = longest_chain(phases)
+    if len(chain) == 1:
+        chain_str = str(chain[0])
+    else:
+        chain_str = " -> ".join(str(c) for c in chain)
+    noun = "phase" if n == 1 else "phases"
+    return "%d %s · %d with no dependency · longest chain: %s" % (
+        n, noun, r, chain_str)
+
+
+def render_block(phases):
+    lines = [
+        "## Graph",
+        "",
+        "<!-- rendered by skills/implement/scripts/plan-graph — do not edit by hand -->",
+        "",
+        "```text",
+    ]
+    lines.extend(render_rows(phases))
+    lines.append("")
+    lines.append(render_summary(phases))
+    lines.append("```")
+    return lines
+
+
+def splice(lines, block, plan):
+    graph_start = first_nonfenced(lines, GRAPH_HEADING_RE.match)
+    if graph_start is not None:
+        graph_end = first_nonfenced(
+            lines,
+            lambda l: SECTION_RE.match(l) and not l.startswith('###'),
+            graph_start + 1)
+        if graph_end is None:
+            graph_end = len(lines)
+        insert_at = graph_start
+        remove_through = graph_end
+    else:
+        phases_start = first_nonfenced(lines, PHASES_HEADING_RE.match)
+        if phases_start is None:
+            refuse(
+                "no '## Phases' heading in %s to insert '## Graph' above —"
+                % plan, plan)
+        insert_at = phases_start
+        remove_through = phases_start
+
+    remainder = lines[remove_through:]
+    new_lines = lines[:insert_at] + block
+    if remainder:
+        new_lines.append("")
+    new_lines.extend(remainder)
+    return new_lines
+
+
+def main():
+    argv = sys.argv[1:]
+    if len(argv) != 1:
+        sys.stderr.write("usage: %s PLAN_FILE\n" % PROG)
+        raise SystemExit(2)
+
+    plan = argv[0]
+    if not os.path.isfile(plan):
+        die("no such plan file: %s" % plan)
+
+    with open(plan, "rb") as fh:
+        raw = fh.read()
+    text = raw.decode("utf-8")
+    lines = text.split("\n")
+
+    phases = parse_phases(lines, plan)
+    block = render_block(phases)
+    new_lines = splice(lines, block, plan)
+
+    new_text = "\n".join(new_lines)
+    new_raw = new_text.encode("utf-8")
+
+    n = len(phases)
+    e = sum(len(p["deps"]) for p in phases.values())
+
+    if new_raw == raw:
+        print("unchanged: ## Graph in %s — %d phases, %d edges" % (plan, n, e))
+        return
+
+    mode = stat.S_IMODE(os.stat(plan).st_mode)
+    dir_ = os.path.dirname(os.path.abspath(plan)) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=dir_, prefix=".plan-graph-")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(new_raw)
+        os.chmod(tmp_path, mode)
+        os.replace(tmp_path, plan)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
+    print("wrote: ## Graph in %s — %d phases, %d edges" % (plan, n, e))
+
+
+if __name__ == "__main__":
+    main()

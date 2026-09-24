@@ -15,10 +15,19 @@
 # being a claim. Intersecting means the group does not run — the topology is
 # corrected out loud, never changed quietly.
 #
+# With --attribution it answers yet another question, after a phase has run
+# rather than before it: did the branch write only what its own phase
+# declared? A path outside the declaration is a PLAN_CONFLICT — the row does
+# not merge — and a declared path left unwritten is only a note, not a
+# refusal.
+#
 # Usage: preflight [PLAN_FILE]
 #        preflight --parallel PLAN_FILE RANGE RANGE [RANGE...]
-# Exit:  0 clean (or the write-sets are disjoint)
-#        1 findings printed (or the write-sets intersect)
+#        preflight --attribution PLAN_FILE RANGE BASE REF
+# Exit:  0 clean (or the write-sets are disjoint, or every written path was
+#          declared)
+#        1 findings printed (or the write-sets intersect, or a written path
+#          fell outside the range's declaration)
 #        2 not a git repository, or the arguments are wrong
 set -uo pipefail
 
@@ -29,10 +38,23 @@ set -uo pipefail
 changes_paths() {
   local plan="$1" first="$2" last="$3"
   awk -v first="$first" -v last="$last" '
+    function flush() {
+      if (bullet == "") return
+      head = bullet
+      if (match(head, / — /)) head = substr(head, 1, RSTART - 1)
+      while (match(head, /`[^`]+`/)) {
+        p = substr(head, RSTART + 1, RLENGTH - 2)
+        if (p != "" && p !~ /^—$/) print p
+        head = substr(head, RSTART + RLENGTH)
+      }
+      bullet = ""
+    }
+
     /^```/ { fence = !fence; next }
     fence { next }
 
     /^###[ \t]+Phase[ \t]+[0-9]+/ {
+      flush()
       n = $0; sub(/^###[ \t]+Phase[ \t]+/, "", n); sub(/[^0-9].*$/, "", n)
       inrange = (n + 0 >= first && n + 0 <= last)
       infield = 0
@@ -40,17 +62,22 @@ changes_paths() {
     }
 
     /^\*\*[A-Z]/ {
+      flush()
       infield = (inrange && $0 ~ /^\*\*Changes\*\*/)
       next
     }
 
-    infield && /`/ {
-      line = $0
-      if (match(line, /`[^`]+`/)) {
-        p = substr(line, RSTART + 1, RLENGTH - 2)
-        if (p != "" && p !~ /^—$/) print p
-      }
+    !infield { next }
+
+    {
+      trimmed = $0
+      sub(/^[ \t]+/, "", trimmed)
+      if (trimmed == "") { flush(); next }
+      if (trimmed ~ /^-/) { flush(); bullet = trimmed; next }
+      if (bullet != "") bullet = bullet " " trimmed
     }
+
+    END { flush() }
   ' "$plan" | LC_ALL=C sort -u
 }
 
@@ -102,10 +129,73 @@ cmd_parallel() {
   exit 1
 }
 
+# --- a branch checked against its own phase's declared write-set -----------
+# Answered after a phase has run, not before: did the branch write only what
+# RANGE declared? LC_ALL=C throughout, for the same reason cmd_parallel's is —
+# both sides are sorted LC_ALL=C, and comm left in the ambient locale
+# disagrees with that order.
+cmd_attribution() {
+  [ $# -eq 4 ] || { echo "usage: preflight --attribution PLAN_FILE RANGE BASE REF" >&2; exit 2; }
+  local plan="$1" range="$2" base="$3" ref="$4"
+  [ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
+
+  local first last
+  case "$range" in
+    *[0-9]-[0-9]*) first=${range%%-*}; last=${range##*-} ;;
+    *[!0-9]*)      echo "bad RANGE: $range (want 3 or 2-4)" >&2; exit 2 ;;
+    *)             first=$range; last=$range ;;
+  esac
+  [ "$first" -le "$last" ] 2>/dev/null || { echo "bad RANGE: $range" >&2; exit 2; }
+
+  git rev-parse --verify --quiet "$base" >/dev/null || { echo "bad BASE: $base" >&2; exit 2; }
+  git rev-parse --verify --quiet "$ref"  >/dev/null || { echo "bad REF: $ref" >&2; exit 2; }
+
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+
+  changes_paths "$plan" "$first" "$last" > "$tmp/declared"
+  git diff --name-only "$base".."$ref" 2>/dev/null | LC_ALL=C sort -u > "$tmp/written"
+
+  echo "phases ${range} declared: $(wc -l < "$tmp/declared" | tr -d ' ') path(s)"
+  sed 's/^/  /' "$tmp/declared"
+  echo "phases ${range} wrote: $(wc -l < "$tmp/written" | tr -d ' ') path(s)"
+  sed 's/^/  /' "$tmp/written"
+
+  local not_written outside violations
+  not_written="$(LC_ALL=C comm -23 "$tmp/declared" "$tmp/written")"
+  outside="$(LC_ALL=C comm -13 "$tmp/declared" "$tmp/written")"
+
+  if [ -n "$not_written" ]; then
+    echo "declared but not written:"
+    printf '%s\n' "$not_written" | sed 's/^/  /'
+  fi
+
+  violations=0
+  if [ -n "$outside" ]; then
+    violations=$((violations + 1))
+    echo "outside its declaration:"
+    printf '%s\n' "$outside" | sed 's/^/  /'
+  fi
+
+  if [ "$violations" -eq 0 ]; then
+    echo "attribution clean — $(wc -l < "$tmp/written" | tr -d ' ') path(s) written, all declared"
+    exit 0
+  fi
+  echo "a path outside a phase's declaration is a PLAN_CONFLICT — the row does not merge" >&2
+  exit 1
+}
+
 if [ "${1:-}" = "--parallel" ]; then
   shift
   [ $# -ge 1 ] || { echo "usage: preflight --parallel PLAN_FILE RANGE RANGE [RANGE...]" >&2; exit 2; }
   cmd_parallel "$@"
+fi
+
+if [ "${1:-}" = "--attribution" ]; then
+  shift
+  [ $# -ge 1 ] || { echo "usage: preflight --attribution PLAN_FILE RANGE BASE REF" >&2; exit 2; }
+  cmd_attribution "$@"
 fi
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repository" >&2; exit 2; }
@@ -187,6 +277,7 @@ if [ -z "$contract" ]; then
 else
   grep -qiE '^\*\*bootstrap' "$contract" || add "no 'bootstrap' field in $(basename "$contract") — ask how a fresh tree is prepared, then record it"
   grep -qiE '^\*\*link'      "$contract" || add "no 'link' field in $(basename "$contract") — ask which untracked paths to symlink (default .env*), then record it"
+  grep -qiE '^\*\*[Pp]hase check' "$contract" || add "no 'Phase check' field in $(basename "$contract") — ask which one command a phase runs on its own work (a formatter, or none), then record it"
 fi
 
 # --- the plan has to exist, and has to have the right shape ----------------
