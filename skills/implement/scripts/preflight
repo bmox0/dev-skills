@@ -1,121 +1,169 @@
 #!/usr/bin/env bash
-# Everything mechanical that must hold before the first phase is dispatched.
-# Reports; fixes only what is unambiguous (the .gitignore line, the .ai-workflow
-# symlink in a worktree). Judgement calls are reported and left to the skill.
+# Puts the work on its own branch or worktree and reports what stands in the
+# way. Fixes only what is unambiguous (the .ai-workflow exclude line, the
+# .ai-workflow symlink in a worktree); judgement calls are reported and left to
+# the caller.
 #
-# The runnability half is why this exists at all: a fresh worktree has no
-# installed dependencies and none of the untracked local files the project
-# needs. Without bootstrap and link, both gates that need a live system walk
-# into a tree that cannot start — and they walk into it after every line of code
-# is already written.
-#
-# With --parallel it answers a different question, before a parallel group is
-# dispatched rather than before the run: do these phases' write-sets intersect?
-# The plan admits a group only where they do not, and this is where that stops
-# being a claim. Intersecting means the group does not run — the topology is
-# corrected out loud, never changed quietly.
-#
-# Usage: preflight [PLAN_FILE]
-#        preflight --parallel PLAN_FILE RANGE RANGE [RANGE...]
-# Exit:  0 clean (or the write-sets are disjoint)
-#        1 findings printed (or the write-sets intersect)
+# Usage: preflight [--worktree] [--from REF] [BRANCH]
+# Exit:  0 clean
+#        1 findings printed
 #        2 not a git repository, or the arguments are wrong
 set -uo pipefail
 
-# --- the write-sets of a parallel group ------------------------------------
-# A phase's write-set is its Changes field: one bullet per path, the path being
-# the first backticked token on the line. Anything a phase names outside a
-# backtick is prose about the path, not another path.
-changes_paths() {
-  local plan="$1" first="$2" last="$3"
-  awk -v first="$first" -v last="$last" '
-    /^```/ { fence = !fence; next }
-    fence { next }
+usage() { echo "usage: preflight [--worktree] [--from REF] [BRANCH]" >&2; exit 2; }
 
-    /^###[ \t]+Phase[ \t]+[0-9]+/ {
-      n = $0; sub(/^###[ \t]+Phase[ \t]+/, "", n); sub(/[^0-9].*$/, "", n)
-      inrange = (n + 0 >= first && n + 0 <= last)
-      infield = 0
-      next
-    }
-
-    /^\*\*[A-Z]/ {
-      infield = (inrange && $0 ~ /^\*\*Changes\*\*/)
-      next
-    }
-
-    infield && /`/ {
-      line = $0
-      if (match(line, /`[^`]+`/)) {
-        p = substr(line, RSTART + 1, RLENGTH - 2)
-        if (p != "" && p !~ /^—$/) print p
-      }
-    }
-  ' "$plan" | LC_ALL=C sort -u
-}
-
-cmd_parallel() {
-  local plan="$1"
-  shift
-  [ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
-  [ $# -ge 2 ] || { echo "usage: preflight --parallel PLAN_FILE RANGE RANGE [RANGE...]" >&2; exit 2; }
-
-  local ranges=("$@") tmp i j
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
-
-  local r first last
-  for i in "${!ranges[@]}"; do
-    r="${ranges[$i]}"
-    case "$r" in
-      *[0-9]-[0-9]*) first=${r%%-*}; last=${r##*-} ;;
-      *[!0-9]*)      echo "bad RANGE: $r (want 3 or 2-4)" >&2; exit 2 ;;
-      *)             first=$r; last=$r ;;
-    esac
-    [ "$first" -le "$last" ] 2>/dev/null || { echo "bad RANGE: $r" >&2; exit 2; }
-    changes_paths "$plan" "$first" "$last" > "$tmp/$i"
-    echo "phases ${r}: $(wc -l < "$tmp/$i" | tr -d ' ') path(s)"
-    sed 's/^/  /' "$tmp/$i"
-  done
-
-  local clashes=0 overlap
-  for i in "${!ranges[@]}"; do
-    for j in "${!ranges[@]}"; do
-      [ "$i" -lt "$j" ] || continue
-      # LC_ALL=C, because changes_paths sorted LC_ALL=C. Left in the ambient
-      # locale comm disagrees about case, walks past the shared path, and
-      # reports an intersecting pair as disjoint — this check failing open.
-      overlap="$(LC_ALL=C comm -12 "$tmp/$i" "$tmp/$j")"
-      [ -n "$overlap" ] || continue
-      clashes=$((clashes + 1))
-      echo "intersect: phases ${ranges[$i]} and phases ${ranges[$j]} both write:"
-      printf '%s\n' "$overlap" | sed 's/^/  /'
-    done
-  done
-
-  if [ "$clashes" -eq 0 ]; then
-    echo "write-sets disjoint — the group may run in parallel"
-    exit 0
-  fi
-  echo "the group does not run in parallel — correct the plan or run these phases" >&2
-  echo "sequentially, and write down which you chose" >&2
-  exit 1
-}
-
-if [ "${1:-}" = "--parallel" ]; then
-  shift
-  [ $# -ge 1 ] || { echo "usage: preflight --parallel PLAN_FILE RANGE RANGE [RANGE...]" >&2; exit 2; }
-  cmd_parallel "$@"
-fi
+worktree="" from="" branch=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --worktree) worktree=1; shift ;;
+    --from) [ $# -ge 2 ] || usage; from="$2"; shift 2 ;;
+    -*) usage ;;
+    *) [ -z "$branch" ] || usage; branch="$1"; shift ;;
+  esac
+done
+[ -n "$branch" ] || { [ -z "$worktree" ] && [ -z "$from" ]; } || usage
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repository" >&2; exit 2; }
-gitdir="$(git rev-parse --git-dir 2>/dev/null)"
-common="$(git rev-parse --git-common-dir 2>/dev/null)"
+if [ -n "$branch" ] && ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+  echo "not a valid branch name: $branch" >&2
+  exit 2
+fi
+common="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+if [ "$(cd "$(git rev-parse --absolute-git-dir)" && pwd -P)" = "$common" ]; then
+  main_checkout="$root"
+else
+  main_checkout="$(git worktree list --porcelain | awk '/^worktree /{print substr($0,10); exit}')"
+fi
 
 findings=()
 add() { findings+=("$1"); }
 
-# --- an operation left half-done ------------------------------------------
+def="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+if [ -z "$def" ]; then
+  if   git show-ref --verify --quiet refs/heads/main;   then def="main"
+  elif git show-ref --verify --quiet refs/heads/master; then def="master"
+  fi
+fi
+
+env_field() {
+  local contract="$1/CLAUDE.md"
+  [ -f "$contract" ] || return 1
+  grep -iE "^\*\*$2\.?\*\*" "$contract" | head -1 | sed -E "s/^\*\*[^*]*\*\*[[:space:]]*//"
+}
+
+backticked() {
+  printf '%s\n' "$1" | grep -oE '`[^`]+`' | tr -d '`'
+}
+
+prepare_worktree() {
+  local wt="$1" field cmd pattern src rel done_flag
+  if [ ! -e "$wt/.ai-workflow" ] && [ -d "$main_checkout/.ai-workflow" ]; then
+    ln -s "$main_checkout/.ai-workflow" "$wt/.ai-workflow"
+    echo "fixed: linked .ai-workflow -> $main_checkout/.ai-workflow"
+  fi
+
+  if ! field="$(env_field "$wt" link)" || [ -z "$field" ]; then
+    add "no 'link' field in CLAUDE.md's ## Environment — ask which untracked paths a fresh tree needs (default .env*), then record it"
+  else
+    while IFS= read -r pattern; do
+      [ -n "$pattern" ] || continue
+      for src in "$main_checkout"/$pattern; do
+        [ -e "$src" ] || continue
+        rel="${src#"$main_checkout"/}"
+        [ -e "$wt/$rel" ] || { ln -s "$src" "$wt/$rel" && echo "linked: $rel"; }
+      done
+    done < <(backticked "$field")
+  fi
+
+  if ! field="$(env_field "$wt" bootstrap)" || [ -z "$field" ]; then
+    add "no 'bootstrap' field in CLAUDE.md's ## Environment — ask how a fresh tree is prepared, then record it"
+    return
+  fi
+  done_flag="$(git -C "$wt" rev-parse --absolute-git-dir)/devskills-bootstrapped"
+  [ -e "$done_flag" ] && return
+  cmd="$(backticked "$field" | head -1)"
+  [ -n "$cmd" ] || return
+  echo "bootstrap: $cmd"
+  if (cd "$wt" && bash -c "$cmd") 2>&1 | sed 's/^/  /'; then
+    : > "$done_flag"
+  else
+    add "bootstrap failed in $wt: $cmd — fix it and run preflight again"
+  fi
+}
+
+record_base() {
+  if git show-ref --verify --quiet "refs/heads/$branch"; then
+    git config "branch.$branch.devskillsbase" "$(git rev-parse "$base^{commit}")"
+    if [ -n "$from" ] && git show-ref --verify --quiet "refs/heads/$from"; then
+      git config "branch.$branch.devskillsfrom" "$from"
+    fi
+  fi
+}
+
+branch_exists() {
+  git show-ref --verify --quiet "refs/heads/$1" \
+    || [ -n "$(git for-each-ref --format='%(refname)' "refs/remotes/*/$1")" ]
+}
+
+tree="$root"
+carried=""
+if [ -n "$branch" ]; then
+  base="${from:-$def}"
+  if [ -z "$base" ] || ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+    echo "no base to branch from: ${base:-the default branch is unknown}" >&2
+    exit 2
+  fi
+  git worktree prune
+  existing="$(git worktree list --porcelain \
+    | awk -v want="branch refs/heads/$branch" '/^worktree /{w=substr($0,10)} $0==want{print w; exit}')"
+  sibling="$(dirname "$main_checkout")/$(basename "$main_checkout").worktrees/${branch//\//-}"
+  if [ -z "$existing" ] && [ -n "$worktree" ] \
+     && git worktree list --porcelain | grep -qxF "worktree $sibling"; then
+    held_dir="$(git -C "$sibling" rev-parse --absolute-git-dir 2>/dev/null)"
+    held="$(cat "$held_dir/rebase-merge/head-name" "$held_dir/rebase-apply/head-name" 2>/dev/null | head -1)"
+    [ -n "$held" ] || held="refs/heads/$(cat "$held_dir/BISECT_START" 2>/dev/null)"
+    if [ "$held" != "refs/heads/$branch" ]; then
+      echo "the worktree path $sibling holds another branch or a detached HEAD — check out $branch there, or name the branch differently" >&2
+      exit 1
+    fi
+    existing="$sibling"
+  fi
+
+  if [ -n "$existing" ]; then
+    tree="$existing"
+    echo "resuming: $branch is checked out at $existing"
+    [ "$existing" = "$main_checkout" ] || prepare_worktree "$tree"
+  elif [ -n "$worktree" ]; then
+    tree="$sibling"
+    if [ -e "$tree" ]; then
+      echo "the worktree path $tree already exists — remove it, or name the branch differently" >&2
+      exit 1
+    fi
+    if branch_exists "$branch"; then
+      out="$(git worktree add "$tree" "$branch" 2>&1)" || { echo "$out" >&2; exit 1; }
+    else
+      out="$(git worktree add --no-track -b "$branch" "$tree" "$base" 2>&1)" || fail_out="$out"
+      record_base
+      [ -z "${fail_out:-}" ] || { echo "$fail_out" >&2; exit 1; }
+    fi
+    echo "worktree: $tree — work there"
+    prepare_worktree "$tree"
+  else
+    if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+      carried="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "--detach $(git rev-parse --short HEAD)")"
+    fi
+    if branch_exists "$branch"; then
+      out="$(git switch "$branch" 2>&1)" || { echo "$out" >&2; exit 1; }
+    else
+      out="$(git switch --no-track -c "$branch" "$base" 2>&1)" || fail_out="$out"
+      record_base
+      [ -z "${fail_out:-}" ] || { echo "$fail_out" >&2; exit 1; }
+    fi
+  fi
+fi
+
+gitdir="$(git -C "$tree" rev-parse --git-dir)"
+case "$gitdir" in /*) ;; *) gitdir="$tree/$gitdir" ;; esac
 [ -f "$gitdir/MERGE_HEAD" ]       && add "merge in progress — finish or abort it first"
 [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ] \
                                   && add "rebase in progress — finish or abort it first"
@@ -123,92 +171,51 @@ add() { findings+=("$1"); }
 [ -f "$gitdir/REVERT_HEAD" ]      && add "revert in progress — finish or abort it"
 [ -f "$gitdir/BISECT_LOG" ]       && add "bisect in progress — 'git bisect reset' first"
 
-# --- where the work will land ---------------------------------------------
-branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-def="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-if [ -z "$def" ]; then
-  if   git show-ref --verify --quiet refs/heads/main;   then def="main"
-  elif git show-ref --verify --quiet refs/heads/master; then def="master"
-  fi
-fi
-[ "$branch" = "HEAD" ] && add "detached HEAD — commits here belong to no branch"
-[ -n "$def" ] && [ "$branch" = "$def" ] \
-  && add "on the default branch ($def) — execution needs its own branch or worktree"
-
-staged="$(git diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')"
-unstaged="$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ')"
-if [ "${staged:-0}" -gt 0 ] || [ "${unstaged:-0}" -gt 0 ]; then
-  add "uncommitted changes (${staged} staged, ${unstaged} unstaged) — they will land in the run's commits"
+current="$(git -C "$tree" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+if [ -z "$current" ]; then
+  add "detached HEAD — commits here belong to no branch"
+elif [ -n "$def" ] && [ "$current" = "$def" ]; then
+  add "on the default branch ($def) — put the work on its own: preflight feat/<unit>, or --worktree"
 fi
 
-# --- how far the base has moved -------------------------------------------
-if [ -n "$def" ] && git rev-parse --verify --quiet "origin/$def" >/dev/null 2>&1; then
-  mb="$(git merge-base HEAD "origin/$def" 2>/dev/null || true)"
-  if [ -n "$mb" ]; then
-    behind="$(git rev-list --count "${mb}..origin/${def}" 2>/dev/null || echo 0)"
-    [ "${behind:-0}" -gt 0 ] \
-      && add "origin/${def} moved ${behind} commit(s) since this point (local refs, not fetched)"
-  fi
-fi
-
-# --- the artifacts have to be reachable and ignored ------------------------
-ignore="$root/.gitignore"
-if [ ! -f "$ignore" ] || ! grep -qxF '.ai-workflow' "$ignore"; then
-  printf '.ai-workflow\n' >> "$ignore"
-  echo "fixed: added '.ai-workflow' to .gitignore (no trailing slash — it is a symlink in a worktree)"
-fi
-
-# An untracked .gitignore is a trap this script used to set itself: it creates
-# the file above, the run commits it on the branch, and integration then fails
-# in the main checkout, where an untracked copy of the same path is in the way.
-# git reports that as a refused checkout, which reads like the base has moved.
-# Naming it here costs one commit now instead of a wrong diagnosis later.
-if ! git ls-files --error-unmatch -- "$ignore" >/dev/null 2>&1; then
-  add ".gitignore is not tracked — commit it before the run, or integration collides with the untracked copy in the main checkout"
-fi
-
-if [ "$gitdir" != "$common" ] && [ ! -e "$root/.ai-workflow" ]; then
-  main_checkout="$(cd "$common/.." 2>/dev/null && pwd -P || true)"
-  if [ -n "$main_checkout" ] && [ -d "$main_checkout/.ai-workflow" ]; then
-    ln -s "$main_checkout/.ai-workflow" "$root/.ai-workflow"
-    echo "fixed: linked .ai-workflow -> $main_checkout/.ai-workflow"
-  else
-    add "this is a worktree and .ai-workflow is missing, with no source to link from"
-  fi
-fi
-
-# --- the tree has to be able to run ---------------------------------------
-contract=""
-for f in "$root/CLAUDE.md" "$root/AGENTS.md"; do
-  [ -f "$f" ] && contract="$f" && break
-done
-if [ -z "$contract" ]; then
-  add "no CLAUDE.md — the environment contract has nowhere to live; ask once and write it"
+staged="$(git -C "$tree" diff --cached --name-only | wc -l | tr -d ' ')"
+unstaged="$(git -C "$tree" diff --name-only | wc -l | tr -d ' ')"
+if [ "$staged" -eq 0 ] && [ "$unstaged" -eq 0 ]; then
+  :
+elif [ -n "$carried" ]; then
+  add "uncommitted changes (${staged} staged, ${unstaged} unstaged) came along from ${carried#--detach } — if they are not this work, 'git switch $carried' and cut with --worktree"
 else
-  grep -qiE '^\*\*bootstrap' "$contract" || add "no 'bootstrap' field in $(basename "$contract") — ask how a fresh tree is prepared, then record it"
-  grep -qiE '^\*\*link'      "$contract" || add "no 'link' field in $(basename "$contract") — ask which untracked paths to symlink (default .env*), then record it"
+  add "uncommitted changes (${staged} staged, ${unstaged} unstaged) — if they are not this work, use --worktree"
 fi
 
-# --- the plan has to exist, and has to have the right shape ----------------
-if [ $# -ge 1 ]; then
-  if [ -f "$1" ]; then
-    pc_out=$("$(dirname "$0")/plan-check" "$1" 2>&1)
-    if [ -n "$pc_out" ]; then
-      while IFS= read -r pc_line; do
-        case "$pc_line" in
-          fixed:*) echo "$pc_line" ;;
-          "")      ;;
-          *)       add "$pc_line" ;;
-        esac
-      done <<< "$pc_out"
-    fi
-  else
-    add "no such plan file: $1"
-  fi
+if [ -n "$def" ] && [ -n "$current" ] && [ "$current" != "$def" ]; then
+  head="$(git -C "$tree" rev-parse HEAD)"
+  {
+    git config --get "branch.$current.devskillsfrom" 2>/dev/null
+    git for-each-ref --format='%(refname:short)' refs/heads/ | while IFS= read -r other; do
+      [ "$other" != "$current" ] && [ "$other" != "$def" ] || continue
+      [ "$(git rev-parse "refs/heads/$other")" != "$head" ] || continue
+      git merge-base --is-ancestor "refs/heads/$other" "$head" && echo "$other"
+    done
+  } | awk 'NF && !seen[$0]++' | while IFS= read -r other; do
+    git show-ref --verify --quiet "refs/heads/$other" || continue
+    git merge-base --is-ancestor "refs/heads/$other" "$def" \
+      || echo "note: stacked on $other, which has not landed on $def; finish it first"
+  done
 fi
 
-echo "tree: ${root}"
-echo "branch: ${branch}${def:+ (default: ${def})}"
+exclude="$common/info/exclude"
+if ! git -C "$tree" check-ignore -q .ai-workflow && ! grep -qxF .ai-workflow "$exclude" 2>/dev/null; then
+  mkdir -p "$common/info"
+  if [ -s "$exclude" ] && [ -n "$(tail -c 1 "$exclude")" ]; then printf '\n' >> "$exclude"; fi
+  printf '.ai-workflow\n' >> "$exclude"
+  echo "fixed: added .ai-workflow to $exclude"
+fi
+
+echo "tree: $tree"
+echo "branch: ${current:-detached}${def:+ (default: $def)}"
+recorded="$(git -C "$tree" config --get "branch.$current.devskillsbase" 2>/dev/null || true)"
+[ -z "$recorded" ] || echo "base: $recorded"
 if [ ${#findings[@]} -eq 0 ]; then
   echo "preflight clean"
   exit 0

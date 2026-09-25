@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Measure Claude Code sessions from their transcripts.
+
+Reads every transcript under ~/.claude/projects (or --root) and reports, per
+session: wall and active hours, human messages, interrupts, skills and slash
+commands used, subagents dispatched, tokens, and subagent hours. Active hours
+sum the gaps between main-thread events shorter than 15 minutes; subagent hours
+are first-to-last timestamp per subagent transcript, summed. A message's usage
+appears on each of its content-block lines, repeated in main transcripts and
+still growing in subagent ones, so each message id counts once, at its largest.
+Dates are UTC.
+
+Usage: scripts/usage [--root DIR] [--project TEXT] [--since YYYY-MM-DD]
+                     [--json] [--messages FILE]
+"""
+
+import argparse
+import collections
+import datetime
+import glob
+import json
+import os
+import re
+import sys
+
+GAP_SECONDS = 900
+
+
+def timestamp(event):
+    t = event.get("timestamp")
+    if not isinstance(t, str) or not t:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.timezone.utc)
+
+
+def user_text(event):
+    m = event.get("message")
+    if not isinstance(m, dict) or m.get("role") != "user":
+        return None
+    content = m.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        if any(isinstance(x, dict) and x.get("type") == "tool_result" for x in content):
+            return None
+        parts = [x.get("text", "") for x in content if isinstance(x, dict) and x.get("type") == "text"]
+        parts = [part for part in parts if isinstance(part, str)]
+        return "\n".join(parts) if parts else None
+    return None
+
+
+def active_seconds(times):
+    times = sorted(t for t in times if t)
+    return sum(
+        (b - a).total_seconds()
+        for a, b in zip(times, times[1:])
+        if (b - a).total_seconds() < GAP_SECONDS
+    )
+
+
+def events(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict):
+                yield event
+
+
+TOKEN_FIELDS = ("output_tokens", "input_tokens", "cache_read_input_tokens",
+                "cache_creation_input_tokens")
+
+
+def n(value):
+    return value if isinstance(value, (int, float)) else 0
+
+
+class Tokens:
+    def __init__(self):
+        self.by_id = {}
+        self.anonymous = collections.Counter()
+
+    def add(self, message):
+        u = message.get("usage")
+        if not isinstance(u, dict):
+            return
+        mid = message.get("id")
+        if not mid:
+            for field in TOKEN_FIELDS:
+                self.anonymous[field] += n(u.get(field))
+            return
+        best = self.by_id.setdefault(mid, collections.Counter())
+        for field in TOKEN_FIELDS:
+            best[field] = max(best[field], n(u.get(field)))
+
+    def total(self, *fields):
+        return sum(self.anonymous[f] + sum(c[f] for c in self.by_id.values()) for f in fields)
+
+
+def read_session(project, path):
+    sid = os.path.basename(path)[:-len(".jsonl")]
+    title = None
+    times = []
+    skills, agents, cmds = collections.Counter(), collections.Counter(), collections.Counter()
+    messages = []
+    interrupts = 0
+    tokens = Tokens()
+    for event in events(path):
+        if event.get("type") == "ai-title":
+            title = event.get("aiTitle") or event.get("title") or title
+        if event.get("isSidechain"):
+            continue
+        t = timestamp(event)
+        if t:
+            times.append(t)
+        m = event.get("message")
+        if event.get("type") == "assistant" and isinstance(m, dict):
+            tokens.add(m)
+            content = m.get("content")
+            for c in content if isinstance(content, list) else []:
+                if isinstance(c, dict) and c.get("type") == "tool_use":
+                    tool_input = c.get("input") if isinstance(c.get("input"), dict) else {}
+                    if c.get("name") == "Skill":
+                        skills[tool_input.get("skill")] += 1
+                    if c.get("name") in ("Agent", "Task"):
+                        agents[tool_input.get("subagent_type", "?")] += 1
+        if event.get("type") != "user":
+            continue
+        text = user_text(event)
+        if text is None:
+            continue
+        if "[Request interrupted" in text:
+            interrupts += 1
+            continue
+        for name in re.findall(r"<command-name>/?([^<]+)</command-name>", text):
+            cmds[name.strip()] += 1
+        if event.get("isMeta"):
+            continue
+        if text.startswith("<") and any(k in text for k in (
+                "command-name", "local-command", "system-reminder", "task-notification")):
+            if "command-name" in text:
+                args = re.search(r"<command-args>(.*?)</command-args>", text, re.S)
+                names = " ".join(re.findall(r"<command-name>([^<]+)", text))
+                messages.append((t, "CMD " + names + " " + (args.group(1)[:300] if args else "")))
+            continue
+        messages.append((t, text))
+
+    subs = glob.glob(os.path.join(os.path.dirname(path), sid, "subagents", "*.jsonl"))
+    sub_out = 0
+    sub_seconds = 0.0
+    for sub in subs:
+        st = []
+        sub_tokens = Tokens()
+        for event in events(sub):
+            t = timestamp(event)
+            if t:
+                st.append(t)
+            m = event.get("message")
+            if event.get("type") == "assistant" and isinstance(m, dict):
+                sub_tokens.add(m)
+        sub_out += sub_tokens.total("output_tokens")
+        if st:
+            sub_seconds += (max(st) - min(st)).total_seconds()
+
+    if not times:
+        return None, []
+    out_tokens = tokens.total("output_tokens")
+    in_tokens = tokens.total("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+    wall = (max(times) - min(times)).total_seconds()
+    active = active_seconds(times)
+    record = {
+        "project": project,
+        "sid": sid[:8],
+        "title": title,
+        "start": min(times).strftime("%Y-%m-%d %H:%M"),
+        "wall_h": round(wall / 3600, 1),
+        "active_h": round(active / 3600, 1),
+        "nuser": len(messages),
+        "interrupts": interrupts,
+        "skills": dict(skills),
+        "cmds": dict(cmds),
+        "agents": dict(agents),
+        "out_k": out_tokens // 1000,
+        "in_M": round(in_tokens / 1e6, 1),
+        "nsubs": len(subs),
+        "sub_out_k": sub_out // 1000,
+        "sub_h": round(sub_seconds / 3600, 1),
+        "_exact": {"wall_h": wall / 3600, "active_h": active / 3600, "sub_h": sub_seconds / 3600,
+                   "out_k": out_tokens / 1000},
+    }
+    return record, [(project, sid[:8], t, text) for t, text in messages]
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="usage", description=__doc__.split("\n\n")[0])
+    parser.add_argument("--root", default=os.path.expanduser("~/.claude/projects"))
+    parser.add_argument("--project", help="only projects whose directory name contains this")
+    parser.add_argument("--since", help="only sessions starting on or after this UTC date, YYYY-MM-DD")
+    parser.add_argument("--json", action="store_true", help="one record per session, as JSON")
+    parser.add_argument("--messages", help="also write every human message to this file")
+    args = parser.parse_args(argv)
+
+    if args.since:
+        try:
+            datetime.datetime.strptime(args.since, "%Y-%m-%d")
+        except ValueError:
+            print(f"usage: --since takes YYYY-MM-DD, got {args.since!r}", file=sys.stderr)
+            return 2
+        if len(args.since) != 10:
+            print(f"usage: --since takes YYYY-MM-DD, got {args.since!r}", file=sys.stderr)
+            return 2
+    if args.messages and not os.path.isdir(os.path.dirname(os.path.abspath(args.messages))):
+        print(f"usage: no directory for {args.messages}", file=sys.stderr)
+        return 2
+    if not os.path.isdir(args.root):
+        print(f"usage: no transcripts at {args.root}", file=sys.stderr)
+        return 2
+
+    records, messages = [], []
+    for project in sorted(os.listdir(args.root)):
+        if args.project and args.project not in project:
+            continue
+        for path in sorted(glob.glob(os.path.join(args.root, project, "*.jsonl"))):
+            record, msgs = read_session(project, path)
+            if record is None or (args.since and record["start"] < args.since):
+                continue
+            records.append(record)
+            messages.extend(msgs)
+    records.sort(key=lambda r: (r["project"], r["start"]))
+
+    if args.messages:
+        with open(args.messages, "w", encoding="utf-8") as f:
+            for project, sid, t, text in sorted(messages, key=lambda m: (m[0], m[2] or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc))):
+                f.write(f"=== {project} {sid} {t.strftime('%Y-%m-%d %H:%M') if t else ''}\n{text[:1500]}\n")
+
+    if args.json:
+        json.dump([{k: v for k, v in r.items() if k != "_exact"} for r in records],
+                  sys.stdout, ensure_ascii=False, indent=1)
+        print()
+        return 0
+
+    totals = collections.OrderedDict()
+    for r in records:
+        t = totals.setdefault(r["project"], collections.Counter())
+        t["sessions"] += 1
+        for key in ("nuser", "nsubs"):
+            t[key] += r[key]
+        for key, value in r["_exact"].items():
+            t[key] += value
+    columns = ("sessions", "wall_h", "active_h", "nuser", "out_k", "nsubs", "sub_h")
+    print("\t".join(("project",) + columns))
+    for project, t in totals.items():
+        cells = [str(int(t[c])) if c == "out_k" else str(round(t[c], 1)) for c in columns]
+        print("\t".join([project] + cells))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        code = main()
+        sys.stdout.flush()
+    except BrokenPipeError:
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        code = 0
+    sys.exit(code)

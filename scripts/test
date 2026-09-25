@@ -3,26 +3,15 @@
 # scripts/check: bash and python3 standard library only.
 #
 # Plain mode discovers and runs every test/**/*.test.sh (executed as its own
-# process, so one file's `set -e` cannot end the run) and every
-# test/unit/test_*.py (via `python3 -m unittest discover`), prints one line per
+# process, so one file's `set -e` cannot end the run), prints one line per
 # file, and exits 0 only if every file passed.
 #
-# Given a PATH instead, runs only that one file — the same argument form for
-# a .test.sh file and for a test/unit/test_*.py file — and prints only its
-# line. A PATH that isn't a discovered test file is a loud failure naming it,
+# Given a PATH instead, runs only that one file and prints only its line. A PATH that isn't a discovered test file is a loud failure naming it,
 # never a silent fallback to the whole suite.
 #
-# --mutations reads test/mutations/manifest.tsv and, for each row, proves the
-# red it records still exists: apply the patch, run the full suite, confirm
-# the named test fails, revert the patch, confirm the working tree is clean
-# again at the row's target path. A patch that no longer applies is a stale
-# row — reported as such, not skipped — because after a rewrite of the code
-# it targets, that IS the signal this plan exists to produce.
-#
-# Usage: scripts/test [PATH | --mutations]
+# Usage: scripts/test [PATH]
 # Exit:  0 everything held (or the one named file passed)
-#        1 something didn't (a failing file, an unrecognised PATH, a stale
-#          mutation, ...)
+#        1 something didn't (a failing file, an unrecognised PATH, ...)
 set -uo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,12 +24,6 @@ discover_sh() {
   find test -type f -name '*.test.sh' 2>/dev/null | LC_ALL=C sort
 }
 
-discover_py() {
-  find test/unit -type f -name 'test_*.py' 2>/dev/null | LC_ALL=C sort
-}
-
-# report_result F RC OUT — the shared "ok/FAIL" line-and-indented-output
-# shape, used by every path that runs a single file, whichever kind it is.
 report_result() {
   local f="$1" rc="$2" out="$3"
   if [ "$rc" -eq 0 ]; then
@@ -59,50 +42,16 @@ run_sh_file() {
   report_result "$f" "$rc" "$out"
 }
 
-run_py_file() {
-  local f="$1" out rc dir base
-  dir=$(dirname "$f")
-  base=$(basename "$f")
-  # Not `python3 -m unittest "$f"`. That turns the path into a dotted name, so
-  # test/unit/test_dispatch.py becomes test.unit.test_dispatch — and `test` is
-  # a package in the standard library. This tree's test/ has no __init__.py, so
-  # it is only a namespace portion, and a regular package anywhere on sys.path
-  # beats a namespace portion: the name resolves into the stdlib and the import
-  # dies with "No module named 'test.unit'". Discovering with the file's own
-  # directory as the top level keeps the module name bare, so there is no
-  # `test.` prefix left to collide.
-  # -B: with the import now working, python would drop __pycache__ next to the
-  # test and next to every file it loads — including skills/implement/scripts/,
-  # via the SourceFileLoader the test uses. This tree has never carried
-  # bytecode and does not ignore it, so do not write any.
-  out=$(python3 -B -m unittest discover -s "$dir" -t "$dir" -p "$base" 2>&1)
-  rc=$?
-  # discover exits 0 when the pattern matches nothing, which would report a
-  # file that never ran as ok. A file we were asked to run and did not is a
-  # failure, not a pass.
-  if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^Ran 0 tests'; then
-    rc=1
-    out="${out}
-scripts/test: discovered no tests in ${f} — it matched the runner but ran nothing"
-  fi
-  report_result "$f" "$rc" "$out"
-}
-
 run_all() {
   local f
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     run_sh_file "$f"
   done < <(discover_sh)
-
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    run_py_file "$f"
-  done < <(discover_py)
 }
 
 # run_one PATH — the single-file mode: PATH must equal (exactly, as printed
-# by discover_sh/discover_py) one of the discovered test files. Anything else
+# by discover_sh) one of the discovered test files. Anything else
 # is an unrecognised PATH — reported and non-zero, never a fallback to
 # run_all, which is the exact bug this mode exists to fix.
 run_one() {
@@ -117,67 +66,12 @@ run_one() {
   done < <(discover_sh)
 
   if [ "$found" -eq 0 ]; then
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      if [ "$f" = "$target" ]; then
-        found=1
-        run_py_file "$f"
-      fi
-    done < <(discover_py)
-  fi
-
-  if [ "$found" -eq 0 ]; then
     echo "scripts/test: not a test file: $target" >&2
     status=1
   fi
 }
 
-run_mutations() {
-  local manifest="test/mutations/manifest.tsv"
-  if [ ! -f "$manifest" ]; then
-    echo "scripts/test: no manifest at $manifest" >&2
-    status=1
-    return
-  fi
-
-  local rows=0
-  local id target patch expect_fail
-  while IFS=$'\t' read -r id target patch expect_fail; do
-    [ -n "$id" ] || continue
-    rows=$((rows + 1))
-
-    if ! git apply "$patch" 2>/dev/null; then
-      echo "MUTATION $id: stale — $patch no longer applies" >&2
-      status=1
-      continue
-    fi
-
-    local combined
-    combined=$( { run_all; } 2>&1 )
-
-    if printf '%s\n' "$combined" | grep -qF -- "$expect_fail"; then
-      echo "MUTATION $id: ok — $expect_fail failed as expected"
-    else
-      echo "MUTATION $id: FAILED — $expect_fail did not fail" >&2
-      status=1
-    fi
-
-    git apply -R "$patch"
-
-    if [ -n "$(git status --porcelain -- "$target")" ]; then
-      echo "MUTATION $id: tree not clean after revert ($target)" >&2
-      status=1
-    fi
-  done < <(tail -n +2 "$manifest")
-
-  if [ "$rows" -eq 0 ]; then
-    echo "no mutations recorded"
-  fi
-}
-
-if [ "${1:-}" = "--mutations" ]; then
-  run_mutations
-elif [ -n "${1:-}" ]; then
+if [ -n "${1:-}" ]; then
   run_one "$1"
 else
   run_all

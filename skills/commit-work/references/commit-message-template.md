@@ -8,7 +8,7 @@
 
 ## Size
 
-Both caps are enforced by the `commit-guard` hook. A message over either one is
+Both caps are enforced by the `git-guard` hook. A message over either one is
 refused, not warned about.
 
 - Subject ≤ 72 characters, imperative, no trailing period.

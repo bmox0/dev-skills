@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dev-skills rethought</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<style>
+  :root { --ink: #1e1e1e; --muted: #868e96; --soft: #495057; --bg: #ffffff; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font-family: 'Architects Daughter', 'Comic Sans MS', cursive; overflow-x: hidden; }
+  #wrap { position: relative; margin: 12px; }
+  #stage { position: absolute; left: 0; top: 0; width: 2000px; height: 1580px; transform-origin: 0 0; background: #fff; }
+  #stage svg { position: absolute; left: 0; top: 0; }
+  #bar { position: fixed; top: 10px; right: 14px; z-index: 10; display: flex; gap: 10px; }
+  #bar a, #bar button { font: inherit; font-size: 16px; color: var(--ink); background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 5px 14px; cursor: pointer; text-decoration: none; }
+  #bar button:disabled { opacity: .5; cursor: progress; }
+  .t { position: absolute; box-sizing: border-box; line-height: 1.25; }
+  .box { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6px 14px; }
+  .box .h { font-size: 23px; }
+  .box .s { font-size: 17px; margin-top: 3px; }
+  .box.sm { padding: 2px 10px; }
+  .box.sm .h { font-size: 15.5px; }
+  .n { color: var(--muted); }
+  .title { font-size: 66px; }
+  .subtitle { font-size: 22px; color: var(--muted); }
+  .sec { font-size: 18px; color: var(--soft); letter-spacing: .06em; white-space: nowrap; }
+  .sec i { font-style: normal; color: var(--muted); letter-spacing: .02em; }
+  .rule { font-size: 20.5px; }
+  .rule b { font-weight: normal; color: #e03131; }
+  .rule u { text-decoration: none; border-bottom: 2px solid #e8590c; }
+  .note { font-size: 15px; color: var(--muted); }
+  .lbl { font-size: 15px; }
+  .red { color: #e03131; }
+  .teal { color: #0c8599; }
+  .purple { color: #6741d9; }
+  .row { font-size: 19px; }
+  .bar { display: flex; align-items: center; justify-content: center; font-size: 14px; white-space: nowrap; }
+  .leg h4 { margin: 0 0 14px; font-weight: normal; font-size: 17px; color: var(--soft); letter-spacing: .06em; }
+  .leg .it { display: flex; gap: 12px; align-items: flex-start; font-size: 16.5px; margin-bottom: 14px; }
+  .sw { flex: none; width: 20px; height: 20px; border: 2.5px solid; border-radius: 5px; margin-top: 2px; }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 13.5px; line-height: 1.55; }
+  .gone { color: #adb5bd; text-decoration: line-through; text-decoration-color: #e03131; }
+  .gonelist { font-size: 15px; line-height: 1.45; }
+  .gonelist .k { color: var(--soft); text-decoration: none; }
+  .box .h.big { font-size: 30px; }
+  .box.act .s { font-size: 15.5px; }
+  .box.sm .s { font-size: 13.5px; margin-top: 1px; }
+  .box.fl .s { font-size: 14.5px; }
+  .box.fl .h { font-size: 21px; }
+  .stepl.mini { font-size: 12px; padding: 0 2px; }
+  .stepl { font-size: 15px; white-space: normal; text-align: center; line-height: 1.15; padding: 0 6px; }
+  .rule.r3 { font-size: 17.5px; }
+  .plist { font-size: 15.5px; line-height: 1.5; }
+  .plist b { font-weight: normal; color: #e8590c; }
+</style>
+</head>
+<body>
+<div id="bar"><a href="2026-09-25-pipeline-now.html">← today</a><a href="2026-09-25-pipeline-next.html">← first proposal</a><button id="png">Download PNG</button></div>
+<div id="wrap"><div id="stage"><svg id="sk" width="2000" height="1580"></svg></div></div>
+<script>
+const W = 2000, H = 1580;
+const C = {
+  blue: ['#1971c2', '#e7f5ff'], green: ['#2f9e44', '#ebfbee'], orange: ['#e8590c', '#fff9db'],
+  purple: ['#6741d9', '#f3f0ff'], teal: ['#0c8599', '#e3fafc'], pink: ['#c2255c', '#fff0f6'],
+  red: ['#e03131', '#fff5f5'], grey: ['#adb5bd', '#f8f9fa'], dark: ['#1e1e1e', '#f8f9fa'],
+};
+const stage = document.getElementById('stage');
+const svg = document.getElementById('sk');
+const rc = window.rough ? rough.svg(svg) : null;
+let seed = 11;
+
+function el(tag, attrs) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) if (attrs[k] !== undefined && attrs[k] !== '') e.setAttribute(k, attrs[k]);
+  return e;
+}
+function rrPath(x, y, w, h, r) {
+  return `M${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} L${x + r},${y + h} Q${x},${y + h} ${x},${y + h - r} L${x},${y + r} Q${x},${y} ${x + r},${y} Z`;
+}
+function shape(d, o) {
+  if (rc) {
+    svg.appendChild(rc.path(d, {
+      stroke: o.stroke, strokeWidth: o.sw || 2, roughness: o.rough ?? 1.1, bowing: 1, seed: seed++,
+      fill: o.fill, fillStyle: 'solid', strokeLineDash: o.dash,
+    }));
+  } else {
+    svg.appendChild(el('path', { d, stroke: o.stroke, 'stroke-width': o.sw || 2, fill: o.fill || 'none', 'stroke-dasharray': o.dash ? o.dash.join(' ') : '' }));
+  }
+}
+function rect(x, y, w, h, col, o = {}) {
+  const [s, f] = C[col];
+  shape(rrPath(x, y, w, h, o.r ?? 14), { stroke: o.stroke || s, fill: o.nofill ? undefined : (o.fill || f), dash: o.dash, sw: o.sw, rough: o.rough });
+}
+function text(x, y, html, cls, w, h) {
+  const d = document.createElement('div');
+  d.className = 't ' + (cls || '');
+  d.style.left = x + 'px';
+  d.style.top = y + 'px';
+  if (w) d.style.width = w + 'px';
+  if (h) d.style.height = h + 'px';
+  d.innerHTML = html;
+  stage.appendChild(d);
+  return d;
+}
+function box(x, y, w, h, col, h1, sub, o = {}) {
+  rect(x, y, w, h, col, o);
+  text(x, y, `<div class="h">${h1}</div>${sub ? `<div class="s">${sub}</div>` : ''}`, 'box' + (o.sm ? ' sm' : '') + (o.cls ? ' ' + o.cls : ''), w, h);
+}
+function head(a, b, color) {
+  const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  for (const s of [-1, 1]) {
+    const t = ang + Math.PI - s * 0.42;
+    const p = [b[0] + 15 * Math.cos(t), b[1] + 15 * Math.sin(t)];
+    if (rc) svg.appendChild(rc.line(b[0], b[1], p[0], p[1], { stroke: color, strokeWidth: 2.2, roughness: 0.5, seed: seed++ }));
+    else svg.appendChild(el('line', { x1: b[0], y1: b[1], x2: p[0], y2: p[1], stroke: color, 'stroke-width': 2 }));
+  }
+}
+function line(pts, color = '#1e1e1e', o = {}) {
+  if (rc) svg.appendChild(rc.linearPath(pts, { stroke: color, strokeWidth: o.sw || 2.2, roughness: 0.7, seed: seed++, strokeLineDash: o.dash }));
+  else svg.appendChild(el('polyline', { points: pts.map(p => p.join(',')).join(' '), stroke: color, 'stroke-width': 2, fill: 'none', 'stroke-dasharray': o.dash ? o.dash.join(' ') : '' }));
+  if (o.head !== false) head(pts[pts.length - 2], pts[pts.length - 1], color);
+}
+function curve(pts, color, o = {}) {
+  if (rc) svg.appendChild(rc.curve(pts, { stroke: color, strokeWidth: o.sw || 2.4, roughness: 0.8, seed: seed++, strokeLineDash: o.dash }));
+  else svg.appendChild(el('polyline', { points: pts.map(p => p.join(',')).join(' '), stroke: color, 'stroke-width': 2, fill: 'none' }));
+  head(pts[pts.length - 2], pts[pts.length - 1], color);
+}
+function vdash(x, y1, y2) { line([[x, y1], [x, y2]], '#e03131', { dash: [8, 7], head: false, sw: 1.8 }); }
+
+function dot(x, y) {
+  if (rc) svg.appendChild(rc.circle(x, y, 17, { stroke: '#c92a2a', strokeWidth: 1.6, fill: '#e03131', fillStyle: 'solid', roughness: 0.6, seed: seed++ }));
+  else svg.appendChild(el('circle', { cx: x, cy: y, r: 8, fill: '#e03131' }));
+}
+function step(x, y, w, col, label, o = {}) {
+  rect(x, y, w, o.h || 46, col, { r: 10, sw: 1.8, dash: o.dash, fill: o.fill });
+  text(x, y, label, 'bar stepl' + (o.cls ? ' ' + o.cls : ''), w, o.h || 46);
+  if (o.dot) dot(x + w - 4, y - 2);
+}
+function arr(x1, x2, y) { line([[x1, y], [x2, y]], '#1e1e1e', { sw: 1.8 }); }
+
+/* ---------- header ---------- */
+text(20, 6, 'dev-skills', 'title');
+text(24, 92, 'rethought from what must always be true — rethink/decision.md (2026-09-25), agreed by both, with your answers · not built yet', 'subtitle');
+
+/* ---------- three differences in kind ---------- */
+rect(12, 140, 1976, 104, 'dark', { fill: '#fffef5', r: 18, sw: 2.2 });
+text(36, 149, 'THREE DIFFERENCES IN KIND &nbsp;<i>— read these first, or the acts below look like the old stages renamed</i>', 'sec');
+text(36, 180, '<b>1</b> · <u>there is no run</u> — no marker, no ledger, no chain the plugin owns; there are commits, a brief when work leaves the context, and evidence files', 'rule r3', 640);
+text(700, 180, '<b>2</b> · <u>each act is a command of its own</u> — verify a branch someone else built, review last week’s range, merge work done inline', 'rule r3', 620);
+text(1345, 180, '<b>3</b> · <u>the seat is chosen by who holds the tools</u> — the session, a subagent, a tab or you plug in; the plugin never fixes which', 'rule r3', 630);
+
+/* ---------- entries ---------- */
+text(20, 268, 'ENTRIES &nbsp;<i>— each switches on by a condition</i>', 'sec');
+const entries = [
+  ['grill', 'can’t say what done is', 'orange'],
+  ['prototype', 'the question is visual', 'orange'],
+  ['plan', 'the work leaves this context', 'orange'],
+  ['epic', 'more than one unit', 'orange'],
+  ['bug', 'a symptom arrives', 'green'],
+  ['handoff', 'work moves mid-way', 'grey'],
+  ['domain-modeling', 'a term settles', 'grey'],
+  ['retro', 'once, at the end of a unit', 'grey'],
+];
+entries.forEach(([n, c, col], i) => {
+  box(20 + i * 193, 298, 180, 80, col, n, c, { fill: col === 'grey' ? '#ffffff' : undefined });
+});
+text(620, 386, 'each entry feeds implement: grill ends with a size call · plan writes the brief · bug hands over the fix in the same context', 'note', 940);
+
+/* ---------- the four acts ---------- */
+text(20, 414, 'THE FOUR ACTS &nbsp;<i>— verbs; under each, the seats that plug in</i>', 'sec');
+const acts = [
+  [30, 'purple', 'implement', 'Sonnet · the whole unit, never a slice<br>a green commit per step, “step 3:” in the subject<br>tests with the code · project rules read first<br>stops only for a product decision, a shared<br>interface or a destructive act<br>a question parks the step; the rest goes on'],
+  [420, 'blue', 'review', 'the strong model · fresh · read-only<br>BASE..HEAD → Defects, incl. a test that cannot fail:<br>fix, re-review, two rounds, then you<br>Conventions: one batch, no re-review<br>always on a brief unit; inline, the session decides'],
+  [810, 'teal', 'verify', 'drives the acceptance on the running system<br>one evidence file per scenario<br>once; after fixes, only what was affected<br>never fights your dev instance<br>looks on captures vs the prototype'],
+  [1200, 'pink', 'finish', 'merges · you type it, it stays human-only<br>recovery ref · squash by meaning<br>merge --no-ff locally · no push<br>summary: commits, evidence, conventions applied'],
+];
+acts.forEach(([x, col, n, s]) => {
+  rect(x, 440, 350, 202, col, { r: 16, sw: 2.6 });
+  text(x, 440, `<div class="h big">${n}</div><div class="s">${s}</div>`, 'box act', 350, 202);
+});
+const sock = (x, w, label) => { rect(x, 651, w, 34, 'grey', { r: 17, dash: [5, 5], fill: '#ffffff', sw: 1.6 }); text(x, 651, label, 'bar', w, 34); };
+sock(30, 110, 'this session'); sock(148, 110, 'a subagent'); sock(266, 114, 'a tab');
+sock(420, 350, 'a fresh context · the strong model');
+sock(810, 150, 'session · browser-test'); sock(968, 140, 'tab · simulator MCP'); sock(1116, 44, 'you');
+sock(1200, 350, 'a typed /finish');
+
+line([[60, 700], [1150, 700]], '#6741d9', { dash: [9, 7], sw: 2 });
+text(60, 707, '<span class="purple">implement &lt;brief&gt; is the build act: it ends with review → one fix round → verify · inline work needs no command</span>', 'lbl');
+text(890, 707, 'Sonnet builds and tests · the strong model grills, reviews, orchestrates · subagents have no MCP here, so the tester is never assumed to be one', 'note', 670);
+
+/* ---------- state and external ---------- */
+text(1600, 268, 'STATE', 'sec');
+const state = [
+  ['git', 'a branch or a worktree per unit · a commit per step · recovery refs'],
+  ['the brief', '.ai-workflow/plans/&lt;unit&gt;.md · Corrections · Run line'],
+  ['evidence', '.ai-workflow/verify/&lt;unit&gt;/n.md'],
+  ['the epic', 'decisions · glossary · the queue'],
+  ['the tracker', 'behind a Tracker line in CLAUDE.md · units mirrored'],
+];
+state.forEach(([n, s], i) => box(1600, 298 + i * 66, 385, 58, 'grey', n, s, { sm: true, r: 10, fill: '#ffffff' }));
+text(1600, 636, 'EXTERNAL &nbsp;<i>— not in the plugin</i>', 'sec');
+['herdr, through orchestrate', 'the tracker · Daily, Linear, GitHub issues', 'browser-test', 'the simulator MCP', 'the project’s skills and CLAUDE.md'].forEach((n, i) => {
+  box(1600, 666 + i * 42, 385, 34, 'grey', n, '', { sm: true, r: 17, dash: [5, 5], fill: '#ffffff' });
+});
+
+/* ---------- the floor ---------- */
+text(20, 744, 'THE FLOOR &nbsp;<i>— always on, at every size</i>', 'sec');
+const floor = [
+  ['red', 'one guard hook', 'no state · denies reset --hard, clean -f, checkout ., branch -D, force push or commit on main'],
+  ['purple', 'branch or worktree', 'before the first edit, always · decided, not asked · main changes only by merge'],
+  ['dark', 'the session rule', 'do the work here · entries by condition · a green commit per step · drive what you changed · ask at four points'],
+  ['grey', 'git is the state', 'resume = the brief + git log BASE..HEAD, from the first step with no commit'],
+  ['blue', 'the project’s rules', 'read first by the builder, after by the reviewer · repeats become failing checks'],
+  ['green', 'a small plugin', 'word budgets in check · lessons become checks · removals name replacements'],
+];
+floor.forEach(([col, n, s], i) => box(12 + i * 258, 764, 248, 120, col, n, s, { cls: 'fl', fill: col === 'dark' || col === 'grey' ? '#ffffff' : undefined }));
+
+/* ---------- attention ---------- */
+text(20, 896, 'YOUR ATTENTION &nbsp;<i>— four points, nowhere else; looks when you choose</i>', 'sec');
+[[40, 'grill decisions'], [240, 'three lines when a brief is written · silence is yes'], [700, 'a parked question the epic does not hold'], [1070, 'a typed /finish']].forEach(([x, l]) => { dot(x, 938); text(x + 16, 927, l, 'lbl'); });
+text(1250, 927, 'looks: the tester checks captures; you look when you want', 'lbl', 340);
+text(1600, 927, 'delegated: the orchestrator holds the three lines; /finish stays yours unless the delegation names it', 'note', 385);
+
+/* ---------- four flows ---------- */
+text(20, 978, 'FOUR FLOWS &nbsp;<i>— which acts, which seat, and where it stops for you (red dots)</i>', 'sec');
+const lane = (y, t, s) => { line([[12, y - 10], [1988, y - 10]], '#dee2e6', { head: false, sw: 1.2 }); text(20, y + 6, t, 'row'); text(20, y + 32, s, 'note', 190); };
+
+/* small task */
+const L1 = 1012;
+lane(L1, 'a small task', 'a pinpoint edit, a polish list');
+step(230, L1 + 8, 100, 'purple', 'branch', { fill: '#ffffff' });
+arr(330, 346, L1 + 31);
+step(348, L1 + 8, 150, 'purple', 'todo · edits');
+arr(498, 514, L1 + 31);
+step(516, L1 + 8, 130, 'grey', 'checks green', { fill: '#ffffff' });
+arr(646, 662, L1 + 31);
+step(664, L1 + 8, 300, 'teal', 'drive what changed · on iOS you get the scenario');
+arr(964, 980, L1 + 31);
+step(982, L1 + 8, 100, 'purple', 'commit');
+arr(1082, 1098, L1 + 31);
+step(1100, L1 + 8, 220, 'blue', 'review, if the session sees logic', { dash: [6, 5] });
+arr(1320, 1338, L1 + 31);
+step(1340, L1 + 8, 210, 'pink', '/finish', { dot: true });
+text(1600, L1 + 8, 'state: the branch and its commits<br>time: minutes', 'lbl', 385);
+
+/* one-session feature */
+const L2 = 1120;
+lane(L2, 'a one-session feature', 'you are present');
+step(230, L2 + 8, 110, 'orange', 'grill', { dot: true });
+arr(340, 356, L2 + 31);
+step(358, L2 + 8, 150, 'orange', 'prototype, if visual', { dash: [6, 5] });
+arr(508, 524, L2 + 31);
+step(526, L2 + 8, 100, 'purple', 'branch', { fill: '#ffffff' });
+arr(626, 642, L2 + 31);
+step(644, L2 + 8, 300, 'purple', 'build · a commit per step, each driven as it lands');
+arr(944, 960, L2 + 31);
+step(962, L2 + 8, 170, 'blue', 'review, if logic');
+arr(1132, 1148, L2 + 31);
+step(1150, L2 + 8, 190, 'teal', 'verify · evidence, captures');
+arr(1340, 1356, L2 + 31);
+step(1358, L2 + 8, 192, 'pink', '/finish', { dot: true });
+text(230, L2 + 66, '<span class="purple">delegated: + a brief (three lines) · a tab or a subagent runs implement &lt;brief&gt; · review always runs</span>', 'lbl', 1320);
+text(1600, L2 + 8, 'state: the branch (or worktree) and the todo<br>time: one context', 'lbl', 385);
+
+/* multi-session effort */
+const L3 = 1236;
+lane(L3, 'a multi-session effort', 'a queue of units');
+text(560, L3 - 2, '<span class="purple">the orchestrator (you, or a tab): pulls the next unblocked unit · answers from the epic · asks you only what the epic does not hold</span>', 'lbl', 1000);
+line([[560, L3 + 22], [1362, L3 + 22]], '#6741d9', { dash: [8, 6], sw: 1.8 });
+step(230, L3 + 42, 120, 'orange', 'grill', { dot: true });
+arr(350, 368, L3 + 65);
+step(370, L3 + 42, 170, 'orange', 'epic · the queue');
+arr(540, 558, L3 + 65);
+[560, 832, 1104].forEach((x, i) => {
+  rect(x, L3 + 32, 258, 70, 'grey', { nofill: true, dash: [6, 5], sw: 1.4, r: 12 });
+  text(x + 8, L3 + 34, `unit ${i + 1} · own branch`, 'note');
+  let mx = x + 8;
+  [['orange', 'brief', 40], ['purple', 'implement', 62], ['blue', 'review', 46], ['teal', 'verify', 44], ['pink', 'finish', 42]].forEach(([c, l, w]) => {
+    step(mx, L3 + 58, w, c, l, { h: 32, cls: 'mini', dot: l === 'finish' });
+    mx += w + 3;
+  });
+  if (i < 2) arr(x + 258, x + 272, L3 + 67);
+});
+arr(1362, 1380, L3 + 65);
+step(1382, L3 + 42, 104, 'teal', 'walk-through');
+step(1494, L3 + 42, 66, 'grey', 'retro', { fill: '#ffffff', dash: [6, 5] });
+text(1600, L3 + 8, 'state: the epic or the tracker · a brief per unit · stacked branches<br>time: a queue of contexts; none waits for you except at a dot', 'lbl', 385);
+
+/* bug */
+const L4 = 1368;
+lane(L4, 'a bug', 'a symptom');
+step(230, L4 + 8, 90, 'purple', 'branch', { fill: '#ffffff' });
+arr(320, 336, L4 + 31);
+step(338, L4 + 8, 170, 'green', 'one command goes red');
+arr(508, 524, L4 + 31);
+step(526, L4 + 8, 150, 'green', 'root cause named');
+arr(676, 692, L4 + 31);
+step(694, L4 + 8, 240, 'purple', 'fix + pinning test, same context');
+arr(934, 950, L4 + 31);
+step(952, L4 + 8, 170, 'teal', 'drive it · captures if UI');
+arr(1122, 1138, L4 + 31);
+step(1140, L4 + 8, 160, 'blue', 'review, if logic', { dash: [6, 5] });
+arr(1300, 1316, L4 + 31);
+step(1318, L4 + 8, 232, 'pink', 'commit fix(…) · /finish', { dot: true });
+text(230, L4 + 66, 'a brief only when the root cause is a design flaw — then the failing test is its first step', 'lbl', 1000);
+text(1600, L4 + 8, 'state: the commit<br>time: one context', 'lbl', 385);
+
+/* ---------- footnotes ---------- */
+line([[12, 1470], [1988, 1470]], '#dee2e6', { head: false, sw: 1.2 });
+text(14, 1484, 'against today: no test-writer, no gate agents, no RUN marker or ledger, no brief-cutting scripts, no orchestrator inside the plugin, no human as relay, no finish-guard', 'note');
+text(14, 1508, 'against the first proposal: no run at all · the verbs are callable on anything · the seat follows the tools · review always on a brief unit · the bug ends in a fix · one stateless guard · a size invariant and a retro that removes', 'note');
+text(14, 1532, 'your answers: the queue in the epic file, a Tracker line mirrors it · /finish stays human-only · the never list goes · looks are not only yours · the main guard everywhere unless CLAUDE.md says “main: direct”', 'note red');
+
+/* ---------- fit and export ---------- */
+const wrap = document.getElementById('wrap');
+function fit() {
+  const s = Math.min(1, (window.innerWidth - 24) / W);
+  stage.style.transform = `scale(${s})`;
+  wrap.style.height = Math.ceil(H * s) + 'px';
+}
+window.addEventListener('resize', fit);
+fit();
+
+async function embedFontCSS() {
+  const css = await (await fetch('https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap')).text();
+  let out = css;
+  for (const [, u] of css.matchAll(/url\((https:[^)]+)\)/g)) {
+    const blob = await (await fetch(u)).blob();
+    const data = await new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(blob); });
+    out = out.split(u).join(data);
+  }
+  return out;
+}
+
+document.getElementById('png').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Rendering…';
+  try {
+    await document.fonts.ready;
+    const fontEmbedCSS = await embedFontCSS();
+    const url = await htmlToImage.toPng(stage, {
+      fontEmbedCSS,
+      width: W, height: H, pixelRatio: 2, backgroundColor: '#ffffff',
+      style: { transform: 'none', left: '0', top: '0' },
+    });
+    const a = document.createElement('a');
+    a.download = 'dev-skills-rethought.png';
+    a.href = url;
+    a.click();
+  } catch (err) {
+    alert('PNG export failed: ' + (err && err.message ? err.message : err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download PNG';
+  }
+});
+</script>
+</body>
+</html>

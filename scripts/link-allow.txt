@@ -6,19 +6,10 @@
 # isn't there, the file is gone — is itself reported, as ALLOWLIST, and
 # fails the check.
 
-# "diagnose" as an ordinary verb — "Using dev-skills:bug to diagnose this
-# before proposing anything" — not a reference to the old Superpowers
-# `diagnose` skill.
-skills/bug/SKILL.md:17:diagnose
-
 # "diagnose" as an ordinary verb — "Use these to diagnose issues the user
 # may be having with the skill" — not a reference to the old Superpowers
 # `diagnose` skill.
 skills/writing-great-skills/SKILL.md:95:diagnose
-
-# "brainstorming" as an ordinary noun — "Browser-based visual brainstorming
-# companion" — not a reference to the old Superpowers `brainstorming` skill.
-skills/grill/references/visual-companion.md:3:brainstorming
 
 # "brainstorming" as a generic example class of skill — "a brainstorming
 # skill should predictably diverge" — illustrating Predictability, not

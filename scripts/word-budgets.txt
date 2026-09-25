@@ -1,0 +1,38 @@
+# Word budgets: every markdown file under skills/, agents/ and references/.
+# scripts/check fails when a file is over its budget or has no line here.
+# A change that raises a budget names what it removes. Words are counted as
+# whitespace-separated tokens, the way wc -w counts them.
+
+agents/builder.md 100
+agents/reviewer.md 100
+references/VOCABULARY.md 450
+skills/bootstrap/SKILL.md 150
+skills/browser-test/SKILL.md 1100
+skills/bug/SKILL.md 700
+skills/bug/references/condition-based-waiting.md 500
+skills/bug/references/defense-in-depth.md 500
+skills/bug/references/root-cause-tracing.md 750
+skills/commit-work/SKILL.md 300
+skills/commit-work/references/commit-message-template.md 700
+skills/domain-modeling/SKILL.md 650
+skills/domain-modeling/references/ADR-FORMAT.md 450
+skills/domain-modeling/references/CONTEXT-FORMAT.md 350
+skills/epic/SKILL.md 600
+skills/finish/SKILL.md 400
+skills/grill/SKILL.md 600
+skills/grill/references/INTERVIEW.md 800
+skills/handoff/SKILL.md 450
+skills/implement/SKILL.md 300
+skills/implement/references/environment-contract.md 300
+skills/plan/SKILL.md 1500
+skills/prototype/SKILL.md 400
+skills/prototype/references/LOGIC.md 1000
+skills/prototype/references/UI.md 1250
+skills/retro/SKILL.md 300
+skills/review/SKILL.md 500
+skills/review/references/CRITERIA.md 700
+skills/tdd/SKILL.md 300
+skills/verify/SKILL.md 500
+skills/writing-great-skills/SKILL.md 1700
+skills/writing-great-skills/references/GLOSSARY.md 2800
+skills/writing-great-skills/references/TESTING.md 650

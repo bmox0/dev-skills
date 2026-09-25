@@ -1,72 +1,39 @@
 ---
 name: grill
-description: Use when a task is still fuzzy and needs talking through before anything is planned — "let's grill this", "think this through with me", "I'm not sure what we're actually building", "help me work out what I want". Interviews the idea into a shared understanding, and ends in alignment and a stop — no document, no code.
+description: Talk an idea through into a shared understanding before anything is built — "let's grill this", "think this through with me", "I'm not sure what we're building". Use when you cannot say what done looks like, or the change is hard to row back from. Ends with a size call — inline, one unit, or many.
 ---
 
-# Grilling an idea into a shared understanding
+# Grill
 
-Turn an idea into a design both of you actually agree on, through questions.
+Turn an idea into a design you and the user both agree on, through questions.
+No code, and nothing built, until the user confirms the shared understanding.
 
-The output is **alignment**, and then a stop. No epic file, no plan, no code. If
-the work turns out to need more than one plan, `dev-skills:epic` writes the document; if
-it needs one, the alignment lands in that plan's header.
+Run the interview in [INTERVIEW.md](references/INTERVIEW.md).
 
-**Announce at start:** "Using dev-skills:grill to work out what we are building."
+## While it runs
 
-<HARD-GATE>
-Do not write code, scaffold anything, or invoke an implementation skill from
-here. This applies to every task regardless of how simple it looks.
-</HARD-GATE>
+- **Facts are yours.** Look them up. Anything that needs reading across the
+  code goes to a Sonnet scout: a read-only subagent that returns paths,
+  abstractions and what it found. Keep asking the questions that do not wait on
+  it.
+- **Decisions are the user's.** Put each one to them and wait.
+- **A visual question gets a prototype** the moment it comes up: how something
+  looks, sits or moves. `dev-skills:prototype` draws the variants; point at them
+  instead of describing them.
+- **What outlives the talk.** When a term settles, add it to `CONTEXT.md`
+  through `dev-skills:domain-modeling` as it settles, not at the end. When a
+  decision is hard to reverse, surprising without context, and the result of a
+  real trade-off, offer an ADR; the user decides. Nothing is committed unless
+  the user asks.
 
-## Run the interview
+## The end: the size call
 
-Read [INTERVIEW.md](references/INTERVIEW.md) and follow it end to end — the depth rule,
-facts against decisions, the order the questions come in, how the design is
-presented, and the confirmation gate at the end.
+Once the user confirms, say in one line what size the work is, and why:
 
-That is the whole technique, and it sits in a file because
-`dev-skills:grill-with-docs` and `dev-skills:improve` run the same interview and cannot invoke a
-skill only the human can call.
+- **inline**: it fits this context. Build it here on its own branch, and drive
+  the scenarios the grill settled when it is done.
+- **one unit**: it will be built in another context or across sessions.
+  `dev-skills:plan` writes the brief.
+- **many units**: `dev-skills:epic` holds the queue, then one brief per unit.
 
-## Where this ends
-
-Present the design, take approval, then **stop** and say what the next step is:
-
-- the work fits one plan → the human invokes `dev-skills:plan`;
-- the work needs several → the human invokes `dev-skills:epic`, which writes the shared
-  document and the list of plans.
-
-**You invoke neither.** The human decides when to move on, and how much process
-the work gets. Same rule as everywhere else here: the model proposes, the human
-calls.
-
-Nothing is written to a file. Vocabulary and hard-to-reverse decisions that
-deserve to outlive the conversation belong to `dev-skills:grill-with-docs`, which is a
-separate skill precisely because it leaves a durable artifact and this one does
-not.
-
-## Visual companion
-
-A browser companion for showing mockups, diagrams and visual options during the
-interview. A tool, not a mode: accepting it means it is available for the
-questions that benefit, not that every question goes through a browser.
-
-**Offer it just in time, never up front.** Wait until a question would genuinely
-be clearer shown than told — a real mockup, layout or diagram question, not
-merely a UI *topic*. The first time that happens, offer it as **its own message**,
-with nothing else in it:
-
-> "This next part might be easier if I show you — I can put together mockups,
-> diagrams and comparisons in a browser tab as we go. It's still new and can be
-> token-intensive. Want me to? I'll open it for you."
-
-Wait for the answer. If they accept, start the server with `--open`. If they
-decline, continue text-only and do not offer again unless they raise it.
-
-**Decide per question even after they accept.** The test: would they understand
-this better by seeing it than by reading it? Mockups, wireframes, layout
-comparisons, architecture diagrams — browser. Requirements, conceptual choices,
-trade-off lists, scope decisions — terminal. A question about a UI topic is not
-automatically a visual question.
-
-If they accept, read [visual-companion.md](references/visual-companion.md) before going on.
+The user can overrule the call. Most small features are inline.

@@ -1,5 +1,5 @@
 {
-  "description": "dev-skills guard hooks: commit discipline, finish-time history surgery, branch protection, the session-start bootstrap, and opening a freshly drawn prototype in the browser.",
+  "description": "dev-skills hooks: the git guard, the session-start rule, and opening a freshly drawn prototype in the browser.",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,25 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/finish-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|MultiEdit|Write|NotebookEdit|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/branch-guard.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/git-guard.sh\""
           }
         ]
       }
@@ -36,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start\""
           }
         ]
       }
@@ -47,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/open-prototype.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/open-prototype.sh\""
           }
         ]
       }

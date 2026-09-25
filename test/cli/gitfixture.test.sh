@@ -46,18 +46,6 @@ assert_eq "1" "$staged" "gitfixture_dirty should leave one staged path" \
 assert_eq "1" "$unstaged" "gitfixture_dirty should leave one unstaged path" \
   || fail "unstaged count"
 
-# --- gitfixture_marker: file at the printed path, base= is the SHA passed --
-
-repo4=$(gitfixture_new)
-plan4=$(gitfixture_plan "$repo4")
-base_sha=$(git -C "$repo4" rev-parse HEAD)
-marker=$(gitfixture_marker "$repo4" "$plan4" "$base_sha")
-
-[ -f "$marker" ] || fail "gitfixture_marker's printed path does not exist: $marker"
-got_base=$(sed -n 's/^base=//p' "$marker")
-assert_eq "$base_sha" "$got_base" "marker's base= must equal the SHA passed in" \
-  || fail "base= mismatch"
-
 # --- a helper pointed at this repository's root: refused, nothing written --
 
 before="$(cd "$repo_root" && git status --porcelain)"

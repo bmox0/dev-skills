@@ -1,27 +1,44 @@
 ---
 name: prototype
-description: Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.
+description: Build a throwaway prototype to answer a design question — how something looks, sits or moves, or whether a state model feels right. Use the moment a question is visual, or the logic is hard to judge on paper.
 ---
 
 # Prototype
 
-A prototype is **throwaway code that answers a question**. The question decides the shape.
+A prototype is throwaway code that answers one question. The question decides
+the shape.
 
-## Pick a branch
+- **How should it look, sit or move?** The default: one self-contained HTML
+  file with the variants on a floating bottom switcher, each variant showing its
+  full state. When the variants must sit inside a real page with real data, put
+  them on that page behind `?variant=`, as [UI.md](references/UI.md) describes.
+- **Does this logic or state model feel right?** A tiny terminal app that pushes
+  the model through the hard cases: [LOGIC.md](references/LOGIC.md).
 
-Identify which question is being answered — from the user's prompt, the surrounding code, or by asking if the user is around:
+If the question is ambiguous and the user is not around, pick the shape that
+matches the surrounding code and say so at the top of the prototype.
 
-- **"Does this logic / state model feel right?"** → [LOGIC.md](references/LOGIC.md). Build a tiny interactive terminal app that pushes the state machine through cases that are hard to reason about on paper.
-- **"What should this look like?"** → [UI.md](references/UI.md). Generate several radically different UI variations on a single route, switchable via a URL search param and a floating bottom bar.
+## The HTML file
 
-The two branches produce very different artifacts — getting this wrong wastes the whole prototype. If the question is genuinely ambiguous and the user isn't reachable, default to whichever branch better matches the surrounding code (a backend module → logic; a page or component → UI) and state the assumption at the top of the prototype.
+Write it to `.ai-workflow/prototypes/<topic>.html` with the Write tool; the hook
+opens it in the browser when it lands. Nothing reaches outside the file: no
+remote script, style, font or image, so it renders the same with the network
+off. It stays on disk as the spec: the brief's Looks list points at it, and
+verify compares its captures with it.
 
-## Rules that apply to both
+**Draw it in a Sonnet subagent** to keep this context clean. Hand it the
+question, the variants in the user's words, and the output path. It draws what
+it is handed and never designs: a control, a screen or wording the
+conversation never named comes back as a question, not an invention.
 
-1. **Throwaway from day one, and clearly marked as such.** Prototype code that runs *inside the app* — a throwaway route, a throwaway view — sits next to the module or page it's prototyping for, so context is obvious, and is named so a casual reader can see it's a prototype, not production. Obey whatever routing convention the project already uses; don't invent a new top-level structure.
-2. **A standalone prototype file goes under `.ai-workflow/`.** Anything that isn't app code — a self-contained HTML mock, a scratch script — belongs in `.ai-workflow/plans/<plan>/prototypes/` inside a run, or `.ai-workflow/prototypes/` outside one. That directory is gitignored, so the file can't reach a commit by accident, and the PostToolUse hook opens it in the browser the moment it lands. A `prototypes/` folder at the repo root gets neither: it's the new top-level structure rule 1 rules out, and it shows up in the diff. **Write the file with the Write tool** — the hook fires on Write alone, so a file built by a shell heredoc or a generator script never opens itself, however right the path is.
-3. **One command to run.** Whatever the project's existing task runner supports — `pnpm <name>`, `python <path>`, `bun <path>`, etc. The user must be able to start it without thinking.
-4. **No persistence by default.** State lives in memory. Persistence is the thing the prototype is _checking_, not something it should depend on. If the question explicitly involves a database, hit a scratch DB or a local file with a clear "PROTOTYPE — wipe me" name.
-5. **Skip the polish.** No tests, no error handling beyond what makes the prototype _runnable_, no abstractions. The point is to learn something fast.
-6. **Surface the state.** After every action (logic) or on every variant switch (UI), print or render the full relevant state so the user can see what changed.
-7. **Capture the answer when done.** Fold the validated decision into the real code, and write down what it settled — which shape won, and the question it answers — in the implementation issue or the commit message. That is the part someone needs in a month. The prototype itself stays where rule 2 put it, on disk beside the plan, so it can be reopened; prototype code from rule 1 leaves the tree in the same change that folds the winner in.
+## Rules for both shapes
+
+1. **Throwaway, and marked as such.** Prototype code inside the app sits next to
+   what it prototypes, follows the project's routing, and is named so a reader
+   sees it is a prototype.
+2. **One command to run** it, through the project's own task runner.
+3. **No persistence.** State lives in memory unless persistence is the question.
+4. **No polish.** No tests, no abstractions, only what makes it run.
+5. **Capture the answer.** Fold the winner into the real code or the brief,
+   write down which shape won and why, and remove in-app prototype code in the
+   same change.

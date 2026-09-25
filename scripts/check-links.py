@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """Check the reference layer of the dev-skills tree.
 
-Walks skills/, agents/ and hooks/ (recursively) plus the repository root's
-own *.md files (root only, not recursive — this does not descend into
-.ai-workflow/ or other root-level directories), reads every .md file, and
-checks three things line by line (skipping anything inside a fenced code
-block):
+Walks skills/, agents/, hooks/ and references/ (recursively) plus the
+repository root's own *.md files (root only, not recursive — this does not
+descend into .ai-workflow/ or other root-level directories), reads every .md
+file, and checks three things line by line (skipping anything inside a fenced
+code block):
 
   R1 file links      - [text](target) resolves to a file that exists
   R2 namespace        - dev-skills:<name> names a skill under skills/ or an
                         agent under agents/
-  R3 legacy tokens     - ds-<name>, diagnose, brainstorming,
-                        test-driven-development, grill-me, to-plan,
-                        to-implement are findings unless allowlisted
+  R3 legacy tokens     - ds-<name>, retired skill, agent and hook names are
+                        findings unless allowlisted
+
+and two things per file:
+
+  BUDGET               - every .md under skills/, agents/ and references/ has
+                        exactly one line in scripts/word-budgets.txt and is
+                        within it, and every line there names such a file
+  FRONT                - every skills/<name>/SKILL.md and agents/<name>.md
+                        opens with a frontmatter block of `key: value` lines,
+                        quotes balanced, whose name is <name> and which has a
+                        description
 
 An R3 finding is suppressed by scripts/link-allow.txt, one
 `path:line:token` entry per line: suppression applies only when the named
@@ -35,12 +44,14 @@ from collections import namedtuple
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-WALK_DIRS = ("skills", "agents", "hooks")
+WALK_DIRS = ("skills", "agents", "hooks", "references")
+BUDGET_DIRS = ("skills", "agents", "references")
 ALLOWLIST_PATH = Path(__file__).resolve().parent / "link-allow.txt"
+BUDGETS_PATH = Path(__file__).resolve().parent / "word-budgets.txt"
 SKILLS_DIR = REPO_ROOT / "skills"
 AGENTS_DIR = REPO_ROOT / "agents"
 
-RULES = ("R1", "R2", "R3", "ALLOWLIST")
+RULES = ("R1", "R2", "R3", "ALLOWLIST", "BUDGET", "FRONT")
 
 FENCE_RE = re.compile(r"^\s*`{3,}")
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
@@ -54,6 +65,16 @@ LEGACY_WORDS = (
     "grill-me",
     "to-plan",
     "to-implement",
+    "gate-a",
+    "gate-b",
+    "test-writer",
+    "run-state",
+    "plan-check",
+    "grill-with-docs",
+    "review-criteria",
+    "commit-guard",
+    "finish-guard",
+    "branch-guard",
 )
 LEGACY_WORD_RE = re.compile(
     r"\b(" + "|".join(re.escape(w) for w in LEGACY_WORDS) + r")\b"
@@ -176,6 +197,83 @@ def check_r3(path, lineno, line, findings, allow_index, allow_matched):
         findings["R3"].append(f"{key}: R3 legacy token '{token}'")
 
 
+def check_budgets(findings):
+    budgets = {}
+    if BUDGETS_PATH.exists():
+        for n, raw in enumerate(BUDGETS_PATH.read_text(encoding="utf-8").splitlines(), start=1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) != 2 or not parts[1].isdigit():
+                findings["BUDGET"].append(f"word-budgets.txt:{n}: malformed line {raw!r}")
+                continue
+            if parts[0] in budgets:
+                findings["BUDGET"].append(f"word-budgets.txt:{n}: second line for {parts[0]}")
+            budgets[parts[0]] = int(parts[1])
+    seen = set()
+    for d in BUDGET_DIRS:
+        base = REPO_ROOT / d
+        for path in sorted(base.rglob("*.md")) if base.is_dir() else []:
+            key = rel(path)
+            seen.add(key)
+            words = len(path.read_text(encoding="utf-8").split())
+            if key not in budgets:
+                findings["BUDGET"].append(f"{key}: BUDGET no budget line ({words} words)")
+            elif words > budgets[key]:
+                findings["BUDGET"].append(
+                    f"{key}: BUDGET {words} words, over its budget of {budgets[key]}"
+                )
+    for key in sorted(set(budgets) - seen):
+        findings["BUDGET"].append(f"{key}: BUDGET line for a file that is not a budgeted markdown file")
+
+
+FRONT_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):(?:\s+(.*))?$")
+
+
+def check_frontmatter(path, expected_name, findings):
+    key = rel(path)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0] != "---":
+        findings["FRONT"].append(f"{key}: FRONT no frontmatter block")
+        return
+    try:
+        end = lines.index("---", 1)
+    except ValueError:
+        findings["FRONT"].append(f"{key}: FRONT frontmatter block never closes")
+        return
+    fields = {}
+    nested = False
+    for n, line in enumerate(lines[1:end], start=2):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if nested and line[:1] in (" ", "\t"):
+            continue
+        m = FRONT_LINE_RE.match(line)
+        if not m:
+            findings["FRONT"].append(f"{key}:{n}: FRONT not a 'key: value' line")
+            continue
+        value = (m.group(2) or "").strip()
+        nested = value in ("", "|", ">", "|-", ">-")
+        closing = {"'": "'", '"': '"', "[": "]", "{": "}"}.get(value[:1])
+        if closing and (len(value) < 2 or value[-1] != closing):
+            findings["FRONT"].append(f"{key}:{n}: FRONT unbalanced {value[0]}")
+        elif not closing and (": " in value or value.endswith(":")):
+            findings["FRONT"].append(f"{key}:{n}: FRONT a plain value cannot hold ': '; quote it")
+        fields[m.group(1)] = value.strip("'\"")
+    if fields.get("name") != expected_name:
+        findings["FRONT"].append(f"{key}: FRONT name is {fields.get('name')!r}, expected {expected_name!r}")
+    if not fields.get("description"):
+        findings["FRONT"].append(f"{key}: FRONT no description")
+
+
+def check_frontmatters(findings):
+    for path in sorted(SKILLS_DIR.glob("*/SKILL.md")):
+        check_frontmatter(path, path.parent.name, findings)
+    for path in sorted(AGENTS_DIR.glob("*.md")):
+        check_frontmatter(path, path.stem, findings)
+
+
 def main():
     try:
         allow_entries = load_allowlist()
@@ -193,6 +291,9 @@ def main():
             check_r1(path, lineno, line, findings)
             check_r2(path, lineno, line, findings)
             check_r3(path, lineno, line, findings, allow_index, allow_matched)
+
+    check_budgets(findings)
+    check_frontmatters(findings)
 
     for i, entry in enumerate(allow_entries):
         if not allow_matched[i]:

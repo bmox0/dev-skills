@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
-# The git half of finishing a run. Narrow on purpose: the skill makes the
-# judgement calls — is it done, what does the message say, what did the human
+# The git half of finishing a unit. Narrow on purpose: the skill makes the
+# judgement calls — is it done, what do the messages say, what did the human
 # choose — and this script performs them, refusing to act on any state it does
 # not recognise.
 #
-# Why reset --soft rather than an interactive rebase: it touches neither the
-# index nor the working tree, so a conflict is impossible by construction, and
-# the equivalence of the trees is *guaranteed* rather than checked — the script
-# only has to confirm the hashes match. On any refusal the state is left staged:
-# nothing is lost and everything is visible.
-#
 # Usage:
-#   finish preflight
-#   finish squash MESSAGE_FILE
-#   finish rebase
-#   finish integrate --ff-only
-#   finish cleanup
+#   finish preflight [--base SHA]
+#   finish ref
+#   finish squash [--base SHA] MESSAGE_FILE [--through SHA MESSAGE_FILE]...
+#   finish merge [--base SHA] [--subject LINE]
 #   finish recover [ATTEMPT]
 set -euo pipefail
 
@@ -27,52 +20,18 @@ set -euo pipefail
 # at the first squashed commit, and the pre-squash state the ref existed to
 # reach would become unreachable at exactly the moment somebody wanted it.
 RECOVERY_ROOT=refs/dev-skills/recovery
+LANDED_ROOT=refs/dev-skills/landed
+SQUASH_ROOT=refs/dev-skills/squash
 
-# commit-guard's own subject rule, copied deliberately.
-#
-# The hook reads the *command string*, so it validates `git commit -m "…"` and
-# cannot see a message passed with -F. `finish squash` uses -F, which makes the
-# run's one landing commit the only one in the whole run that reaches git
-# unchecked — both for the subject and for the banned trailers. Checking here is
-# what closes that, and it happens before `reset --soft` so a refusal costs
-# nothing and leaves the branch untouched.
-#
-# If commit-guard's rule changes, change this one with it; they are two copies of
-# one decision and there is no way to share them across a hook and a script.
+# git-guard's subject rule, copied: the hook reads the command string and cannot
+# see a message passed with -F, so the unit's landing commits are checked here,
+# before anything moves.
 CONVENTIONAL='^(([A-Z][A-Z0-9]*-[0-9]+|#[0-9]+):?[[:space:]]+)?(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9._/-]+\))?!?: .+'
-BANNED_TRAILERS='Co-Authored-By|Generated with Claude Code|Claude-Session:|🤖'
+BANNED_TRAILERS='^[[:space:]]*(Co-Authored-By|Claude-Session)[[:space:]]*:|Generated with Claude Code|🤖'
 
-root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repository" >&2; exit 2; }
-gitdir="$(git rev-parse --git-dir)"
-common="$(git rev-parse --git-common-dir)"
-runs="$root/.ai-workflow/run"
+git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "not a git repository" >&2; exit 2; }
 
 die() { echo "finish: $*" >&2; exit 1; }
-
-# The marker lives with its run's artifacts, at .ai-workflow/run/<plan>/RUN.
-# Exactly one is expected: run-state refuses to open a second.
-#
-# resolve_marker is called as a plain statement, never inside $(...), so that its
-# die() ends the script rather than a subshell — a refusal has to stop the run,
-# not be swallowed and turned into an empty string downstream.
-MARKER=""
-resolve_marker() {
-  [ -n "$MARKER" ] && return 0
-  local found count
-  found="$([ -d "$runs" ] && find "$runs" -mindepth 2 -maxdepth 2 -name RUN -type f 2>/dev/null | LC_ALL=C sort || true)"
-  [ -n "$found" ] || die "no run marker under .ai-workflow/run/*/ — this run was never opened by dev-skills:implement, or it is already finished"
-  count="$(printf '%s\n' "$found" | wc -l | tr -d ' ')"
-  if [ "$count" -gt 1 ]; then
-    echo "finish: more than one run marker — finish or clear these before continuing:" >&2
-    printf '%s\n' "$found" | sed 's/^/  /' >&2
-    exit 1
-  fi
-  MARKER="$found"
-}
-
-marker_field() {
-  sed -n "s/^$1=//p" "$MARKER" | head -1
-}
 
 default_branch() {
   local d
@@ -85,8 +44,12 @@ default_branch() {
   printf '%s' "$d"
 }
 
+current_branch() {
+  git symbolic-ref --quiet --short HEAD 2>/dev/null || true
+}
+
 recovery_prefix() {
-  printf '%s/%s' "$RECOVERY_ROOT" "$(git rev-parse --abbrev-ref HEAD)"
+  printf '%s/%s' "$RECOVERY_ROOT" "$(current_branch)"
 }
 
 # The attempts recorded for this branch, in numeric order, as "<n>\t<sha>".
@@ -116,58 +79,157 @@ record_recovery() {
 }
 
 assert_settled() {
-  if [ -f "$gitdir/MERGE_HEAD" ]; then die "merge in progress — settle it first"; fi
-  if [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ]; then
-    die "rebase in progress — settle it first"
+  local where="$1" dir
+  dir="$(git -C "$where" rev-parse --git-dir)"
+  case "$dir" in /*) ;; *) dir="$where/$dir" ;; esac
+  if [ -f "$dir/MERGE_HEAD" ]; then die "merge in progress in $where — settle it first"; fi
+  if [ -d "$dir/rebase-merge" ] || [ -d "$dir/rebase-apply" ]; then
+    die "rebase in progress in $where — settle it first"
   fi
-  if [ -f "$gitdir/CHERRY_PICK_HEAD" ]; then die "cherry-pick in progress — settle it first"; fi
-  if [ -f "$gitdir/REVERT_HEAD" ]; then die "revert in progress — settle it first"; fi
+  if [ -f "$dir/CHERRY_PICK_HEAD" ] || [ -f "$dir/REVERT_HEAD" ] || [ -d "$dir/sequencer" ]; then
+    die "cherry-pick or revert in progress in $where — settle it first"
+  fi
+}
+
+assert_clean() {
+  local where="$1" dirty
+  dirty="$(git -C "$where" status --porcelain --untracked-files=no | wc -l | tr -d ' ')"
+  [ "$dirty" -eq 0 ] || die "$dirty tracked path(s) modified but not committed in $where — commit or discard them first"
+}
+
+BASE=""
+DEF=""
+resolve_base() {
+  local explicit="$1" recorded
+  DEF="$(default_branch)"
+  [ -n "$DEF" ] || die "cannot resolve the default branch"
+  if [ -n "$explicit" ]; then
+    git rev-parse --verify --quiet "$explicit^{commit}" >/dev/null \
+      || die "the base ($explicit) is not a commit in this repository"
+    git merge-base --is-ancestor "$explicit" HEAD \
+      || die "the base ($explicit) is not an ancestor of HEAD — the branch was rebased since; run without --base"
+    BASE="$(git rev-parse "$explicit^{commit}")"
+  else
+    recorded="$(git config --get "branch.$(current_branch).devskillsbase" 2>/dev/null || true)"
+    if [ -n "$recorded" ] && git merge-base --is-ancestor "$recorded" HEAD 2>/dev/null; then
+      BASE="$recorded"
+    else
+      BASE="$(git merge-base HEAD "$DEF")" || die "HEAD shares no history with $DEF"
+    fi
+  fi
+  if git merge-base --is-ancestor "$BASE" "$DEF"; then
+    BASE="$(git merge-base HEAD "$DEF")"
+  fi
+}
+
+carried_branches() {
+  local other tip head recorded
+  head="$(git rev-parse HEAD)"
+  while IFS= read -r other; do
+    [ -n "$other" ] && [ "$other" != "$(current_branch)" ] && [ "$other" != "$DEF" ] || continue
+    tip="$(git rev-parse "refs/heads/$other")"
+    [ "$tip" != "$head" ] || continue
+    git merge-base --is-ancestor "$tip" "$DEF" && continue
+    git merge-base --is-ancestor "$tip" "$BASE" && continue
+    git merge-base --is-ancestor "$tip" HEAD || continue
+    recorded="$(git config --get "branch.$other.devskillsbase" 2>/dev/null || true)"
+    if [ -n "$recorded" ] && [ "$recorded" != "$BASE" ] && git merge-base --is-ancestor "$BASE" "$recorded" 2>/dev/null; then
+      continue
+    fi
+    echo "$other"
+  done < <(git for-each-ref --format='%(refname:short)' refs/heads/)
+}
+
+within() {
+  [ "$1" != "$BASE" ] && git merge-base --is-ancestor "$1" "$BASE" && git merge-base --is-ancestor "$BASE" "$2"
+}
+
+refuse_carried() {
+  local carried
+  [ -z "$1" ] || return 0
+  carried="$(carried_branches | tr '\n' ' ')"
+  [ -z "$carried" ] || die "this range carries commits of ${carried% }, which has not landed — finish that first, or pass --base where this unit starts"
+}
+
+landed_by_finish() {
+  local ref sha unit n tip
+  while read -r ref sha; do
+    case "$ref" in */base) ;; *) continue ;; esac
+    unit="${ref#"$LANDED_ROOT"/}"
+    unit="${unit%/base}"
+    tip="$(git rev-parse --verify --quiet "$LANDED_ROOT/$unit/tip")" || continue
+    within "$sha" "$tip" && return 0
+    while read -r ref sha; do
+      n="${ref##*/}"
+      tip="$(git rev-parse --verify --quiet "$RECOVERY_ROOT/$unit/$n")" || continue
+      within "$sha" "$tip" && return 0
+    done < <(git for-each-ref --format='%(refname) %(objectname)' "$SQUASH_ROOT/$unit/")
+  done < <(git for-each-ref --format='%(refname) %(objectname)' "$LANDED_ROOT/")
+  return 1
+}
+
+landed_by_content() {
+  local out rc
+  out="$(git merge-tree --write-tree "$DEF" "$BASE" 2>&1)"
+  rc=$?
+  [ "$rc" -lt 128 ] || die "deciding whether the stacked work landed needs git 2.38 or newer (git merge-tree --write-tree)"
+  [ "$rc" -eq 0 ] && [ "$(printf '%s\n' "$out" | sed -n 1p)" = "$(git rev-parse "$DEF^{tree}")" ]
+}
+
+assert_on_unit_branch() {
+  local branch
+  branch="$(current_branch)"
+  [ -n "$branch" ] || die "detached HEAD — check out the unit's branch first"
+  [ "$branch" != "$(default_branch)" ] || die "on the default branch — finish runs on the unit's branch"
+}
+
+EXPLICIT=""
+parse_base_arg() {
+  EXPLICIT=""
+  if [ "${1:-}" = "--base" ]; then
+    [ $# -ge 2 ] || die "--base needs a commit"
+    EXPLICIT="$2"
+  elif [ $# -gt 0 ]; then
+    die "unexpected argument: $1"
+  fi
 }
 
 cmd_preflight() {
-  local base branch plan head range dirty untracked
-  resolve_marker
-  plan="$(marker_field plan)"
-  base="$(marker_field base)"
-  branch="$(git rev-parse --abbrev-ref HEAD)"
-  head="$(git rev-parse HEAD)"
-
-  assert_settled
-  git rev-parse --verify --quiet "$base" >/dev/null || die "the run's base ($base) is not a commit in this repository"
-  git merge-base --is-ancestor "$base" HEAD 2>/dev/null || die "the run's base is not an ancestor of HEAD — the history was rewritten under the run"
-
-  if [ "$branch" = "HEAD" ]; then die "detached HEAD — check out the run's branch first"; fi
-  if [ "$branch" = "$(default_branch)" ]; then
-    die "on the default branch — a run is not finished onto the branch it targets"
-  fi
-
-  range="$(git rev-list --count "$base..HEAD")"
+  local range
+  parse_base_arg "$@"
+  assert_on_unit_branch
+  assert_settled .
+  assert_clean .
+  resolve_base "$EXPLICIT"
+  range="$(git rev-list --count "$BASE..HEAD")"
   [ "$range" -gt 0 ] || die "no commits between the base and HEAD — there is nothing to finish"
 
-  dirty="$(git status --porcelain --untracked-files=no | wc -l | tr -d ' ')"
-  untracked="$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')"
-  [ "$dirty" -eq 0 ] || die "$dirty tracked path(s) modified but not committed — commit or discard them first"
-
-  echo "plan:     $plan"
-  echo "branch:   $branch"
-  echo "base:     $(git rev-parse --short "$base")"
-  echo "head:     $(git rev-parse --short "$head")"
-  echo "commits:  $range"
-  echo "tree:     $root"
-  if [ "$untracked" -gt 0 ]; then
-    echo "note:     $untracked untracked file(s) — they take no part in the squash"
+  echo "branch:   $(current_branch)"
+  echo "base:     $(git rev-parse --short "$BASE")"
+  git merge-base --is-ancestor "$BASE" "$DEF" \
+    || echo "stacked:  the base is not on $DEF; merge moves this unit once what it stacks on has landed"
+  if [ -z "$EXPLICIT" ]; then
+    carried_branches | while IFS= read -r other; do
+      echo "note: this range carries commits of $other, which has not landed; squash and merge refuse until it does, or until --base names where this unit starts"
+    done
   fi
-  echo "paths touched by the run:"
-  git diff --name-only "$base..HEAD" | sed 's/^/  /'
+  echo "commits:"
+  git log --reverse --format='  %h %s' "$BASE..HEAD" --not "$DEF"
+  echo "paths:"
+  git log --format= --name-only "$BASE..HEAD" --not "$DEF" | sed '/^$/d' | LC_ALL=C sort -u | sed 's/^/  /'
   echo "preflight clean"
 }
 
-# Enforced before anything is moved, so a bad subject costs a refusal rather than
-# a reset --soft the caller then has to unpick.
+cmd_ref() {
+  assert_on_unit_branch
+  record_recovery
+}
+
 assert_message_ok() {
-  local msgfile subject
+  local msgfile subject body
   msgfile="$1"
-  subject="$(grep -vE '^[[:space:]]*#' "$msgfile" | grep -vE '^[[:space:]]*$' | head -1)"
+  [ -f "$msgfile" ] || die "no message file at $msgfile"
+  subject="$(git stripspace < "$msgfile" | sed -n 1p)"
   [ -n "$subject" ] || die "$msgfile has no subject line"
 
   if printf '%s' "$subject" | grep -qE '<type>|<scope>|<one line'; then
@@ -175,139 +237,151 @@ assert_message_ok() {
   fi
   if ! printf '%s' "$subject" | grep -qE "$CONVENTIONAL"; then
     die "subject is not Conventional Commits ('$subject')
-  use 'type(scope): summary'; type in feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert
-  commit-guard cannot see a -F message, so this is the only place it is checked"
+  use 'type(scope): summary'; type in feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert"
+  fi
+  if [ "$(printf '%s' "$subject" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' ')" -gt 72 ]; then
+    die "the subject in $msgfile is over 72 characters"
+  fi
+  body="$(git stripspace < "$msgfile" | sed '1d' | sed '/./,$!d')"
+  if [ "$(printf '%s' "$body" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' ')" -gt 300 ]; then
+    die "the body in $msgfile is over 300 characters"
   fi
   if grep -qiE "$BANNED_TRAILERS" "$msgfile"; then
-    die "$msgfile carries a banned trailer (Co-Authored-By / Generated with Claude Code / Claude-Session)
-  remove it; commit-guard cannot see a -F message and would not have caught this"
+    die "$msgfile carries a banned trailer (Co-Authored-By / Generated with Claude Code / Claude-Session)"
   fi
 }
 
 cmd_squash() {
-  local msgfile base before after pre_squash
-  msgfile="${1:-}"
-  [ -n "$msgfile" ] && [ -f "$msgfile" ] || die "usage: finish squash MESSAGE_FILE"
-  assert_message_ok "$msgfile"
+  local explicit="" msgs=() ends=() prev before new i end sign=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --base)
+        [ $# -ge 2 ] || die "--base needs a commit"
+        explicit="$2"; shift 2 ;;
+      --through)
+        [ $# -ge 2 ] || die "--through needs a commit"
+        [ ${#msgs[@]} -gt 0 ] || die "--through closes the group of the message file before it"
+        [ ${#ends[@]} -lt ${#msgs[@]} ] || die "one --through per message file"
+        ends+=("$2"); shift 2 ;;
+      *)
+        [ ${#ends[@]} -eq ${#msgs[@]} ] || die "$1 follows a message file with no --through; every group but the last needs one"
+        msgs+=("$1"); shift ;;
+    esac
+  done
+  [ ${#msgs[@]} -gt 0 ] || die "usage: finish squash [--base SHA] MESSAGE_FILE [--through SHA MESSAGE_FILE]..."
+  [ ${#ends[@]} -lt ${#msgs[@]} ] || die "the last message file takes the rest of the range; drop its --through"
+  ends+=(HEAD)
+  for i in "${!msgs[@]}"; do assert_message_ok "${msgs[$i]}"; done
 
-  cmd_preflight >/dev/null
-  resolve_marker
-  base="$(marker_field base)"
+  cmd_preflight ${explicit:+--base "$explicit"} >/dev/null
+  resolve_base "$explicit"
+  refuse_carried "$explicit"
+  prev="$BASE"
+  for i in "${!ends[@]}"; do
+    end="$(git rev-parse --verify --quiet "${ends[$i]}^{commit}")" || die "--through ${ends[$i]} is not a commit"
+    if [ "$end" = "$prev" ] || ! git merge-base --is-ancestor "$prev" "$end" \
+       || ! git merge-base --is-ancestor "$end" HEAD; then
+      die "--through ${ends[$i]} is not a later commit of this range, in order"
+    fi
+    ends[$i]="$end"
+    prev="$end"
+  done
+
+  if [ "$(git config --bool commit.gpgsign 2>/dev/null || true)" = "true" ]; then sign="-S"; fi
   before="$(git rev-parse 'HEAD^{tree}')"
-  pre_squash="$(git rev-parse HEAD)"
-
   record_recovery
+  git update-ref "$SQUASH_ROOT/$(current_branch)/$(recovery_attempts | tail -1 | cut -f1)" "$BASE"
+  new="$BASE"
+  for i in "${!msgs[@]}"; do
+    new="$(git stripspace < "${msgs[$i]}" \
+      | git commit-tree ${sign:+"$sign"} "${ends[$i]}^{tree}" -p "$new")"
+  done
+  git reset --soft "$new"
+  [ "$(git rev-parse 'HEAD^{tree}')" = "$before" ] \
+    || die "tree changed across the squash — recover with 'finish recover <attempt>' and investigate"
 
-  git reset --soft "$base"
-  git commit --cleanup=strip -F "$msgfile" --quiet
-
-  after="$(git rev-parse 'HEAD^{tree}')"
-  if [ "$before" != "$after" ]; then
-    die "tree hash changed across the squash ($before -> $after) — this cannot normally happen; recover with 'finish recover <attempt>' and investigate"
-  fi
-
-  echo "squashed $(git rev-parse --short "$base")..$(git rev-parse --short "$pre_squash") into $(git rev-parse --short HEAD)"
-  echo "trees identical: $before"
+  echo "squashed into ${#msgs[@]} commit(s) on $(git rev-parse --short "$BASE"):"
+  git log --reverse --format='  %h %s' "$BASE..HEAD"
 }
 
-cmd_rebase() {
-  local base def old_base new_base overlap
-  resolve_marker
-  base="$(marker_field base)"
-  def="$(default_branch)"
-  [ -n "$def" ] || die "cannot resolve the default branch"
-  assert_settled
+cmd_merge() {
+  local branch target out conflicts switched="" wt moved="" base_before subject=""
+  local args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --subject) [ $# -ge 2 ] || die "--subject needs a line"; subject="$2"; shift 2 ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  parse_base_arg ${args[@]+"${args[@]}"}
+  assert_on_unit_branch
+  assert_settled .
+  assert_clean .
+  branch="$(current_branch)"
+  resolve_base "$EXPLICIT"
+  [ "$(git rev-list --count "$BASE..HEAD")" -gt 0 ] || die "no commits between the base and HEAD — there is nothing to merge"
+  refuse_carried "$EXPLICIT"
+  [ -n "$subject" ] || subject="$(git log -1 --format=%s HEAD)"
+  printf '%s' "$subject" | grep -qE "$CONVENTIONAL" \
+    || die "the merge subject is not a Conventional Commit: '$subject' — pass --subject"
 
-  old_base="$base"
-  new_base="$(git rev-parse --verify "$def")"
-  if [ "$old_base" = "$new_base" ]; then echo "base has not moved — no rebase needed"; return 0; fi
+  while IFS= read -r wt; do
+    [ -n "$wt" ] || continue
+    for f in "$wt/rebase-merge/head-name" "$wt/rebase-apply/head-name"; do
+      if [ -f "$f" ] && [ "$(cat "$f")" = "refs/heads/$DEF" ]; then
+        die "$DEF is being rebased in another checkout — settle that first"
+      fi
+    done
+  done < <(printf '%s\n' "$(git rev-parse --git-common-dir)"; ls -d "$(git rev-parse --git-common-dir)"/worktrees/* 2>/dev/null)
 
-  echo "base moved: $(git rev-parse --short "$old_base") -> $(git rev-parse --short "$new_base")"
-  overlap="$(comm -12 \
-    <(git diff --name-only "$old_base..$new_base" | sort) \
-    <(git diff --name-only "$old_base..HEAD" | sort))"
-
-  if [ -n "$overlap" ]; then
-    echo "the base touched paths this run also touched:"
-    printf '%s\n' "$overlap" | sed 's/^/  /'
-    echo "→ gate B re-runs the affected cases, then acceptance covers only those"
-  else
-    echo "no path overlap → the acceptance stands"
+  target="$(git worktree list --porcelain \
+    | awk -v want="branch refs/heads/$DEF" '/^worktree /{w=substr($0,10)} $0==want{print w; exit}')"
+  if [ -n "$target" ]; then
+    [ -d "$target" ] || die "$DEF is checked out at $target, which no longer exists — run 'git worktree prune'"
+    assert_settled "$target"
+    assert_clean "$target"
   fi
 
-  # Recorded before the rebase, not after: what a recovery wants back is the
-  # state the rebase is about to rewrite.
-  record_recovery
-
-  if git rebase "$new_base"; then
-    sed -i.bak "s|^base=.*|base=$new_base|" "$MARKER" && rm -f "$MARKER.bak"
-    echo "rebased; run base updated to $(git rev-parse --short "$new_base")"
-  else
-    echo "rebase stopped with conflicts — resolving a conflict is a code change:" >&2
-    echo "  settle the rebase, then run an ordinary remediation segment" >&2
-    exit 1
-  fi
-}
-
-cmd_integrate() {
-  [ "${1:-}" = "--ff-only" ] || die "usage: finish integrate --ff-only (no other mode is offered)"
-  local def branch main_root was out
-  def="$(default_branch)"
-  [ -n "$def" ] || die "cannot resolve the default branch"
-  branch="$(git rev-parse --abbrev-ref HEAD)"
-  assert_settled
-
-  main_root="$(cd "$common/.." && pwd -P)"
-  git -C "$main_root" rev-parse --verify --quiet "$def" >/dev/null || die "no local $def to integrate into"
-
-  # Whether a fast-forward is possible is decided here, from the graph alone,
-  # before anything in the main checkout is touched. Deciding it from the exit
-  # code of the checkout or the merge is what produced "not a fast-forward — the
-  # base has moved" for a failure that was nothing of the kind: an untracked
-  # file in the main checkout standing where a tracked one was about to land.
-  # That message sends the human to `finish rebase`, which cannot help, and it
-  # hides the one thing they need to know — which file is in the way.
-  if ! git merge-base --is-ancestor "$def" "$branch"; then
-    die "not a fast-forward — $def has moved; rebase first (finish rebase)"
+  base_before="$BASE"
+  if ! git merge-base --is-ancestor "$BASE" "$DEF"; then
+    landed_by_finish || landed_by_content \
+      || die "this branch is stacked on $(git rev-parse --short "$BASE"), and the work below it has not landed on $DEF — finish that first"
+    record_recovery
+    if ! out="$(git rebase --onto "$DEF" "$BASE" 2>&1)"; then
+      conflicts="$(git diff --name-only --diff-filter=U)"
+      git rebase --abort >/dev/null 2>&1 || true
+      die "moving this unit onto $DEF conflicts; the branch is as it was (a recovery ref was recorded). Conflicting paths:
+${conflicts:-$out}"
+    fi
+    moved=1
+    echo "moved onto $DEF: what it stacked on has landed"
   fi
 
-  was="$(git -C "$main_root" rev-parse --abbrev-ref HEAD)"
-  if ! out="$(git -C "$main_root" checkout "$def" 2>&1)"; then
-    die "cannot check out $def in the main checkout ($main_root).
-$def is an ancestor of $branch, so the history is fine — git is refusing for
-another reason, and it is below verbatim. An untracked file in the way is the
-usual one; commit or remove it there and run this again.
-
-$out"
+  if [ -z "$target" ]; then
+    git checkout -q "$DEF" || { git checkout -q "$branch" 2>/dev/null || true; die "cannot check out $DEF here"; }
+    target="."
+    switched=1
   fi
 
-  if out="$(git -C "$main_root" merge --ff-only "$branch" 2>&1)"; then
-    echo "integrated $branch into $def (fast-forward)"
-  else
-    git -C "$main_root" checkout --quiet "$was" 2>/dev/null || true
-    die "the merge into $def failed even though it is a fast-forward by the
-graph. git's own reason, verbatim:
-
-$out"
+  if ! out="$(git -C "$target" merge --no-ff -m "$subject" "$branch" 2>&1)"; then
+    conflicts="$(git -C "$target" diff --name-only --diff-filter=U)"
+    git -C "$target" merge --abort >/dev/null 2>&1 || true
+    if [ -n "$switched" ]; then git checkout -q "$branch" || true; fi
+    die "the merge into $DEF failed and was aborted; $DEF is as it was${moved:+, and this branch now sits on $DEF (its recovery ref holds the old place)}. If it conflicts, rebase this branch onto $DEF, resolve there, and finish again.
+${conflicts:-$out}"
   fi
-}
+  if [ -n "$switched" ]; then
+    git checkout -q "$branch" || echo "note: $DEF is merged, but switching back to $branch failed" >&2
+  fi
+  git update-ref "$LANDED_ROOT/$branch/base" "$base_before"
+  git update-ref "$LANDED_ROOT/$branch/tip" "$(git rev-parse "refs/heads/$branch")"
 
-cmd_cleanup() {
-  local wt
-  if [ "$gitdir" = "$common" ]; then echo "not a worktree — nothing to clean up"; return 0; fi
-  wt="$root"
-  case "$wt" in
-    */.worktrees/*|*/worktrees/*) ;;
-    *) echo "worktree at $wt was not created by this workflow — leaving it in place"; return 0 ;;
-  esac
-  cd "$(cd "$common/.." && pwd -P)"
-  git worktree remove "$wt"
-  git worktree prune
-  echo "removed worktree $wt"
+  echo "merged $branch into $DEF (--no-ff) at $(git -C "$target" rev-parse --short "$DEF")"
+  git -C "$target" log --reverse --format='  %h %s' "$DEF^1..$DEF^2"
 }
 
 # An attempt is required. There is no default, and "the latest" is not one
-# either: a run that squashed twice has two states worth reaching, and guessing
+# either: a unit that squashed twice has two states worth reaching, and guessing
 # which one wanted resetting is how a recovery destroys the thing it was called
 # to save. With no argument this prints what exists and changes nothing.
 cmd_recover() {
@@ -339,13 +413,12 @@ cmd_recover() {
 
 case "${1:-}" in
   preflight) shift; cmd_preflight "$@" ;;
+  ref)       shift; cmd_ref "$@" ;;
   squash)    shift; cmd_squash "$@" ;;
-  rebase)    shift; cmd_rebase "$@" ;;
-  integrate) shift; cmd_integrate "$@" ;;
-  cleanup)   shift; cmd_cleanup "$@" ;;
+  merge)     shift; cmd_merge "$@" ;;
   recover)   shift; cmd_recover "$@" ;;
   *)
-    echo "usage: finish {preflight|squash MESSAGE_FILE|rebase|integrate --ff-only|cleanup|recover [ATTEMPT]}" >&2
+    echo "usage: finish {preflight [--base SHA]|ref|squash [--base SHA] MESSAGE_FILE [--through SHA MESSAGE_FILE]...|merge [--base SHA] [--subject LINE]|recover [ATTEMPT]}" >&2
     exit 2
     ;;
 esac

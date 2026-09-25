@@ -1,80 +1,41 @@
 ---
 name: review
-description: Review code the human points at — a PR, a branch, a file, a tree — against the same criteria the pipeline's gates use. Outside a run, and it never fixes anything. Invoke to have code judged rather than built.
+description: Review a commit range from a fresh, read-only context — Defects, Conventions and Observations, each with file:line and a source. Use on every unit built from a brief, on inline work with logic, or on any range the user names.
 ---
 
-# Reviewing code on request
+# Review
 
-The same standard the pipeline applies inside a run, pointed at whatever the
-human names.
+The reviewer seat: a fresh context on the strong model, read-only. It never
+edits, stages or commits. Dispatch `dev-skills:reviewer`, or review in a fresh
+session. Any range works: a unit's branch, last week's commits, someone else's
+work.
 
-**Announce at start:** "Using dev-skills:review to judge this against the shared
-criteria."
+**Receives:** the range `BASE..HEAD`, the brief or the todo, and where the
+project's rules live (CLAUDE.md, its style skills).
 
-## Why this exists next to the built-in review
+1. **Pin the range:** `git log --oneline BASE..HEAD` and
+   `git diff --stat BASE..HEAD`. A range that does not resolve, or is empty,
+   stops here.
+2. **Read the intent first:** the brief's Goal, Decisions, Shape, Steps and
+   Acceptance, and the project's rules. Without a brief, ask what the change is
+   for; without an answer, say the report judges the code and not whether it
+   is the right code.
+3. **Run the project's checks**, as its `## Environment` block names them. Red
+   is a Defect.
+4. **Read the diff** against [CRITERIA.md](references/CRITERIA.md). Tests are
+   part of the diff.
 
-The built-in review does not know the **producible-source rule**, so it offers
-taste as findings — exactly what the gates inside a run are constrained
-against. A review that mixes cited defects with preferences costs more to read
-than it saves, because someone has to re-derive which is which.
+**Returns** three lists, most serious first, each item with `file:line` and its
+source:
 
-This skill reads the same criteria file that `dev-skills:gate-a` and
-`dev-skills:gate-b` read. Sharpening the standard sharpens all three, and none of them
-can drift from the others.
+- **Defects**: correctness, behaviour, security, data, an unreachable scenario,
+  a test that cannot fail;
+- **Conventions**: departures from the project's written rules;
+- **Observations**: true, not findings.
 
-## Scope comes from the human
+Then what could not be judged from the range, and why.
 
-Ask for it if it is not given: a PR, a branch against a base, a range of commits,
-a directory, a file. Then pin it once, as a command, and review exactly that:
-
-```bash
-git diff <base>...HEAD          # a branch, against the merge base
-git diff <from>..<to>           # a fixed range
-```
-
-Confirm the range resolves and is non-empty before going further. A bad ref
-should fail here.
-
-**Say what the scope excludes**, in the report. Unchanged code that a finding
-depends on is out of reach, and a reader who does not know that will read silence
-as approval.
-
-## The criteria
-
-Read [CRITERIA.md](../review-criteria/references/CRITERIA.md) and apply it end
-to end: the producible-source rule, the `BLOCKER`/`ADVISORY` classes and what
-separates both from an observation, judging by intent rather than by a step list,
-the smell baseline, the norms ladder, how tests are judged.
-
-This skill does not restate it. One home, three readers.
-
-## What is different here
-
-Inside a run the scope comes from a plan. Here it does not, so three things
-change:
-
-- **there is no phase to judge against.** The question becomes: does the code do
-  what its own surroundings say it should — the repository's conventions, the
-  patterns already there, the tests, the PR description or issue if there is one.
-  Ask for that intent if none is available; without it you can judge the code but
-  not whether it is the right code, and the report must say so;
-- **there is no `Norms:` line**, so the ladder has no first rung and its fallback
-  applies: documented conventions are hard, and everything else needs an existing
-  pattern in the code to point at;
-- **there is no fix loop.** You report, and stop.
-
-Where an originating issue or design document *is* available, judge against it too, and keep
-those findings separate from the ones about how the code is written. A change can
-follow every convention and implement the wrong thing; reporting them together
-lets one hide the other.
-
-## Report
-
-- **Findings**, most serious first, each with its class — `BLOCKER` or
-  `ADVISORY` — its cited source, and a file and line.
-- **Observations** — true, out of scope, not findings at all.
-- **What could not be judged** from the scope given, and why.
-
-You judge. You do not fix, you do not edit, you do not commit. If the human wants
-the findings applied, that is ordinary work and it goes through planning like any
-other.
+**After:** Defects go to the builder that holds the unit warm, for one fix
+round; the fix commits get a fresh review of their own. A Defect still open
+after two rounds goes to the user. Conventions are applied in one batch and
+listed in the merge summary, with no second review. Never review until clean.

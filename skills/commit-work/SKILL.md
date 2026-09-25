@@ -1,93 +1,36 @@
 ---
 name: commit-work
-description: "Create high-quality git commits: review/stage intended changes, split into logical commits, and write clear commit messages (including Conventional Commits). Use when the user asks to commit, craft a commit message, stage changes, or split work into multiple commits."
+description: "Create high-quality git commits: review and stage intended changes, split into logical commits, and write clear commit messages (Conventional Commits). Use when the user asks to commit, craft a commit message, stage changes, or split work into multiple commits."
 ---
 
 # Commit work
 
-## Goal
-Make commits that are easy to review and safe to ship:
-- only intended changes are included
-- commits are logically scoped (split when needed)
-- messages are short, plain, and say why — not what the diff already shows
+Commits that are easy to review and safe to ship: only intended changes, one
+logical change each, a short message that says why.
 
-## Non-negotiables (a PreToolUse hook enforces these — a violating `git commit` is blocked)
-- **Conventional Commits** subject: `type(scope): summary`.
-- **Subject ≤ 72 characters.**
-- **Body ≤ 300 characters** — and most commits carry no body at all.
-- **No** `Co-Authored-By`, no "Generated with Claude Code" footnote, no `Claude-Session:` trailer.
-- **Never** `git add .` / `git add -A` — stage intentionally (`git add -p` or explicit paths).
+`git-guard` refuses what breaks the rules: blanket staging (`git add .`, `-A`,
+`-u`), `git commit -a`, a subject that is not Conventional Commits or is over 72
+characters, a body over 300, and attribution trailers.
 
-## Inputs to ask for (if missing)
-- Single commit or multiple commits? (If unsure: default to multiple small commits when there are unrelated changes.)
-- Commit style: Conventional Commits are required.
-- Any rules: max subject length, required scopes.
+## Checklist
 
-## Workflow (checklist)
-1) Inspect the working tree before staging
-   - `git status`
-   - `git diff` (unstaged)
-   - If many changes: `git diff --stat`
-2) Decide commit boundaries (split if needed)
-   - Split by: feature vs refactor, backend vs frontend, formatting vs logic, tests vs prod code, dependency bumps vs behavior changes.
-   - If changes are mixed in one file, plan to use patch staging.
-3) Stage only what belongs in the next commit
-   - Prefer patch staging for mixed changes: `git add -p`
-   - To unstage a hunk/file: `git restore --staged -p` or `git restore --staged <path>`
-4) Review what will actually be committed
-   - `git diff --cached`
-   - Sanity checks:
-     - no secrets or tokens
-     - no accidental debug logging
-     - no unrelated formatting churn
-5) Describe the staged change in 1-2 sentences (before writing the message)
-   - "What changed?" + "Why?"
-   - If you cannot describe it cleanly, the commit is probably too big or mixed; go back to step 2.
-6) Write the message — compact, complete, plain
+1. **Inspect** the tree: `git status`, `git diff`, `git diff --stat` when it is
+   large.
+2. **Decide the boundaries.** Split feature from refactor, formatting from
+   logic, dependency bumps from behaviour changes. A file with two kinds of
+   change is staged by hunk.
+3. **Stage what belongs in the next commit:** paths by name, or `git add -p`.
+   Unstage with `git restore --staged <path>`.
+4. **Review what will be committed:** `git diff --cached`. No secrets, no debug
+   logging, no unrelated churn.
+5. **Say it in one or two sentences:** what changed and why. If you cannot, the
+   commit is too big; go back to 2.
+6. **Write the message** by
+   [commit-message-template.md](references/commit-message-template.md):
+   `type(scope): summary`, imperative, at most 72 characters; no body unless the
+   subject leaves a question open, then at most 300 characters on why and what
+   the diff cannot show; simple programming English.
+7. **Run the fastest relevant check** before moving on.
+8. **Repeat** until the tree holds only what is meant to stay uncommitted.
 
-   ```text
-   <type>(<scope>): <summary>
-
-   <Why it changed, plus anything the diff cannot show.>
-   ```
-
-   **Budget — the hook enforces both halves, and a longer message is refused.**
-   Subject ≤ 72 characters, imperative, no trailing period. **Default to no
-   body**: most commits are one line, and a subject that already answers "why"
-   needs nothing under it. Write a body only when the subject leaves a real
-   question open — then ≤ 300 characters, wrapped at 72 columns, which is about
-   two short sentences. A second short paragraph is allowed for a genuinely
-   separate fact (a caveat, a side effect, a follow-up), inside the same 300.
-   If 300 characters cannot hold the reason, the commit is too big — go back to
-   step 2 and split it. Compact is the target, not terse: keep every fact a
-   reviewer needs, drop every word they do not.
-
-   **Each line must earn its place.** Keep: the reason, the symptom it fixes,
-   the constraint that forced this shape, a consequence a reader would miss,
-   the exact error message if there was one. Cut: anything the diff already
-   shows, file-by-file lists, "This commit …", the subject restated in longer
-   words, and praise for your own change ("cleaner", "more robust", "much
-   better").
-
-   **Simple programming English.** Write for a reader at B1 English. Short
-   sentences, one idea each, active voice. Use plain verbs — use, add, remove,
-   fix, keep, drop, break, run, call, move, rename — and plain joiners — so,
-   but, because, then. Do **not** reach for: leverage, utilize, facilitate,
-   mitigate, surface (as a verb), subsequently, thereby, whilst, albeit, hence,
-   aforementioned, myriad, plethora, obviate, expedite. Technical terms stay
-   exact: race condition, debounce, idempotent, symlink, backpressure are
-   precise, not fancy. No metaphors, no marketing adjectives (seamless, robust,
-   comprehensive, streamlined, powerful).
-
-   - Breaking change: `!` in the header and/or a `BREAKING CHANGE:` footer.
-   - Prefer an editor for multi-line messages: `git commit -v`
-   - Word swaps and good/bad pairs: `references/commit-message-template.md`
-7) Run the smallest relevant verification
-   - Run the repo's fastest meaningful check (unit tests, lint, or build) before moving on.
-8) Repeat for the next commit until the working tree is clean
-
-## Deliverable
-Provide:
-- the final commit message(s)
-- a short summary per commit (what/why)
-- the commands used to stage/review (at minimum: `git diff --cached`, plus any tests run)
+Report the messages and what each commit is for.

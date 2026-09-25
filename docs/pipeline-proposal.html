@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dev-skills proposal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<style>
+  :root { --ink: #1e1e1e; --muted: #868e96; --soft: #495057; --bg: #ffffff; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font-family: 'Architects Daughter', 'Comic Sans MS', cursive; overflow-x: hidden; }
+  #wrap { position: relative; margin: 12px; }
+  #stage { position: absolute; left: 0; top: 0; width: 2000px; height: 1950px; transform-origin: 0 0; background: #fff; }
+  #stage svg { position: absolute; left: 0; top: 0; }
+  #bar { position: fixed; top: 10px; right: 14px; z-index: 10; display: flex; gap: 10px; }
+  #bar a, #bar button { font: inherit; font-size: 16px; color: var(--ink); background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 5px 14px; cursor: pointer; text-decoration: none; }
+  #bar button:disabled { opacity: .5; cursor: progress; }
+  .t { position: absolute; box-sizing: border-box; line-height: 1.25; }
+  .box { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6px 14px; }
+  .box .h { font-size: 23px; }
+  .box .s { font-size: 17px; margin-top: 3px; }
+  .box.sm { padding: 2px 10px; }
+  .box.sm .h { font-size: 15.5px; }
+  .n { color: var(--muted); }
+  .title { font-size: 66px; }
+  .subtitle { font-size: 22px; color: var(--muted); }
+  .sec { font-size: 18px; color: var(--soft); letter-spacing: .06em; white-space: nowrap; }
+  .sec i { font-style: normal; color: var(--muted); letter-spacing: .02em; }
+  .rule { font-size: 20.5px; }
+  .rule b { font-weight: normal; color: #e03131; }
+  .rule u { text-decoration: none; border-bottom: 2px solid #e8590c; }
+  .note { font-size: 15px; color: var(--muted); }
+  .lbl { font-size: 15px; }
+  .red { color: #e03131; }
+  .teal { color: #0c8599; }
+  .purple { color: #6741d9; }
+  .row { font-size: 19px; }
+  .bar { display: flex; align-items: center; justify-content: center; font-size: 14px; white-space: nowrap; }
+  .leg h4 { margin: 0 0 14px; font-weight: normal; font-size: 17px; color: var(--soft); letter-spacing: .06em; }
+  .leg .it { display: flex; gap: 12px; align-items: flex-start; font-size: 16.5px; margin-bottom: 14px; }
+  .sw { flex: none; width: 20px; height: 20px; border: 2.5px solid; border-radius: 5px; margin-top: 2px; }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 13.5px; line-height: 1.55; }
+  .gone { color: #adb5bd; text-decoration: line-through; text-decoration-color: #e03131; }
+  .gonelist { font-size: 15px; line-height: 1.45; }
+  .gonelist .k { color: var(--soft); text-decoration: none; }
+  .plist { font-size: 15.5px; line-height: 1.5; }
+  .plist b { font-weight: normal; color: #e8590c; }
+</style>
+</head>
+<body>
+<div id="bar"><a href="2026-09-25-pipeline-now.html">← today</a><a href="2026-09-25-pipeline-rethink.html">rethought →</a><button id="png">Download PNG</button></div>
+<div id="wrap"><div id="stage"><svg id="sk" width="2000" height="1950"></svg></div></div>
+<script>
+const W = 2000, H = 1950;
+const C = {
+  blue: ['#1971c2', '#e7f5ff'], green: ['#2f9e44', '#ebfbee'], orange: ['#e8590c', '#fff9db'],
+  purple: ['#6741d9', '#f3f0ff'], teal: ['#0c8599', '#e3fafc'], pink: ['#c2255c', '#fff0f6'],
+  red: ['#e03131', '#fff5f5'], grey: ['#adb5bd', '#f8f9fa'], dark: ['#1e1e1e', '#f8f9fa'],
+};
+const stage = document.getElementById('stage');
+const svg = document.getElementById('sk');
+const rc = window.rough ? rough.svg(svg) : null;
+let seed = 11;
+
+function el(tag, attrs) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) if (attrs[k] !== undefined && attrs[k] !== '') e.setAttribute(k, attrs[k]);
+  return e;
+}
+function rrPath(x, y, w, h, r) {
+  return `M${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} L${x + r},${y + h} Q${x},${y + h} ${x},${y + h - r} L${x},${y + r} Q${x},${y} ${x + r},${y} Z`;
+}
+function shape(d, o) {
+  if (rc) {
+    svg.appendChild(rc.path(d, {
+      stroke: o.stroke, strokeWidth: o.sw || 2, roughness: o.rough ?? 1.1, bowing: 1, seed: seed++,
+      fill: o.fill, fillStyle: 'solid', strokeLineDash: o.dash,
+    }));
+  } else {
+    svg.appendChild(el('path', { d, stroke: o.stroke, 'stroke-width': o.sw || 2, fill: o.fill || 'none', 'stroke-dasharray': o.dash ? o.dash.join(' ') : '' }));
+  }
+}
+function rect(x, y, w, h, col, o = {}) {
+  const [s, f] = C[col];
+  shape(rrPath(x, y, w, h, o.r ?? 14), { stroke: o.stroke || s, fill: o.nofill ? undefined : (o.fill || f), dash: o.dash, sw: o.sw, rough: o.rough });
+}
+function text(x, y, html, cls, w, h) {
+  const d = document.createElement('div');
+  d.className = 't ' + (cls || '');
+  d.style.left = x + 'px';
+  d.style.top = y + 'px';
+  if (w) d.style.width = w + 'px';
+  if (h) d.style.height = h + 'px';
+  d.innerHTML = html;
+  stage.appendChild(d);
+  return d;
+}
+function box(x, y, w, h, col, h1, sub, o = {}) {
+  rect(x, y, w, h, col, o);
+  text(x, y, `<div class="h">${h1}</div>${sub ? `<div class="s">${sub}</div>` : ''}`, 'box' + (o.sm ? ' sm' : ''), w, h);
+}
+function head(a, b, color) {
+  const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  for (const s of [-1, 1]) {
+    const t = ang + Math.PI - s * 0.42;
+    const p = [b[0] + 15 * Math.cos(t), b[1] + 15 * Math.sin(t)];
+    if (rc) svg.appendChild(rc.line(b[0], b[1], p[0], p[1], { stroke: color, strokeWidth: 2.2, roughness: 0.5, seed: seed++ }));
+    else svg.appendChild(el('line', { x1: b[0], y1: b[1], x2: p[0], y2: p[1], stroke: color, 'stroke-width': 2 }));
+  }
+}
+function line(pts, color = '#1e1e1e', o = {}) {
+  if (rc) svg.appendChild(rc.linearPath(pts, { stroke: color, strokeWidth: o.sw || 2.2, roughness: 0.7, seed: seed++, strokeLineDash: o.dash }));
+  else svg.appendChild(el('polyline', { points: pts.map(p => p.join(',')).join(' '), stroke: color, 'stroke-width': 2, fill: 'none', 'stroke-dasharray': o.dash ? o.dash.join(' ') : '' }));
+  if (o.head !== false) head(pts[pts.length - 2], pts[pts.length - 1], color);
+}
+function curve(pts, color, o = {}) {
+  if (rc) svg.appendChild(rc.curve(pts, { stroke: color, strokeWidth: o.sw || 2.4, roughness: 0.8, seed: seed++, strokeLineDash: o.dash }));
+  else svg.appendChild(el('polyline', { points: pts.map(p => p.join(',')).join(' '), stroke: color, 'stroke-width': 2, fill: 'none' }));
+  head(pts[pts.length - 2], pts[pts.length - 1], color);
+}
+function vdash(x, y1, y2) { line([[x, y1], [x, y2]], '#e03131', { dash: [8, 7], head: false, sw: 1.8 }); }
+
+/* ---------- header ---------- */
+text(20, 6, 'dev-skills', 'title');
+text(24, 92, 'how work runs after the rework — the proposal in decision.md (2026-09-25), not built yet', 'subtitle');
+
+/* ---------- the rule ---------- */
+rect(12, 140, 1976, 104, 'dark', { fill: '#fffef5', r: 18, sw: 2.2 });
+text(36, 149, 'THE RULE &nbsp;<i>— replaces “anything that looks like a task → stop and offer the route”</i>', 'sec');
+text(36, 177, '<b>1</b> · work in this session — unless the task is unclear (<u>grill</u>), it will be built in another context (<u>plan</u>), or it needs more than one plan (<u>epic</u>)', 'rule', 1930);
+text(36, 207, '<b>2</b> · a change in behaviour is driven on the running system before it is called done · looks always go to you · a project’s own rule outranks this', 'rule', 1930);
+
+/* ---------- section labels ---------- */
+text(20, 268, '1 · ENTRY &nbsp;<i>— you or Claude</i>', 'sec');
+text(500, 268, '2 · THE SIZE CALL', 'sec');
+text(980, 268, 'INLINE &nbsp;<i>— most work, right in this session</i>', 'sec');
+text(980, 428, '3 · BUILD &nbsp;<i>— /implement, or an orchestrator starts it</i>', 'sec');
+text(1582, 428, '4 · LAND &nbsp;<i>— /finish</i>', 'sec');
+
+/* ---------- 1 · entry ---------- */
+rect(12, 296, 436, 422, 'grey', { nofill: true, dash: [9, 8], sw: 1.6, rough: 0.6 });
+box(35, 312, 390, 80, 'blue', 'just ask', 'most work · no skill needed');
+box(35, 404, 390, 112, 'blue', 'grill', 'unclear · talk it through · draw it when it is visual · terms and ADRs when asked · ends with the size call');
+box(35, 528, 390, 80, 'green', 'bug', 'a symptom → a failing test, committed');
+box(35, 620, 390, 80, 'blue', 'prototype', 'a throwaway to see it · opens in the browser');
+
+line([[448, 352], [497, 352]]);
+line([[470, 352], [470, 478], [497, 478]], '#1e1e1e', { dash: [7, 6] });
+line([[470, 478], [470, 612], [497, 612]], '#1e1e1e', { dash: [7, 6] });
+
+rect(12, 745, 436, 290, 'grey', { nofill: true, dash: [9, 8], sw: 1.6, rough: 0.6 });
+text(30, 755, 'ALSO · outside the route', 'sec');
+const also = [
+  'handoff', 'commit-work',
+  'domain-modeling', 'browser-test',
+  'review · standalone', 'tdd · read by the builder',
+  'writing-great-skills', 'scripts/usage · new',
+];
+also.forEach((name, i) => {
+  const col = i % 2, row = Math.floor(i / 2);
+  box(26 + col * 206, 790 + row * 56, 198, 42, 'grey', name, '', { sm: true, r: 10, fill: '#ffffff' });
+});
+
+/* ---------- 2 · the size call ---------- */
+box(500, 312, 400, 80, 'purple', 'inline', 'built right here · no document');
+line([[900, 352], [977, 352]]);
+box(500, 424, 400, 108, 'orange', 'plan', 'built in another context · 7 sections, 3 fields per phase · under 3k words');
+box(500, 560, 400, 104, 'orange', 'epic', 'more than one plan · decisions, glossary, plan list · its plans are briefs');
+line([[700, 560], [700, 535]]);
+box(500, 684, 400, 70, 'red', '<span class="red">① one approval, on the plan</span>', 'by you, or an orchestrator you delegated to', { fill: '#ffffff' });
+
+rect(500, 775, 400, 205, 'orange', { fill: '#fffdf2', dash: [8, 7], sw: 1.6, rough: 0.6 });
+text(516, 782, 'a plan, whole', 'note');
+text(516, 806, '<b>Goal</b><br><b>Decisions</b>, or the epic<br><b>Out of scope</b><br><b>Shape</b> — verbatim only where two contexts meet<br><b>Phases</b> — becomes true · changes · how<br><b>Acceptance</b> — ~10 scenarios + the looks list<br><b>Run</b> — branch and base SHA', 'plist', 376);
+
+line([[900, 478], [940, 478], [940, 503], [977, 503]]);
+
+/* ---------- inline lane ---------- */
+box(980, 300, 290, 90, 'purple', 'this session', 'a todo · edits · the project’s skills · checks');
+line([[1270, 345], [1297, 345]]);
+box(1300, 300, 290, 90, 'teal', 'drive what changed', 'browser-test or the simulator · say what was seen');
+line([[1590, 345], [1617, 345]]);
+box(1620, 300, 160, 90, 'dark', 'you look', 'the looks', { fill: '#ffffff' });
+line([[1780, 345], [1807, 345]]);
+box(1810, 300, 170, 90, 'pink', 'commit', 'merge on your word');
+
+/* ---------- 3 · build ---------- */
+box(980, 462, 540, 82, 'purple', 'implement', 'build → review → test · in the current branch · nothing asked about where');
+line([[1250, 544], [1250, 568]]);
+
+rect(968, 570, 564, 490, 'teal', { fill: '#f6fdfe', dash: [10, 8], sw: 2, rough: 0.6 });
+text(990, 579, 'SEATS &nbsp;·&nbsp; a subagent, a tab or this session — the plugin does not care', 'note teal');
+
+box(1000, 608, 500, 102, 'teal', 'builder · Sonnet, warm', 'the whole plan, not a slice · one commit per phase, “phase 3:” in the subject · the project’s skills · tests with the code');
+line([[1250, 710], [1250, 738]]);
+box(1000, 740, 500, 86, 'teal', 'reviewer · the strong model, fresh context', 'BASE..HEAD → Defects: fix, re-review, cap 2 · Conventions: one pass, no re-review');
+curve([[1000, 786], [976, 760], [976, 680], [1002, 655]], '#e03131');
+text(1010, 713, 'Defect', 'lbl red');
+curve([[1500, 786], [1524, 760], [1524, 680], [1498, 655]], '#0c8599', { dash: [7, 6] });
+text(1400, 713, 'Conventions', 'lbl teal');
+line([[1250, 826], [1250, 853]]);
+box(1000, 855, 500, 96, 'teal', 'tester · Sonnet, holds the tools', 'drives the Acceptance scenarios · browser-test or the simulator MCP · one evidence file each · looks → you');
+text(1000, 962, 'a question parks its own phase; the rest goes on<br>the orchestrator answers from the epic — you, only when it is silent<br>resume = the plan + git log BASE..HEAD', 'lbl purple', 510);
+
+line([[1532, 650], [1555, 650], [1555, 512], [1578, 512]]);
+
+/* ---------- 4 · land ---------- */
+box(1580, 462, 390, 100, 'pink', 'finish', 'squash by meaning · recovery refs · no push unless asked');
+line([[1775, 562], [1775, 590]]);
+box(1580, 592, 390, 100, 'pink', 'your look', 'the evidence · the looks list · the conventions changed · the diff', { fill: '#fff7fa' });
+line([[1775, 692], [1775, 720]]);
+box(1580, 722, 390, 84, 'pink', 'merge --no-ff into main', 'on your word, or a delegation that names it', { fill: '#fff7fa' });
+line([[1775, 806], [1775, 834]]);
+box(1580, 836, 390, 80, 'dark', 'commits by meaning', 'merged into main');
+
+/* ---------- removed ---------- */
+rect(1570, 945, 420, 390, 'grey', { nofill: true, dash: [9, 8], sw: 1.6, rough: 0.6 });
+text(1588, 955, 'REMOVED', 'sec');
+text(1588, 985, `<div class="gonelist">
+<span class="k">agents</span> <span class="gone">test-writer · gate A · gate B · prototyper</span><br>
+<span class="k">plan</span> <span class="gone">Norms · Baseline · stories · moments · seams · TC cases · the 2nd approval · topology · ledger · 7 fields per phase · plan-check</span><br>
+<span class="k">run</span> <span class="gone">RUN marker · brief · dispatch · parallel-contract · review-package · workspace · run-state · the whole-run stop</span><br>
+<span class="k">git</span> <span class="gone">finish-guard · worktrees · ff-only · finish rebase</span><br>
+<span class="k">tests</span> <span class="gone">the mutation net</span><br>
+<span class="k">skills</span> <span class="gone">scout · refactor · tests · improve · research · merge-conflicts · guardrails · pre-commit</span> · grill-with-docs and review-criteria folded in<br>
+<span class="k">words</span> 51k → under 25k</div>`, '', 390);
+
+/* ---------- legend ---------- */
+rect(12, 1085, 1540, 245, 'grey', { fill: '#f8f9fa', sw: 1.6, rough: 0.5, r: 18 });
+text(40, 1107, `<div class="leg"><h4>WHO STARTS IT</h4>
+  <div class="it"><span class="sw" style="border-color:#1971c2;background:#e7f5ff"></span><span>you or Claude — every entry, and a build too once its plan is approved</span></div>
+  <div class="it"><span class="sw" style="border-color:#1e1e1e;background:#fff"></span><span>only on your word — the merge into main</span></div></div>`, '', 470);
+text(560, 1107, `<div class="leg"><h4>WHO RUNS IT</h4>
+  <div class="it"><span class="sw" style="border-color:#6741d9;background:#f3f0ff"></span><span>this session, or an orchestrator in a tab — approves under your delegation, answers from the epic, joins parallel sides</span></div>
+  <div class="it"><span class="sw" style="border-color:#0c8599;background:#e3fafc"></span><span>a seat — builder, reviewer, tester: a subagent, a tab or this session. The tester is whoever holds the tools</span></div></div>`, '', 470);
+text(1075, 1107, `<div class="leg"><h4>WHAT IT WRITES — .ai-workflow/</h4>
+  <div class="mono">plans/&lt;plan&gt;.md — 7 sections, the Run line<br>epics/&lt;topic&gt;.md<br>one evidence file per scenario<br>3 scripts: preflight — git state<br>&nbsp;&nbsp;finish — squash, recover<br>&nbsp;&nbsp;usage — the numbers for next time</div></div>`, '', 470);
+text(40, 1297, 'the four questions in decision.md are still yours; this picture draws each one at its default', 'note');
+
+/* ---------- hooks ---------- */
+text(14, 1362, 'ENFORCED BY HOOKS &nbsp;<i>— not by a model remembering</i>', 'sec');
+box(12, 1398, 470, 108, 'red', 'commit-guard · always', 'as today · plus no force push to main');
+box(497, 1398, 470, 108, 'red', 'branch-guard · opt-in per repo', 'as today: no edits and no commits on main');
+box(982, 1398, 470, 108, 'grey', 'session-start · open-prototype', 'injects the new rule · opens a drawn prototype', { fill: '#ffffff' });
+box(1467, 1398, 470, 108, 'grey', '<span class="gone">finish-guard</span>', 'removed — history is yours between runs and during them', { fill: '#ffffff', dash: [6, 6] });
+text(14, 1516, 'the guards still fail open — whatever they cannot parse with confidence, they allow', 'note');
+
+/* ---------- time axis ---------- */
+text(14, 1566, 'THE SAME FEATURE, ON A TIME AXIS &nbsp;<i>— the planned route; the last row is the inline route, for a smaller change</i>', 'sec');
+
+const phases = [['grill', 230, 430], ['plan', 430, 650], ['implement', 650, 1640], ['finish', 1640, 1950]];
+phases.forEach(([n, a, b]) => { rect(a + 2, 1628, b - a - 4, 40, 'grey', { fill: '#f1f3f5', r: 8, sw: 1.8 }); text(a, 1628, n, 'bar row', b - a, 40); });
+
+vdash(642, 1612, 1872); text(460, 1596, '① approve the plan', 'lbl red', 178);
+vdash(1640, 1612, 1872); text(1646, 1596, 'evidence and looks — the run stops for you', 'lbl red');
+
+text(20, 1698, 'you', 'row');
+text(20, 1743, 'this session', 'row purple');
+text(20, 1788, 'seats', 'row teal');
+text(20, 1840, 'inline', 'row purple');
+
+const bar = (a, b, y, col, label, o = {}) => {
+  rect(a, y, b - a, 30, col, { r: 6, sw: 1.8, dash: o.dash, fill: o.fill });
+  if (label) text(a, y, label, 'bar', b - a, 30);
+};
+bar(232, 428, 1692, 'dark', 'you answer', { fill: '#e9ecef' });
+bar(572, 636, 1692, 'dark', 'read', { fill: '#e9ecef' });
+bar(1668, 1840, 1692, 'dark', 'look, then merge', { fill: '#e9ecef' });
+
+bar(232, 428, 1737, 'purple', '');
+bar(432, 648, 1737, 'purple', '');
+bar(652, 700, 1737, 'purple', '');
+bar(706, 1636, 1737, 'purple', 'answers questions from the epic · joins parallel sides · does not stop the run', { dash: [7, 6], fill: '#faf8ff' });
+bar(1642, 1948, 1737, 'purple', '');
+
+bar(704, 1180, 1782, 'teal', 'builder — phase 1 · 2 · 3 · 4, one warm context');
+bar(1188, 1284, 1782, 'teal', 'reviewer');
+bar(1292, 1440, 1782, 'teal', 'fix + conventions');
+bar(1448, 1520, 1782, 'teal', 're-review');
+bar(1528, 1632, 1782, 'teal', 'tester');
+
+bar(232, 700, 1834, 'purple', 'this session — todo · edits · checks · drive what changed');
+bar(708, 800, 1834, 'dark', 'you look', { fill: '#e9ecef' });
+bar(808, 890, 1834, 'pink', 'commit');
+
+line([[230, 1888], [1975, 1888]], '#1e1e1e', { sw: 2.4 });
+text(1936, 1896, 'time', 'note');
+text(14, 1912, 'schematic, not measured · the last step of the rework runs one real feature on Daily and one on Chelsea and measures them against today’s numbers', 'note');
+
+/* ---------- fit and export ---------- */
+const wrap = document.getElementById('wrap');
+function fit() {
+  const s = Math.min(1, (window.innerWidth - 24) / W);
+  stage.style.transform = `scale(${s})`;
+  wrap.style.height = Math.ceil(H * s) + 'px';
+}
+window.addEventListener('resize', fit);
+fit();
+
+async function embedFontCSS() {
+  const css = await (await fetch('https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap')).text();
+  let out = css;
+  for (const [, u] of css.matchAll(/url\((https:[^)]+)\)/g)) {
+    const blob = await (await fetch(u)).blob();
+    const data = await new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(blob); });
+    out = out.split(u).join(data);
+  }
+  return out;
+}
+
+document.getElementById('png').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Rendering…';
+  try {
+    await document.fonts.ready;
+    const fontEmbedCSS = await embedFontCSS();
+    const url = await htmlToImage.toPng(stage, {
+      fontEmbedCSS,
+      width: W, height: H, pixelRatio: 2, backgroundColor: '#ffffff',
+      style: { transform: 'none', left: '0', top: '0' },
+    });
+    const a = document.createElement('a');
+    a.download = 'dev-skills-proposal.png';
+    a.href = url;
+    a.click();
+  } catch (err) {
+    alert('PNG export failed: ' + (err && err.message ? err.message : err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download PNG';
+  }
+});
+</script>
+</body>
+</html>

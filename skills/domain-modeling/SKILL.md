@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Build and sharpen a project's domain model — the glossary, and an ADR when one is earned. Invoke it directly to pin down vocabulary or record a decision; dev-skills:grill-with-docs also reaches for it as terms settle.
+description: Build and sharpen a project's domain model — the glossary, and an ADR when one is earned. Invoke it directly to pin down vocabulary or record a decision; dev-skills:grill also reaches for it as terms settle.
 ---
 
 # Domain Modeling
@@ -41,7 +41,7 @@ Create files lazily — only when you have something to write. If no `CONTEXT.md
 
 ## When this skill rides along
 
-The human invokes it directly, and `dev-skills:grill-with-docs` reaches for it as terms settle. Bare `dev-skills:grill` does not — the whole difference between those two skills is that one leaves a durable artifact and the other does not, and an automatic call here erases it.
+The human invokes it directly, and `dev-skills:grill` reaches for it as terms settle.
 
 Recording a word does not need an epic or a plan of its own. A one-file change that introduces one term gets a glossary entry, and nothing more.
 
@@ -49,7 +49,7 @@ Recording a word does not need an epic or a plan of its own. A one-file change t
 
 Write them where the work is: on the current branch, each ADR its own commit, so they arrive with the change they describe.
 
-**Nothing here is committed unless the human asks.** Recording a decision is their call, and so is putting it in the history. `branch-guard` passes `CONTEXT.md` and `docs/adr/` on the default branch, which makes the commit *possible* — it does not make it yours to make.
+**Nothing here is committed unless the human asks.** Recording a decision is their call, and so is putting it in the history.
 
 ## During the session
 

@@ -5,6 +5,8 @@ description: Use when a change has to be seen working in the real thing — open
 
 # Browser Test
 
+The web tester's tool: `dev-skills:verify` drives its scenarios through it.
+
 Verification runs against one long-lived tab, driven by `tab.mjs`. The browser runs detached on its own profile with a CDP port; every command is a separate node process that connects, does one thing, and exits without closing the browser. The tab, its session, `localStorage` and any live connection survive between commands and between sessions.
 
 ## First, get `tab` on PATH
@@ -73,7 +75,7 @@ Cheaper first stop: if the app logs its own frames to the console, `logs --grep 
 
 **It never touches the human's own browser.** Own profile at `~/.cache/tab-browser-profile`, own port 9222; Chromium's single-instance lock is per profile, so their windows are untouched. Do not point `TAB_PROFILE` at their real profile. Brave, Chrome, Chromium and Edge are found in that order; `TAB_BROWSER` overrides.
 
-**Artifacts go to `.ai-workflow/browser-test/`** — screenshots, the state file and the socket-url cache, under the same ignored directory the rest of a run uses.
+**Artifacts go to `.ai-workflow/browser-test/`** — screenshots, the state file and the socket-url cache, under `.ai-workflow/`, which git should ignore (`git check-ignore -q .ai-workflow`).
 
 **Nothing is injected into the app beyond the console/fetch/XHR hook.** `window.WebSocket` is deliberately left alone: frames are read through CDP, where patching cannot mislead and cannot break the app under test.
 

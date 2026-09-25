@@ -68,7 +68,7 @@ Give the user the run command. They'll drive it themselves; the interesting mome
 
 ### 7. Capture the answer
 
-Once the prototype has answered its question, write the answer down the way rule 7 of the [SKILL](../SKILL.md) describes. The logic-specific mapping: the validated reducer / machine / function set lifts into the real module — that is the decision, absorbed — and the TUI shell around it stays under `.ai-workflow/`, where rule 2 put it.
+Once the prototype has answered its question, write the answer down the way "Capture the answer" in the [SKILL](../SKILL.md) describes. The logic-specific mapping: the validated reducer / machine / function set lifts into the real module — that is the decision, absorbed — and the TUI shell around it stays under `.ai-workflow/prototypes/`.
 
 ## Anti-patterns
 

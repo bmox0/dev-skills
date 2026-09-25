@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dev-skills today</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<style>
+  :root { --ink: #1e1e1e; --muted: #868e96; --soft: #495057; --bg: #ffffff; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font-family: 'Architects Daughter', 'Comic Sans MS', cursive; overflow-x: hidden; }
+  #wrap { position: relative; margin: 12px; }
+  #stage { position: absolute; left: 0; top: 0; width: 2000px; height: 1850px; transform-origin: 0 0; }
+  #stage svg { position: absolute; left: 0; top: 0; }
+  .t { position: absolute; box-sizing: border-box; line-height: 1.25; }
+  .box { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6px 14px; }
+  .box .h { font-size: 23px; }
+  .box .s { font-size: 17px; margin-top: 3px; }
+  .box.sm { padding: 2px 10px; }
+  .box.sm .h { font-size: 15.5px; }
+  .badge { font-size: 15px; color: var(--muted); }
+  .n { color: var(--muted); }
+  .title { font-size: 66px; }
+  .subtitle { font-size: 22px; color: var(--muted); }
+  .sec { font-size: 18px; color: var(--soft); letter-spacing: .06em; white-space: nowrap; }
+  .sec i { font-style: normal; color: var(--muted); letter-spacing: .02em; }
+  .note { font-size: 15px; color: var(--muted); }
+  .lbl { font-size: 15px; }
+  .red { color: #e03131; }
+  .teal { color: #0c8599; }
+  .purple { color: #6741d9; }
+  .row { font-size: 19px; }
+  .bar { display: flex; align-items: center; justify-content: center; font-size: 14px; white-space: nowrap; }
+  .leg h4 { margin: 0 0 14px; font-weight: normal; font-size: 17px; color: var(--soft); letter-spacing: .06em; }
+  .leg .it { display: flex; gap: 12px; align-items: flex-start; font-size: 16.5px; margin-bottom: 14px; }
+  .sw { flex: none; width: 20px; height: 20px; border: 2.5px solid; border-radius: 5px; margin-top: 2px; }
+  #bar { position: fixed; top: 10px; right: 14px; z-index: 10; display: flex; gap: 10px; }
+  #bar a, #bar button { font: inherit; font-size: 16px; color: var(--ink); background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 5px 14px; cursor: pointer; text-decoration: none; }
+  #bar button:disabled { opacity: .5; cursor: progress; }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 13.5px; line-height: 1.55; }
+</style>
+</head>
+<body>
+<div id="bar"><a href="2026-09-25-pipeline-next.html">first proposal →</a><a href="2026-09-25-pipeline-rethink.html">rethought →</a><button id="png">Download PNG</button></div>
+<div id="wrap"><div id="stage"><svg id="sk" width="2000" height="1850"></svg></div></div>
+<script>
+const C = {
+  blue: ['#1971c2', '#e7f5ff'], green: ['#2f9e44', '#ebfbee'], orange: ['#e8590c', '#fff9db'],
+  purple: ['#6741d9', '#f3f0ff'], teal: ['#0c8599', '#e3fafc'], pink: ['#c2255c', '#fff0f6'],
+  red: ['#e03131', '#fff5f5'], grey: ['#adb5bd', '#f8f9fa'], dark: ['#1e1e1e', '#f8f9fa'],
+};
+const stage = document.getElementById('stage');
+const svg = document.getElementById('sk');
+const rc = window.rough ? rough.svg(svg) : null;
+let seed = 7;
+
+function el(tag, attrs) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) if (attrs[k] !== undefined && attrs[k] !== '') e.setAttribute(k, attrs[k]);
+  return e;
+}
+function rrPath(x, y, w, h, r) {
+  return `M${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} L${x + r},${y + h} Q${x},${y + h} ${x},${y + h - r} L${x},${y + r} Q${x},${y} ${x + r},${y} Z`;
+}
+function shape(d, o) {
+  if (rc) {
+    svg.appendChild(rc.path(d, {
+      stroke: o.stroke, strokeWidth: o.sw || 2, roughness: o.rough ?? 1.1, bowing: 1, seed: seed++,
+      fill: o.fill, fillStyle: 'solid', strokeLineDash: o.dash,
+    }));
+  } else {
+    svg.appendChild(el('path', { d, stroke: o.stroke, 'stroke-width': o.sw || 2, fill: o.fill || 'none', 'stroke-dasharray': o.dash ? o.dash.join(' ') : '' }));
+  }
+}
+function rect(x, y, w, h, col, o = {}) {
+  const [s, f] = C[col];
+  shape(rrPath(x, y, w, h, o.r ?? 14), { stroke: o.stroke || s, fill: o.nofill ? undefined : (o.fill || f), dash: o.dash, sw: o.sw, rough: o.rough });
+}
+function text(x, y, html, cls, w, h) {
+  const d = document.createElement('div');
+  d.className = 't ' + (cls || '');
+  d.style.left = x + 'px';
+  d.style.top = y + 'px';
+  if (w) d.style.width = w + 'px';
+  if (h) d.style.height = h + 'px';
+  d.innerHTML = html;
+  stage.appendChild(d);
+  return d;
+}
+function box(x, y, w, h, col, h1, sub, o = {}) {
+  rect(x, y, w, h, col, o);
+  text(x, y, `<div class="h">${h1}</div>${sub ? `<div class="s">${sub}</div>` : ''}`, 'box' + (o.sm ? ' sm' : ''), w, h);
+  if (o.badge !== undefined) text(x + w - 48, y + 7, '×' + o.badge, 'badge');
+}
+function head(a, b, color) {
+  const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  for (const s of [-1, 1]) {
+    const t = ang + Math.PI - s * 0.42;
+    const p = [b[0] + 15 * Math.cos(t), b[1] + 15 * Math.sin(t)];
+    if (rc) svg.appendChild(rc.line(b[0], b[1], p[0], p[1], { stroke: color, strokeWidth: 2.2, roughness: 0.5, seed: seed++ }));
+    else svg.appendChild(el('line', { x1: b[0], y1: b[1], x2: p[0], y2: p[1], stroke: color, 'stroke-width': 2 }));
+  }
+}
+function line(pts, color = '#1e1e1e', o = {}) {
+  if (rc) svg.appendChild(rc.linearPath(pts, { stroke: color, strokeWidth: o.sw || 2.2, roughness: 0.7, seed: seed++, strokeLineDash: o.dash }));
+  else svg.appendChild(el('polyline', { points: pts.map(p => p.join(',')).join(' '), stroke: color, 'stroke-width': 2, fill: 'none', 'stroke-dasharray': o.dash ? o.dash.join(' ') : '' }));
+  if (o.head !== false) head(pts[pts.length - 2], pts[pts.length - 1], color);
+}
+function curve(pts, color, o = {}) {
+  if (rc) svg.appendChild(rc.curve(pts, { stroke: color, strokeWidth: o.sw || 2.4, roughness: 0.8, seed: seed++ }));
+  else svg.appendChild(el('polyline', { points: pts.map(p => p.join(',')).join(' '), stroke: color, 'stroke-width': 2, fill: 'none' }));
+  head(pts[pts.length - 2], pts[pts.length - 1], color);
+}
+function vdash(x, y1, y2) { line([[x, y1], [x, y2]], '#e03131', { dash: [8, 7], head: false, sw: 1.8 }); }
+
+/* ---------- header ---------- */
+text(20, 6, 'dev-skills', 'title');
+text(24, 92, 'how a run works today (v2.7) — one idea in, one reviewed commit out', 'subtitle');
+
+/* ---------- section labels ---------- */
+text(20, 160, '1 · ENTRY &nbsp;<i>— you or Claude</i>', 'sec');
+text(500, 160, '2 · AGREE &amp; PLAN', 'sec');
+text(980, 160, '3 · BUILD &nbsp;<i>— you type /implement</i>', 'sec');
+text(1582, 160, 'OUTSIDE A RUN', 'sec');
+text(1582, 562, '4 · LAND &nbsp;<i>— you type /finish</i>', 'sec');
+
+/* ---------- 1 · entry ---------- */
+rect(12, 190, 436, 580, 'grey', { nofill: true, dash: [9, 8], sw: 1.6, rough: 0.6 });
+box(35, 208, 390, 78, 'blue', 'grill', 'the task is not clear yet', { badge: 12 });
+box(35, 298, 390, 78, 'blue', 'grill-with-docs', 'same, and captures terms and ADRs', { badge: 3 });
+box(35, 388, 390, 78, 'green', 'bug', 'a symptom → a failing test, committed', { badge: 4 });
+box(35, 478, 390, 78, 'blue', 'refactor', 'reshape · behaviour must not change', { badge: 0 });
+box(35, 568, 390, 78, 'blue', 'tests', 'the tests are the deliverable', { badge: 0 });
+box(35, 658, 390, 78, 'blue', 'scout', 'explain code · read-only', { badge: 0 });
+
+line([[448, 250], [497, 250]]);
+line([[470, 250], [470, 442], [497, 442]], '#1e1e1e', { dash: [7, 6] });
+
+/* ---------- 2 · agree & plan ---------- */
+box(500, 205, 400, 112, 'orange', 'plan', 'the contract a cold, cheap implementer builds from · 15 sections, 7 fields per phase', { badge: 33 });
+box(500, 395, 400, 96, 'orange', 'epic', 'only when the work needs more than one plan · decisions, glossary, plan list', { badge: 4 });
+line([[700, 395], [700, 320]]);
+
+rect(500, 520, 400, 292, 'orange', { fill: '#fffdf2', dash: [8, 7], sw: 1.6, rough: 0.6 });
+text(516, 527, 'inside plan, in one sitting', 'note');
+text(516, 555, 'stories, moments, phases, topology, ledger', 'lbl', 370);
+box(512, 588, 376, 36, 'teal', 'prototyper draws each moment · subagent', '', { sm: true, r: 10 });
+box(512, 632, 376, 36, 'grey', 'plan-check · a script checks the shape', '', { sm: true, r: 10 });
+box(512, 676, 376, 36, 'red', '<span class="red">① you approve the plan, as written</span>', '', { sm: true, r: 10, fill: '#ffffff' });
+box(512, 720, 376, 36, 'orange', 'test cases grilled with you · TC-n', '', { sm: true, r: 10 });
+box(512, 764, 376, 36, 'red', '<span class="red">② you approve the cases</span>', '', { sm: true, r: 10, fill: '#ffffff' });
+
+line([[900, 258], [977, 258]]);
+
+/* ---------- 3 · build ---------- */
+box(980, 205, 540, 95, 'purple', 'implement', 'preflight · a branch or a worktree · the RUN marker opens the run', { badge: 30 });
+line([[1250, 300], [1250, 352]]);
+
+rect(968, 355, 564, 565, 'teal', { fill: '#f6fdfe', dash: [10, 8], sw: 2, rough: 0.6 });
+text(990, 364, 'SUBAGENTS &nbsp;·&nbsp; a cold context and a written brief each', 'note teal');
+
+box(1000, 396, 500, 66, 'teal', 'test-writer · Sonnet', 'turns the approved cases into tests · its own commit');
+line([[1250, 462], [1250, 492]]);
+
+rect(990, 495, 520, 150, 'grey', { nofill: true, dash: [8, 7], sw: 1.5, rough: 0.5 });
+text(1004, 500, 'for each topology row, in order', 'note');
+box(1005, 526, 232, 92, 'teal', 'implementer', 'Sonnet · reads its brief, builds, commits');
+text(1242, 560, 'or', 'lbl');
+box(1264, 526, 232, 92, 'teal', 'parallel sides', 'no commits · the orchestrator joins them');
+line([[1250, 645], [1250, 670]]);
+
+box(1000, 672, 500, 78, 'teal', 'gate A · Opus', 'checks → conformance → integrity over BASE..HEAD · never fixes');
+curve([[1000, 716], [976, 690], [976, 625], [1004, 604]], '#e03131');
+text(1010, 651, 'BLOCKER → fix round · cap 2', 'lbl red');
+line([[1250, 750], [1250, 773]]);
+
+box(1000, 775, 500, 78, 'teal', 'gate B · Opus', 'drives the approved cases on a live system · one evidence file each');
+curve([[1500, 820], [1524, 770], [1524, 640], [1497, 606]], '#e03131');
+text(1332, 752, 'fail → fix round', 'lbl red');
+
+text(1000, 862, 'a fact → the orchestrator corrects the plan<br>a decision → the whole run stops and waits for you', 'lbl red', 500);
+
+line([[1532, 652], [1578, 652]]);
+
+/* ---------- outside a run ---------- */
+rect(1570, 190, 420, 350, 'grey', { nofill: true, dash: [9, 8], sw: 1.6, rough: 0.6 });
+const side = [
+  ['prototype', 10], ['handoff (you only)', 12],
+  ['commit-work', 5], ['domain-modeling', 4],
+  ['browser-test', 3], ['writing-great-skills', 2],
+  ['review', 0], ['improve', 0],
+  ['research', 0], ['tdd · read by implementer', null],
+  ['guardrails', 0], ['pre-commit', 0],
+  ['merge-conflicts', 0], ['review-criteria · read by gate A', null],
+];
+side.forEach(([name, n], i) => {
+  const col = i % 2, row = Math.floor(i / 2);
+  const x = 1583 + col * 199, y = 208 + row * 45;
+  const label = n === null ? `<span class="n">${name}</span>` : `${name} <span class="n">×${n}</span>`;
+  box(x, y, 192, 36, 'grey', label, '', { sm: true, r: 10, fill: '#ffffff' });
+});
+
+/* ---------- 4 · land ---------- */
+box(1580, 600, 390, 105, 'pink', 'finish', 'recovery ref · reset --soft · one commit, message from the Goal', { badge: 28 });
+line([[1775, 705], [1775, 735]]);
+box(1580, 738, 390, 82, 'pink', 'your one acceptance', 'gate B evidence → the one diff → advisories', { fill: '#fff7fa' });
+line([[1775, 820], [1775, 850]]);
+box(1580, 853, 390, 82, 'pink', 'integrate', 'ff-only merge · a PR · or leave it', { fill: '#fff7fa' });
+line([[1775, 935], [1775, 958]]);
+box(1580, 961, 390, 74, 'dark', 'one reviewed commit', 'on its own branch');
+
+/* ---------- legend ---------- */
+rect(12, 950, 1540, 255, 'grey', { fill: '#f8f9fa', sw: 1.6, rough: 0.5, r: 18 });
+text(40, 972, `<div class="leg"><h4>WHO STARTS IT</h4>
+  <div class="it"><span class="sw" style="border-color:#1971c2;background:#e7f5ff"></span><span>you or Claude — grill, plan, epic, bug and the rest. The bootstrap rule: a pinpoint edit → just do it; anything that looks like a task → stop and offer the route</span></div>
+  <div class="it"><span class="sw" style="border-color:#1e1e1e;background:#fff"></span><span>you only — implement, finish and handoff carry disable-model-invocation: Claude can name them, never call them</span></div></div>`, '', 470);
+text(560, 972, `<div class="leg"><h4>WHO RUNS IT</h4>
+  <div class="it"><span class="sw" style="border-color:#6741d9;background:#f3f0ff"></span><span>your session — the orchestrator: dispatches, sorts fact from decision, keeps the ledger; it does not write or review code</span></div>
+  <div class="it"><span class="sw" style="border-color:#0c8599;background:#e3fafc"></span><span>a subagent — cold, a written brief, a report file, then gone. The gates hold Bash, Read, Grep, Glob only: no browser MCP, no simulator</span></div></div>`, '', 470);
+text(1075, 972, `<div class="leg"><h4>WHAT IT WRITES — .ai-workflow/</h4>
+  <div class="mono">epics/&lt;topic&gt;.md<br>plans/&lt;plan&gt;.md — the contract and the ledger<br>run/&lt;plan&gt;/ RUN · brief-a-b · dispatch-a-b<br>&nbsp;&nbsp;contracts/ · report-a-b · review.diff<br>&nbsp;&nbsp;gate-a/report.md · gate-b/TC-n.md<br>9 scripts: preflight · run-state · workspace<br>&nbsp;&nbsp;brief · dispatch · parallel-contract<br>&nbsp;&nbsp;review-package · plan-check · finish</div></div>`, '', 470);
+text(40, 1172, '×N — the number of sessions it was invoked in, Jul 11 – Sep 24, across all projects', 'note');
+
+/* ---------- hooks ---------- */
+text(14, 1236, 'ENFORCED BY HOOKS &nbsp;<i>— not by a model remembering</i>', 'sec');
+box(12, 1272, 470, 115, 'red', 'commit-guard · always', 'no git add . / -A · no commit -a · a Conventional subject ≤ 72, body ≤ 300 · no Claude trailers');
+box(497, 1272, 470, 115, 'red', 'finish-guard · while a run is open', 'reset / rebase / merge / --amend / branch -d / push --force belong to finish');
+box(982, 1272, 470, 115, 'red', 'branch-guard · opt-in per repo', 'with a .branch-guard file: no edits and no commits on main');
+box(1467, 1272, 470, 115, 'grey', 'session-start · open-prototype', 'not guards: one injects the bootstrap rule, the other opens a drawn prototype in the browser', { fill: '#ffffff' });
+text(14, 1400, 'the three guards fail open — whatever they cannot parse with confidence, they allow', 'note');
+
+/* ---------- time axis ---------- */
+text(14, 1452, 'THE SAME RUN, ON A TIME AXIS &nbsp;<i>— who is working, and where it stops for you</i>', 'sec');
+
+const phases = [['grill', 230, 520], ['plan', 520, 800], ['implement', 800, 1640], ['finish', 1640, 1950]];
+phases.forEach(([n, a, b]) => { rect(a + 2, 1528, b - a - 4, 40, 'grey', { fill: '#f1f3f5', r: 8, sw: 1.8 }); const w = n === 'implement' ? 390 : b - a; text(a, 1528, n, 'bar row', w, 40); });
+
+vdash(742, 1512, 1742); text(560, 1495, '① approve the plan', 'lbl red', 180);
+vdash(800, 1512, 1742); text(806, 1495, '② approve the cases', 'lbl red');
+vdash(1190, 1512, 1742); text(1196, 1495, 'a decision: the run waits', 'lbl red');
+vdash(1640, 1512, 1742); text(1646, 1495, 'both gates green — the run stops for you', 'lbl red');
+
+text(20, 1600, 'you', 'row');
+text(20, 1650, 'your agent', 'row purple');
+text(20, 1700, 'subagents', 'row teal');
+
+const bar = (a, b, y, col, label, o = {}) => {
+  rect(a, y, b - a, 30, col, { r: 6, sw: 1.8, dash: o.dash, fill: o.fill });
+  if (label) text(a, y, label, 'bar', b - a, 30);
+};
+bar(232, 518, 1597, 'dark', 'you answer questions', { fill: '#e9ecef' });
+bar(650, 738, 1597, 'dark', 'read', { fill: '#e9ecef' });
+bar(746, 798, 1597, 'dark', 'cases', { fill: '#e9ecef' });
+bar(1163, 1216, 1597, 'dark', 'answer', { fill: '#e9ecef', dash: [5, 5] });
+bar(1668, 1830, 1597, 'dark', 'evidence, diff, accept', { fill: '#e9ecef' });
+
+bar(232, 518, 1647, 'purple', '');
+bar(522, 798, 1647, 'purple', '');
+bar(802, 860, 1647, 'purple', '');
+bar(866, 1636, 1647, 'purple', 'dispatching · sorting fact from decision · reading verdicts · not editing', { dash: [7, 6], fill: '#faf8ff' });
+bar(1642, 1948, 1647, 'purple', '');
+
+bar(588, 640, 1697, 'teal', 'draw');
+bar(870, 950, 1697, 'teal', 'tests');
+bar(958, 1048, 1697, 'teal', 'phase');
+bar(1056, 1146, 1697, 'teal', 'phase');
+bar(1224, 1300, 1697, 'teal', 'phase');
+bar(1308, 1378, 1697, 'teal', 'gate A');
+bar(1385, 1428, 1697, 'teal', 'fix');
+bar(1435, 1500, 1697, 'teal', 'gate A');
+bar(1508, 1632, 1697, 'teal', 'gate B');
+
+line([[230, 1758], [1975, 1758]], '#1e1e1e', { sw: 2.4 });
+text(1936, 1766, 'time', 'note');
+text(232, 1772, 'grill and plan: 30 min – 3 h to both approvals', 'note');
+text(806, 1772, 'implement: 3.6 – 17.4 h wall clock · agents busy 1.4 – 7.7 h · 7 – 21 subagents', 'note');
+text(14, 1808, 'each teal bar is one cold subagent with its own brief · the ranges are measured on Daily’s 12 runs, Sept 2026', 'note');
+
+/* ---------- fit to width ---------- */
+const wrap = document.getElementById('wrap');
+function fit() {
+  const s = Math.min(1, (window.innerWidth - 24) / 2000);
+  stage.style.transform = `scale(${s})`;
+  wrap.style.height = Math.ceil(1850 * s) + 'px';
+}
+window.addEventListener('resize', fit);
+fit();
+
+async function embedFontCSS() {
+  const css = await (await fetch('https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap')).text();
+  let out = css;
+  for (const [, u] of css.matchAll(/url\((https:[^)]+)\)/g)) {
+    const blob = await (await fetch(u)).blob();
+    const data = await new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(blob); });
+    out = out.split(u).join(data);
+  }
+  return out;
+}
+
+document.getElementById('png').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Rendering…';
+  try {
+    await document.fonts.ready;
+    const fontEmbedCSS = await embedFontCSS();
+    const url = await htmlToImage.toPng(stage, {
+      fontEmbedCSS,
+      width: 2000, height: 1850, pixelRatio: 2, backgroundColor: '#ffffff',
+      style: { transform: 'none', left: '0', top: '0' },
+    });
+    const a = document.createElement('a');
+    a.download = 'dev-skills-now.png';
+    a.href = url;
+    a.click();
+  } catch (err) {
+    alert('PNG export failed: ' + (err && err.message ? err.message : err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download PNG';
+  }
+});
+</script>
+</body>
+</html>

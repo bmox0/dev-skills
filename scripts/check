@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# The one command that stands for "the tree is sound": the reference layer
-# (scripts/check-links.py) plus the plugin manifest and every SKILL.md's
-# frontmatter (claude plugin validate). A SKILL.md with unparseable YAML
-# frontmatter silently drops every field at load — plugin validate is the
-# only thing that catches that, and it does not run on its own.
+# The one command that stands for "the tree is sound": the reference layer,
+# the word budgets and every SKILL.md's frontmatter (scripts/check-links.py),
+# plus both manifests and hooks.json (claude plugin validate). The plugin
+# half fails on any warning except the one about this repository's own
+# CLAUDE.md, which is its development contract and is meant to stay.
 #
 # Both checks run regardless of whether the first one fails, so one call
 # surfaces everything wrong at once. If `claude` is not on PATH the plugin
@@ -26,6 +26,30 @@ if ! command -v claude >/dev/null 2>&1; then
   status=1
 else
   (cd "$repo_root" && claude plugin validate . --strict) || status=1
+  (cd "$repo_root" && claude plugin validate .claude-plugin/plugin.json --json 2>/dev/null) \
+    | python3 -c '
+import json, sys
+try:
+    report = json.load(sys.stdin)
+except ValueError:
+    print("claude plugin validate: no report for plugin.json")
+    sys.exit(1)
+root = sys.argv[1]
+bad = []
+for item in [report.get("manifest") or {}] + (report.get("contents") or []):
+    name = (item.get("file") or "").rsplit("/", 1)[-1]
+    for kind in ("errors", "warnings"):
+        for finding in item.get(kind) or []:
+            if (kind == "warnings" and item.get("file") == root + "/CLAUDE.md"
+                    and finding.get("path") == "root"
+                    and (finding.get("message") or "").startswith("CLAUDE.md at the plugin root")):
+                continue
+            bad.append("%s: %s" % (name, finding.get("message")))
+for line in bad:
+    print("plugin.json: " + line)
+print("PLUGIN: %d finding%s" % (len(bad), "" if len(bad) == 1 else "s"))
+sys.exit(1 if bad or not report.get("success") else 0)
+' "$repo_root" || status=1
 fi
 
 exit "$status"

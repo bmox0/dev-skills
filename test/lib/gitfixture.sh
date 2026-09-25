@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The throwaway repository every test/cli/*.test.sh that drives a git-writing
-# script needs, so that pinning preflight, run-state and finish never touches
+# script needs, so that pinning preflight and finish never touches
 # the repository these tests themselves live in.
 #
 # Sourced after test/lib/harness.sh — every repository this file hands out is
@@ -8,14 +8,10 @@
 # harness.sh's own EXIT trap and needs no separate teardown here.
 #
 # gitfixture_new     -> prints the repository path
-# gitfixture_plan REPO [SRC]   -> writes a plan file, prints its path
 # gitfixture_gitignore REPO    -> commits a .gitignore carrying .ai-workflow
 # gitfixture_dirty REPO        -> leaves one staged and one unstaged change
 # gitfixture_commit REPO MSG   -> one commit, prints its SHA
 # gitfixture_branch REPO NAME  -> creates and checks out a branch
-# gitfixture_marker REPO PLAN BASE -> writes
-#   REPO/.ai-workflow/run/<plan-basename>/RUN with plan=, base=, branch= and
-#   tree= lines; prints the marker's path
 #
 # Every helper that takes a REPO argument refuses to run when that path
 # resolves inside the repository this file itself lives in — the one thing a
@@ -58,18 +54,6 @@ gitfixture_new() {
   echo "$dir"
 }
 
-gitfixture_plan() {
-  local repo="$1" src="${2:-}"
-  _gitfixture_guard "$repo" || return 1
-  local dest="$repo/plan.md"
-  if [ -n "$src" ]; then
-    cp "$src" "$dest"
-  else
-    printf '# Fixture Plan\n' > "$dest"
-  fi
-  echo "$dest"
-}
-
 # The state preflight wants to find rather than have to create: the ignore line
 # already there, and the file already tracked. A fixture without this is the
 # untracked-.gitignore case, which is a finding in its own right.
@@ -106,20 +90,4 @@ gitfixture_branch() {
   local repo="$1" name="$2"
   _gitfixture_guard "$repo" || return 1
   git -C "$repo" checkout -q -b "$name"
-}
-
-gitfixture_marker() {
-  local repo="$1" plan="$2" base="$3"
-  _gitfixture_guard "$repo" || return 1
-  local slug dir
-  slug=$(basename "$plan" .md)
-  dir="$repo/.ai-workflow/run/$slug"
-  mkdir -p "$dir"
-  {
-    echo "plan=$plan"
-    echo "base=$(git -C "$repo" rev-parse "$base")"
-    echo "branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
-    echo "tree=$repo"
-  } > "$dir/RUN"
-  echo "$dir/RUN"
 }

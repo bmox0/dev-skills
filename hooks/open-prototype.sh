@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PostToolUse hook: the moment a prototype is written to disk, open it in the
-# browser. The prototyper draws `.ai-workflow/plans/<plan>/prototypes/M-<n>.html`
-# as a self-contained file that opens straight from disk, and the human used to
-# have to ask for it to be opened every time. Now it just is.
+# browser. A prototype is drawn to `.ai-workflow/prototypes/<topic>.html` as a
+# self-contained file that opens straight from disk, and the human used to have
+# to ask for it to be opened every time. Now it just is.
 #
 # Fires only on a Write whose path is a .html file under a prototypes/
 # directory. Anything else — another tool, another path — exits silently.
