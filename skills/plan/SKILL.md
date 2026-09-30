@@ -33,8 +33,8 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
 
 `.ai-workflow/plans/YYYY-MM-DD-<slug>.md`, where `<slug>` is the slug of the
 branch the plan will be built on. If `git check-ignore -q .ai-workflow` fails,
-add `.ai-workflow` to `$(git rev-parse --git-path info/exclude)`. A worked
-example: [example.md](references/example.md).
+add `.ai-workflow` to `$(git rev-parse --git-path info/exclude)`. It is written
+with Status `draft`. A worked example: [example.md](references/example.md).
 
 ```markdown
 # Plan: <what the user gets, in a few words>

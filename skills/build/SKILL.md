@@ -13,19 +13,20 @@ workers check it.
 
 Read the plan, its epic, and the project's `CLAUDE.md`. On a clean tree, cut
 the branch named on the plan's Status line from the default branch with plain
-git, and write the base SHA and `building` there; under an epic, the plan's row
-gets `building` too. Every phase commits to this branch, in this one working
+git, and write the base SHA and `building` there; under an epic, its row
+gets `building` too. Every phase commits to this branch, in one working
 tree; no worktrees.
 
 Resuming: switch to the branch; the statuses in the plan and
-`git log <base>..HEAD` say what is done.
+`git log <base>..HEAD` say what's done.
 
 ## 2. The graph
 
-The plan file is the registry. Start every phase whose Waits for is done, all at
-once, each a `dev-skills:implementer` in the background, handed the plan's
-path, its phase, and what earlier phases reported. Mark it `in progress`; when
-its report comes in, mark it `done` and start what it unblocks.
+The plan file is the registry. Mark it `waiting`; start every phase whose
+Waits for is done, all at once, each a `dev-skills:implementer` in the
+background, handed the plan's path, its phase, and what earlier phases
+reported. Mark it `in progress`; when its report comes in, mark it `done` and
+start what it unblocks.
 
 - **Messages go through you.** An implementer writes to you for a file outside
   its territory, or a product call the plan does not hold, and carries on

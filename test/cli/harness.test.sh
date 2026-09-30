@@ -173,4 +173,90 @@ done < <(
 )
 [ "$ran" -gt 0 ] || fail "TC-12: found no other test file to run"
 
+# --- TC-14: the plan's statuses hand off cleanly across the skills that use them
+#
+# The plan file is the registry: its Status line and each phase's status are
+# set and read by skills/plan, skills/build, skills/finish, skills/epic and
+# agents/implementer.md. This pins the hand-off both ways: no skill sets or
+# reads a status missing from skills/plan/SKILL.md's own Status list, no
+# status in that list goes unset by every skill, and the phase status
+# skills/plan, skills/build and agents/implementer.md use for a phase agree.
+
+plan_skill="$repo_root/skills/plan/SKILL.md"
+build_skill="$repo_root/skills/build/SKILL.md"
+finish_skill="$repo_root/skills/finish/SKILL.md"
+epic_skill="$repo_root/skills/epic/SKILL.md"
+implementer_agent="$repo_root/agents/implementer.md"
+
+# the plan template's own Status list: draft, approved, building, ...
+plan_statuses=$(grep -m1 '^Status: <' "$plan_skill" \
+  | sed -E 's/^Status: <([^>]+)>.*/\1/' | tr '|' '\n' | sed -E 's/^ +| +$//g')
+
+has_plan_status() {
+  printf '%s\n' "$plan_statuses" | grep -qxF "$1"
+}
+
+# every status a skill sets or reads on the plan's Status line, as it is
+# phrased there, should be one skills/plan/SKILL.md names
+for v in draft approved building "at the human gate" passed landed "a merge-request link"; do
+  has_plan_status "$v" \
+    || fail "TC-14: a skill sets/reads Status \`$v\`, missing from skills/plan/SKILL.md's Status list"
+done
+
+# skills/epic's own worked example sets a Status too — it should stay within
+# that same list
+epic_statuses=$(awk -F'|' '/^\| [0-9]+ \|/ { v=$(NF-1); gsub(/^[ \t]+|[ \t]+$/, "", v); print v }' "$epic_skill")
+while IFS= read -r v; do
+  [ -n "$v" ] || continue
+  has_plan_status "$v" \
+    || fail "TC-14: skills/epic/SKILL.md's worked example sets Status \`$v\`, missing from skills/plan/SKILL.md's Status list"
+done <<EOF
+$epic_statuses
+EOF
+
+# every status in that list is set by some skill
+while IFS= read -r v; do
+  [ -n "$v" ] || continue
+  case "$v" in
+    draft)                  tr '\n' ' ' < "$plan_skill" | grep -q 'written with Status `draft`' ;;
+    approved)               grep -q 'Status to `approved`' "$plan_skill" ;;
+    building)               grep -q '`building`' "$build_skill" ;;
+    "at the human gate")    grep -q 'Status to `at the human gate`' "$build_skill" ;;
+    passed)                 grep -q 'Status to `passed`' "$build_skill" ;;
+    "a merge-request link") grep -q 'a merge-request link' "$finish_skill" ;;
+    landed)                 grep -q 'Status to `landed`' "$finish_skill" ;;
+    *) false ;;
+  esac || fail "TC-14: skills/plan/SKILL.md's Status list names \`$v\`, but no skill sets it"
+done <<EOF
+$plan_statuses
+EOF
+
+# the phase status each phase line carries: waiting, in progress, done
+phase_statuses=$(grep -m1 -- '<n>\. <task>' "$plan_skill" \
+  | sed -E 's/.*— `<([^>]+)>`.*/\1/' | tr '|' '\n' | sed -E 's/^ +| +$//g')
+
+# skills/build sets it when a phase starts and finishes
+while IFS= read -r v; do
+  [ -n "$v" ] || continue
+  case "$v" in
+    "in progress") grep -qi 'mark it `in progress`' "$build_skill" ;;
+    done)          grep -qi 'mark it `done`' "$build_skill" ;;
+    waiting)       grep -qi 'mark it `waiting`' "$build_skill" ;;
+    *) false ;;
+  esac || fail "TC-14: skills/plan/SKILL.md's phase status list names \`$v\`, but skills/build/SKILL.md never sets it"
+done <<EOF
+$phase_statuses
+EOF
+
+# agents/implementer.md never sets a phase status of its own that disagrees
+# with skills/plan/SKILL.md's phase list
+implementer_phase_statuses=$(grep -oiE 'mark it `[^`]+`' "$implementer_agent" | grep -oE '`[^`]+`' | tr -d '`')
+while IFS= read -r v; do
+  [ -n "$v" ] || continue
+  printf '%s\n' "$phase_statuses" | grep -qxF "$v" \
+    || fail "TC-14: agents/implementer.md sets a phase status \`$v\` that disagrees with skills/plan/SKILL.md's phase list"
+done <<EOF
+$implementer_phase_statuses
+EOF
+
 echo "ok"

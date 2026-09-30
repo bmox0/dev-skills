@@ -8,9 +8,9 @@ agents/reviewer.md 100
 references/VOCABULARY.md 500
 skills/browser-test/SKILL.md 1100
 skills/bug/SKILL.md 450
-skills/bug/references/condition-based-waiting.md 500
-skills/bug/references/defense-in-depth.md 500
-skills/bug/references/root-cause-tracing.md 750
+skills/bug/references/condition-based-waiting.md 325
+skills/bug/references/defense-in-depth.md 300
+skills/bug/references/root-cause-tracing.md 325
 skills/build/SKILL.md 575
 skills/commit-work/SKILL.md 300
 skills/commit-work/references/commit-message-template.md 700
@@ -26,8 +26,8 @@ skills/plan/SKILL.md 650
 skills/plan/references/environment-contract.md 200
 skills/plan/references/example.md 475
 skills/prototype/SKILL.md 375
-skills/prototype/references/LOGIC.md 975
-skills/prototype/references/UI.md 900
+skills/prototype/references/LOGIC.md 450
+skills/prototype/references/UI.md 400
 skills/retro/SKILL.md 300
 skills/review/SKILL.md 300
 skills/review/references/CRITERIA.md 600

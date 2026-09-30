@@ -16,7 +16,10 @@ is skipped, and every plan ends in a human gate.
    HTML file, inside the app with real data, or code. A worker draws it.
 3. **Plan.** Always a file, one screen: Result, Approach, Out of scope, Phases,
    Checks, Done, and the prototype's link. Each phase names its territory and
-   what it waits for; together they form the graph. Your "go" approves it.
+   what it waits for; together they form the graph. Status runs `draft` →
+   `approved` → `building` → `at the human gate` → `passed` → `landed`, via
+   `a merge-request link` when finish opens one; your "go" takes it from
+   draft to approved.
 4. **Build.** One branch per plan, one working tree. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it.
@@ -30,7 +33,7 @@ is skipped, and every plan ends in a human gate.
 7. **Finish.** You type it. It asks: a merge request or local, squash or
    `--no-ff`.
 
-The drawing: [docs/pipeline-4.0.html](docs/pipeline-4.0.html).
+The drawing: [docs/pipeline.html](docs/pipeline.html).
 
 ## What you type
 
@@ -119,13 +122,10 @@ agents `implementer` and `reviewer`.
 [`references/VOCABULARY.md`](references/VOCABULARY.md) defines the words they
 share.
 
-## Why it looks like this
+## Principles
 
-Version 4.0 was designed from first principles after 3.0: time is the measure,
-the orchestrator and the models are a fast tool, and a fork the agent could
-take is the user's call. The diagrams: [2.7](docs/pipeline-2.7.html),
-[a proposal that was not taken](docs/pipeline-proposal.html),
-[3.0](docs/pipeline-3.0.html) and [4.0](docs/pipeline-4.0.html).
+Time is the measure: every stage earns its time. The orchestrator and the
+models are a fast tool. A fork the agent could take is the user's call.
 
 ## Checking this repository
 
@@ -135,11 +135,17 @@ within its budget in [`scripts/word-budgets.txt`](scripts/word-budgets.txt),
 and the manifests and every frontmatter parse (`claude plugin validate`).
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
-plugin's shape; one file is `scripts/test <path>`.
+plugin's shape — TC-13 pins the shape itself (no hooks, no skill scripts,
+Sonnet implementers), TC-14 pins the plan's statuses across `plan`, `build`,
+`finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 
 `scripts/usage` measures sessions from Claude Code's transcripts: wall and
 active hours, human messages, tokens, subagents, per project or per session
 (`--json`, `--project`, `--since`).
+
+Working on this repository with the installed plugin also active runs the
+pipeline twice; turn it off first: `claude --settings
+'{"enabledPlugins":{"dev-skills@dev-skills":false}}'`.
 
 ## Licence
 
