@@ -1,69 +1,54 @@
 ---
 name: finish
-description: Land a finished unit on the default branch — squash by meaning, merge --no-ff locally, report. Typed by the user as /finish.
+description: Land a plan the human gate passed — a merge request or local, squash or --no-ff, the message drafted from the plan's Result. Typed by the user as /finish.
 disable-model-invocation: true
 ---
 
 # Finish
 
-Run it on the unit's branch. `scripts/finish` does the git and refuses any
-state it does not recognise; history is never rewritten by hand.
+Run it on the plan's branch, with the plan at `passed` or a merge-request
+link (below); any other status goes back to `dev-skills:build`. Plain git,
+and `gh` for a merge request.
 
-## 1. The range
+## 1. Already a merge request
 
-```bash
-scripts/finish preflight [--base <sha>]
-```
+Status a merge-request link: `gh pr view <link> --json state`. Merged: set
+Status to `landed`; the epic's row too. Offer a retro (`dev-skills:retro`).
+Still open: say so and stop.
 
-Pass the base from the brief's Run line when there is a brief. Without one the
-script uses the base preflight recorded when it cut the branch, else the fork
-from the default branch. It lists the commits and paths, notes a range that
-shares commits with an unlanded branch, and refuses a detached HEAD, a dirty
-tree, a half-done merge and an empty range.
+## 2. Ask how to end
 
-## 2. Squash by meaning
+One message, two questions, and the drafted commit message:
 
-One commit per meaning. Most units have one; a bug fixed on the way is a second.
-Group the range into contiguous runs and write one message file per group,
-following `dev-skills:commit-work`: the subject from the brief's Goal or the
-todo, Conventional, at most 72 characters; a body only when the subject leaves a
-question open, at most 300. Show the drafts to the user.
+- **A merge request, or local?**
+- **Squash, or `--no-ff`?**
+- **The message**, drafted from the plan's Result by `dev-skills:commit-work`.
 
-```bash
-scripts/finish squash [--base <sha>] one.txt [--through <last sha of its group> two.txt]...
-```
+The user's answer approves the message too.
 
-It first records a numbered recovery ref, `refs/dev-skills/recovery/<branch>/<n>`.
-Each new commit holds the tree at the end of its group, so the final tree is the
-branch's own.
+## 3. Land it
 
-## 3. Merge
+On a clean tree:
 
-```bash
-scripts/finish merge [--base <sha>] [--subject <line>]
-```
+- **Local, squash:** `git switch <default>`, `git merge --squash <branch>`,
+  then `git commit` with the message.
+- **Local, `--no-ff`:** `git switch <default>`, then
+  `git merge --no-ff <branch>` with the message.
+- **A merge request:** `git push -u origin <branch>`, then
+  `gh pr create --base <default>`, the message as its title and the plan's
+  `## Human gate` page as its body, with the captures named by where they sit
+  on this machine, not linked. The user merges it in the merge request's view,
+  squash or merge commit as they chose; the button is the approval.
 
-`--no-ff` into the default branch, in whichever checkout holds it, titled with
-the unit's last subject or `--subject`; a dirty or half-done tree there is
-refused. A unit stacked on work that has landed moves onto the default branch
-first; one stacked on work that has not is refused. A conflict aborts: rebase
-onto the default branch, resolve, check, finish again. No push unless the user
-asks.
+A conflict: abort the merge. It is a new round in `dev-skills:build`: an
+implementer rebases the plan's branch onto the default branch, then the E2E
+gate and the human gate see what changed, then `finish` again.
 
-## 4. Afterwards
+No push without the user's word; choosing a merge request is that word for
+pushing the plan's branch, nothing else. Leave the plan's branch in place.
 
-Mark the unit done in the epic's queue, and in the tracker when the
-`## Environment` block names one. Offer `dev-skills:retro` once.
+## 4. After
 
-End with the merge summary:
-
-- the commits, by meaning;
-- the evidence files under `.ai-workflow/verify/<unit>/`;
-- the conventions applied after review;
-- the open observations.
-
-## Recovery
-
-`scripts/finish recover` lists the attempts and changes nothing;
-`scripts/finish recover <n>` resets to one, always named. `scripts/finish ref`
-records an attempt before any other rewrite.
+Local: set Status to `landed`. A merge request: set it to the request's
+link — step 1 lands it once merged. Under an epic, the plan's row follows.
+Offer a retro (`dev-skills:retro`); the user decides.

@@ -1,49 +1,32 @@
 ---
 name: verify
-description: Drive a unit's Acceptance on the running system and write one evidence file per scenario, looks checked on captures. Use after review on a unit built from a brief, or when the user asks to verify a branch.
+description: Drive a plan's Done use cases on the running system — a browser, the simulator, curl or a CLI, as the plan's Checks says — and return each one's result with a capture. The e2e half of the E2E gate; also when the user asks to verify a branch.
 ---
 
 # Verify
 
-The seat is whoever holds the tools to drive the system: this session with
-`dev-skills:browser-test` on the web, a tab with the simulator's MCP server on
-iOS, or the user. Take a seat only after you have seen it drive the system;
-never assume a subagent holds the tools. When no seat you can reach holds them,
-or the project's rules say the human tests (a manual simulator run before a
-commit), hand the user the scenario list and record what they report.
+The session that asks for e2e dispatches a worker, a subagent that follows the
+steps below, and reads only its lines. It drives what the user will see at the
+human gate, so the user confirms rather than rediscovers.
 
-**Receives:** the Acceptance (from the brief, or the scenarios the grill
-settled), where the system runs (the `## Environment` block: dev server,
-runtime), and the prototype or the looks list.
+**Receives:** the plan's Done use cases, or the ones the user names; how e2e
+drives the system and where it runs (the plan's Checks, the project's
+`CLAUDE.md`); the prototype when the plan links one.
 
-1. **Find the running system first.** If the user's dev instance is up, use it;
-   do not start a second one or restart theirs. If the user is using the app
-   right now, they are the tester: give them the list.
-2. **Drive each scenario** as a user would, and note the actions, what you
-   expected and what you saw.
-3. **Check looks on captures:** a screenshot for each state on the looks list,
-   frames for anything that moves, each compared with the prototype or the
-   description. A verdict on looks needs a capture to show; sampled pixels are
-   not one.
-4. **Write one evidence file per scenario**, `.ai-workflow/verify/<unit>/<n>.md`:
+1. **Find the running system.** If the user's dev instance is up, use it; do not
+   start a second one or restart theirs. If none is up, start it the way the
+   project says, and stop it when you are done.
+2. **Drive each use case** as a user would: a web app through
+   `dev-skills:browser-test`, iOS through the simulator's MCP server, a backend
+   with curl, a CLI by running it.
+3. **Check looks on captures:** a screenshot for each state whose appearance
+   matters, frames for anything that moves, compared with the prototype. A
+   verdict on looks needs a capture; sampled pixels are not one.
 
-```markdown
-# <n>. <scenario>
+**Returns** one line per use case, failures first:
 
-Actions: <what was done, commands included>
-Expected: <from the Acceptance>
-Seen: <what happened, quoted where it is output>
-Captures: <paths, or none>
-Verdict: pass | fail | not reached — <why>
+```text
+<n>. <do this> → <see that> — passed | failed: <what was seen> | not reached: <why> — <capture path, or the command's output>
 ```
 
-A scenario with no file was not checked. Write the file when the answer is
-"could not reach it", with the reason.
-
-**Once.** After fixes, drive only the affected scenarios again and update their
-files.
-
-**Returns:** the evidence files with their verdicts, failures first. A failure
-goes back to the builder like a Defect.
-
-Inline, with no brief: drive what changed and say what you saw; no files.
+Once. After a fix, drive only the use cases that failed or were not reached.

@@ -68,7 +68,7 @@ d2=$(printf '%s\n' "$paths" | sed -n '2p')
 
 # --- scripts/test <path>: single-file mode -----------------------------
 #
-# The .test.sh case below targets test/cli/gitfixture.test.sh rather than
+# The .test.sh case below targets test/cli/check-links.test.sh rather than
 # this file: pointing it at harness.test.sh itself made the suite invoke
 # itself, and every mechanism tried for bounding that recursion turned out
 # to be forgeable from the environment it runs in. This removes only the
@@ -80,12 +80,12 @@ d2=$(printf '%s\n' "$paths" | sed -n '2p')
 # different problem than the silent pass this file exists to catch.
 
 # a .test.sh file other than this one (see above) — that file's line only
-out=$("$repo_root/scripts/test" "test/cli/gitfixture.test.sh" 2>&1)
+out=$("$repo_root/scripts/test" "test/cli/check-links.test.sh" 2>&1)
 rc=$?
-[ "$rc" -eq 0 ] || fail "scripts/test test/cli/gitfixture.test.sh should exit 0"
+[ "$rc" -eq 0 ] || fail "scripts/test test/cli/check-links.test.sh should exit 0"
 lines=$(printf '%s\n' "$out" | grep -cE '^(ok|FAIL)[[:space:]]')
-[ "$lines" -eq 1 ] || fail "scripts/test test/cli/gitfixture.test.sh should print exactly one file's line, got $lines"
-assert_contains "$out" "test/cli/gitfixture.test.sh" \
+[ "$lines" -eq 1 ] || fail "scripts/test test/cli/check-links.test.sh should print exactly one file's line, got $lines"
+assert_contains "$out" "test/cli/check-links.test.sh" \
   "single-file run should report its own line" || fail "own line missing"
 
 # a path that is not a test file: loud, not a silent fallback to everything
@@ -95,14 +95,13 @@ rc=$?
 assert_contains "$err" "test/lib/harness.sh" \
   "the error should name the path that isn't a test file" || fail "path not named"
 
-# --- TC-9, TC-10, TC-11, TC-12: the run's final-gate scenarios --------------
+# --- TC-9 to TC-13: the assembled repository's shape ------------------------
 #
 # None of these pin one script's behaviour the way the rest of test/cli/ does
 # — they check the assembled repository's own shape (frontmatter, vocabulary,
-# the whole suite) rather than any one skills/implement/scripts/* binary, so
-# there is no more specific existing file to carry them and the plan
-# authorises no new one. This file already exercises scripts/test on the real
-# tree above; these run against the real tree too, never a synthetic fixture.
+# the whole suite), so there is no more specific file to carry them. This file
+# already exercises scripts/test on the real tree above; these run against the
+# real tree too, never a synthetic fixture.
 
 # frontmatter FILE — the YAML block between the first two '---' lines, or
 # nothing if the file has none.
@@ -144,6 +143,20 @@ checkpoint_out=$(cd "$repo_root" && grep -rn 'Checkpoint [0-9]' skills/ 2>/dev/n
 
 segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
 [ -z "$segment_col_out" ] || fail "TC-11: expected no match for '| Segment |', found: $segment_col_out"
+
+# --- TC-13: no hooks, no skill scripts, no tool limits, Sonnet implementers --
+
+[ ! -e "$repo_root/hooks" ] || fail "TC-13: the plugin ships no hooks/"
+skill_scripts=$(cd "$repo_root" && find skills -type d -name scripts 2>/dev/null)
+[ -z "$skill_scripts" ] || fail "TC-13: the plugin ships no skill scripts, found: $skill_scripts"
+for f in "$repo_root"/agents/*.md; do
+  ! frontmatter "$f" | grep -q '^tools:' || fail "TC-13: $(basename "$f") should carry no tools: line"
+done
+frontmatter "$repo_root/agents/implementer.md" | grep -qx 'model: sonnet' \
+  || fail "TC-13: the implementer should run on sonnet"
+plugin_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.claude-plugin/plugin.json")
+market_versions=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["metadata"]["version"], d["plugins"][0]["version"])' "$repo_root/.claude-plugin/marketplace.json")
+assert_eq "$plugin_version $plugin_version" "$market_versions" "TC-13: both manifests carry one version" || fail "TC-13"
 
 # --- TC-12: every other test file is green on its own ------------------------
 

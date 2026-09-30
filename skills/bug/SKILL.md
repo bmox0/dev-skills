@@ -1,82 +1,57 @@
 ---
 name: bug
-description: Reproduce a bug, find its root cause, fix it with a test that pins it, and drive the fix. Use for any bug, failing test or unexpected behaviour, before proposing a fix.
+description: Reproduce a bug and pin down its root cause before anything is fixed — a command that goes red, and a cause with evidence. Use for any bug, failing test or unexpected behaviour, before proposing a fix.
 ---
 
-# Fixing a bug
+# Bug
 
-```text
-fix/<bug> branch → one command that goes red → root cause → fix + pinning test → drive it → commit
-```
-
-Reach for this the moment a symptom arrives: the mistake it prevents, guessing
-at a fix, happens in the first reply.
+This session is the orchestrator: it judges the evidence and never edits code.
+A bug adds one stage in front of the plan: its reproduction and its cause. The
+fix is built from a plan whose phase 1 is the red test.
 
 **No fix without a root cause.** A symptom fix is a failure, not a partial
 success, and it holds hardest when the fix looks obvious.
 
-## 0. A branch
+## 1. A worker reproduces and traces
 
-`fix/<bug>` from the default branch, or a worktree when another session works in
-this checkout (`preflight fix/<bug>` from `dev-skills:implement`). Say which in
-one line.
+Dispatch a worker, a Sonnet subagent, with the symptom in the user's words and
+a slug for it. It leaves the tree as it found it, and returns:
 
-## 1. One command that goes red
+- **A red test and the command that runs it**, red every time: a failing test
+  if the project has a test framework, a script if it does not, with the whole
+  failure read. It writes the test as a patch, new files included, to
+  `.ai-workflow/plans/<slug>.red.patch` (git-ignored, so the tree is as it
+  found it), and returns that path and the command.
+- **A candidate cause with its evidence**, stated as "X is the cause, because
+  Y" and shown by the smallest experiment. It checks what changed lately,
+  traces the bad value back to where it starts
+  ([root-cause-tracing.md](references/root-cause-tracing.md)), compares with
+  something similar that works, and across components logs each boundary once.
 
-Before any theory, build the loop: one command that shows the bug every time. A
-failing test if the project has a test framework, a script if it does not. Run
-it and read the whole failure: the message, the stack, the paths. A bug you
-cannot reproduce on demand cannot be shown fixed; gather more data instead of
-guessing.
+A bug it cannot reproduce on demand comes back as what it checked, never as a
+guess.
 
-## 2. The root cause
+## 2. Accept or send back
 
-- **Check what changed:** recent commits, dependencies, configuration.
-- **Trace the bad value backwards** to where it originates, and fix there, not
-  where it surfaced: [root-cause-tracing.md](references/root-cause-tracing.md).
-- **Across components,** log what enters and leaves each boundary once, then
-  investigate only the component where it breaks.
-- **Compare with something similar that works,** and list every difference.
-- **One hypothesis at a time,** stated as "X is the cause, because Y", tested
-  with the smallest change.
+Judge the evidence: accept the cause, or send the worker back with what is
+missing. After two failed hypotheses, start over from the reproduction: a fix
+that keeps uncovering new coupling is the wrong shape. Show the user the red
+command and the cause; the stage ends when the user agrees.
 
-Name the root cause, with its evidence, before writing the fix. **After two
-failed hypotheses, stop and go back to step 1:** a fix that keeps
-uncovering new coupling is the wrong shape, and that is a conversation with the
-user, not a third attempt.
+## 3. The plan
 
-## 3. The fix and its pinning test, here
-
-In this context, while the cause is fresh: the red command becomes a test at
-the seam where the behaviour is observable, then the fix turns it green. No
-workaround, no retry or sleep over a race you have not explained
+`dev-skills:plan`, named with the same slug. Name
+`.ai-workflow/plans/<slug>.red.patch` and the red command in phase 1: it
+applies the patch, sees it red, and commits it with the fix that turns it
+green at the root cause. Done drives the original symptom. No workaround, no
+retry or sleep over a race nobody has explained
 ([condition-based-waiting.md](references/condition-based-waiting.md) when the
-race is real). Run the project's checks.
-
-Where more validation belongs once the cause is known:
+race is real). Where more validation belongs:
 [defense-in-depth.md](references/defense-in-depth.md).
-
-## 4. Drive it
-
-Run the original reproduction on the running system and say what you saw. If
-the bug was visual, capture it. On a project whose rules say the human tests
-(a manual simulator run), hand them the scenario.
-
-## 5. Review and commit
-
-A fix with logic beyond one line gets a fresh review of its diff
-(`dev-skills:review`). Commit `fix(<scope>): <what is no longer broken>`; the
-merge is the user's `/finish`.
-
-## When the cause is a design flaw
-
-If the root cause is a shape the code should not have, and fixing it is more
-than this context holds, write a brief with `dev-skills:plan`: the failing test
-is its first step.
 
 ## When there really is no root cause
 
-If systematic investigation lands on environmental, timing-dependent or external
-behaviour, write down what you checked, add the right handling (a retry, a
-timeout, a real error message), and make the next occurrence legible. Most "no
-root cause" is an investigation that stopped early.
+If the investigation lands on environmental, timing-dependent or external
+behaviour, the plan adds the right handling (a retry, a timeout, a real error
+message) and makes the next occurrence legible. Most "no root cause" is an
+investigation that stopped early.

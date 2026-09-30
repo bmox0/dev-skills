@@ -8,10 +8,6 @@ description: "Create high-quality git commits: review and stage intended changes
 Commits that are easy to review and safe to ship: only intended changes, one
 logical change each, a short message that says why.
 
-`git-guard` refuses what breaks the rules: blanket staging (`git add .`, `-A`,
-`-u`), `git commit -a`, a subject that is not Conventional Commits or is over 72
-characters, a body over 300, and attribution trailers.
-
 ## Checklist
 
 1. **Inspect** the tree: `git status`, `git diff`, `git diff --stat` when it is

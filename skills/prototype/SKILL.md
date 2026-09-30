@@ -1,44 +1,44 @@
 ---
 name: prototype
-description: Build a throwaway prototype to answer a design question — how something looks, sits or moves, or whether a state model feels right. Use the moment a question is visual, or the logic is hard to judge on paper.
+description: Build a throwaway prototype to answer a design question before the plan — how something looks, sits or moves, or whether a state model feels right. Offered after a grill or a discussion; the user decides.
 ---
 
 # Prototype
 
-A prototype is throwaway code that answers one question. The question decides
-the shape.
+After a grill or a discussion, offer one in a line, its shape part of the
+question: "A prototype? An HTML file, inside the app with real data, or code
+for the logic?" The user picks a shape or declines. This session is the
+orchestrator: a worker draws, it does not. A prototype is throwaway code that
+answers one question, in the shape the user picked:
 
-- **How should it look, sit or move?** The default: one self-contained HTML
-  file with the variants on a floating bottom switcher, each variant showing its
-  full state. When the variants must sit inside a real page with real data, put
-  them on that page behind `?variant=`, as [UI.md](references/UI.md) describes.
-- **Does this logic or state model feel right?** A tiny terminal app that pushes
-  the model through the hard cases: [LOGIC.md](references/LOGIC.md).
+- **An HTML file:** one self-contained file with the variants on a floating
+  bottom switcher, each variant showing its full state.
+- **Inside the app:** the variants on the page the user names, with its real
+  data, behind `?variant=`: [UI.md](references/UI.md).
+- **Code:** a tiny terminal app that pushes a logic or state model through the
+  hard cases: [LOGIC.md](references/LOGIC.md).
 
-If the question is ambiguous and the user is not around, pick the shape that
-matches the surrounding code and say so at the top of the prototype.
+## A worker draws it
 
-## The HTML file
+Dispatch a Sonnet subagent with the question, the shape and the variants in the
+user's words, and the output path under `.ai-workflow/prototypes/`:
+`YYYY-MM-DD-<topic>.html` for the HTML file, a `YYYY-MM-DD-<topic>/` directory
+for code. It draws what it is handed and never designs: a control, a screen or
+wording the conversation never named comes back as a question, not an
+invention. Nothing reaches outside the HTML file: no remote script, style, font
+or image. If `git check-ignore -q .ai-workflow` fails, add `.ai-workflow` to
+`$(git rev-parse --git-path info/exclude)`.
 
-Write it to `.ai-workflow/prototypes/<topic>.html` with the Write tool; the hook
-opens it in the browser when it lands. Nothing reaches outside the file: no
-remote script, style, font or image, so it renders the same with the network
-off. It stays on disk as the spec: the brief's Looks list points at it, and
-verify compares its captures with it.
+Open it for the user yourself: `open <path>` on macOS, `xdg-open <path>`
+elsewhere.
 
-**Draw it in a Sonnet subagent** to keep this context clean. Hand it the
-question, the variants in the user's words, and the output path. It draws what
-it is handed and never designs: a control, a screen or wording the
-conversation never named comes back as a question, not an invention.
+## Rules
 
-## Rules for both shapes
-
-1. **Throwaway, and marked as such.** Prototype code inside the app sits next to
-   what it prototypes, follows the project's routing, and is named so a reader
-   sees it is a prototype.
-2. **One command to run** it, through the project's own task runner.
-3. **No persistence.** State lives in memory unless persistence is the question.
-4. **No polish.** No tests, no abstractions, only what makes it run.
-5. **Capture the answer.** Fold the winner into the real code or the brief,
-   write down which shape won and why, and remove in-app prototype code in the
-   same change.
+1. **Throwaway, and marked as such.** Prototype code inside the app sits next
+   to what it prototypes and is named so a reader sees it is a prototype.
+2. **One command runs it**, with the project's own runtime.
+3. **No persistence** unless persistence is the question. **No polish:** no
+   tests, no abstractions.
+4. **Capture the answer.** The user picks; the plan's Prototype line gets the
+   path and the chosen variant. The worker takes in-app prototype code out of
+   the tree; the build writes the real thing.

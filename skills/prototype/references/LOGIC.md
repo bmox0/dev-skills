@@ -9,13 +9,11 @@ A tiny interactive terminal app that lets the user drive a state model by hand. 
 - "I want to feel out what the API should look like before writing it."
 - Anything where the user wants to **press buttons and watch state change**.
 
-If the question is "what should this look like" — wrong branch. Use [UI.md](UI.md).
-
 ## Process
 
 ### 1. State the question
 
-Before writing code, write down what state model and what question you're prototyping. One paragraph, in the prototype's README or a comment at the top of the file. A logic prototype that answers the wrong question is pure waste — make the question explicit so it can be checked later, whether the user is watching now or returning to it AFK.
+Before writing code, write down what state model and what question you're prototyping. One paragraph, in the prototype's README or a comment at the top of the file. A logic prototype that answers the wrong question is pure waste — make the question explicit so it can be checked later, whether the user is watching now or returning to it later.
 
 ### 2. Pick the language
 
@@ -58,9 +56,7 @@ The whole frame should fit on one screen.
 
 ### 5. Make it runnable in one command
 
-Add a script to the project's existing task runner (`package.json` scripts, `Makefile`, `justfile`, `pyproject.toml`). The user should run `pnpm run <prototype-name>` or equivalent — never need to remember a path.
-
-If the host project has no task runner, just put the command at the top of the prototype's README.
+Keep it in its directory under `.ai-workflow/prototypes/` and put the one command that runs it, with the project's own runtime, at the top of its main file and in the hand-over. Leave the project's task runner alone: the tree stays clean for the build.
 
 ### 6. Hand it over
 
@@ -68,7 +64,7 @@ Give the user the run command. They'll drive it themselves; the interesting mome
 
 ### 7. Capture the answer
 
-Once the prototype has answered its question, write the answer down the way "Capture the answer" in the [SKILL](../SKILL.md) describes. The logic-specific mapping: the validated reducer / machine / function set lifts into the real module — that is the decision, absorbed — and the TUI shell around it stays under `.ai-workflow/prototypes/`.
+Once the prototype has answered its question, write the answer down the way "Capture the answer" in the [SKILL](../SKILL.md) describes. The logic-specific mapping: the plan links the prototype, a phase lifts the validated reducer / machine / function set into the real module — that is the decision, absorbed — and the TUI shell stays under `.ai-workflow/prototypes/`.
 
 ## Anti-patterns
 

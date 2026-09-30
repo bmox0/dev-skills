@@ -8,9 +8,6 @@
 
 ## Size
 
-Both caps are enforced by the `git-guard` hook. A message over either one is
-refused, not warned about.
-
 - Subject ≤ 72 characters, imperative, no trailing period.
 - Default to no body. Write one only if the subject leaves a real question open.
 - When you write one: ≤ 300 characters, wrapped at 72 columns — about two short
@@ -77,8 +74,7 @@ streamlined, powerful, elegant.
 
 ## Good / bad
 
-Too long, and most of it is the diff read aloud — 463 characters, refused by the
-hook:
+Too long, and most of it is the diff read aloud — 463 characters:
 
 ```text
 fix(auth): resolve token expiration edge case

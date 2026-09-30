@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline 4.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<style>
+  :root { color-scheme: dark; --ink: #dee2e6; --muted: #adb5bd; --soft: #ced4da; --bg: #1a1b1e; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font-family: 'Architects Daughter', 'Comic Sans MS', cursive; overflow-x: hidden; }
+  #wrap { position: relative; margin: 12px; }
+  #stage { position: absolute; left: 0; top: 0; width: 2000px; height: 1780px; transform-origin: 0 0; background: var(--bg); }
+  #stage svg { position: absolute; left: 0; top: 0; }
+  .t { position: absolute; box-sizing: border-box; line-height: 1.28; }
+  .title { font-size: 60px; }
+  .subtitle { font-size: 21px; color: var(--muted); }
+  .sec { font-size: 19px; color: var(--soft); letter-spacing: .06em; white-space: nowrap; }
+  .note { font-size: 15px; color: var(--muted); }
+  .lbl { font-size: 15px; }
+  .right { text-align: right; }
+  .red { color: #ff6b6b; }
+  .teal { color: #3bc9db; }
+  .purple { color: #9775fa; }
+  .green { color: #51cf66; }
+  .orange { color: #ff922b; }
+  .pink { color: #f06595; }
+  .blue { color: #4dabf7; }
+  .row { font-size: 19px; }
+  .bar { display: flex; align-items: center; justify-content: center; font-size: 14px; white-space: nowrap; overflow: hidden; }
+  .card h3 { margin: 0 0 10px; font-weight: normal; font-size: 22px; }
+  .card .k { color: var(--muted); font-size: 14px; letter-spacing: .05em; margin: 9px 0 2px; }
+  .card p { margin: 0 0 4px; font-size: 15.5px; }
+  .card ul { margin: 2px 0 4px; padding-left: 18px; font-size: 15.5px; }
+  .card li { margin: 2px 0; }
+  .node { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 15px; }
+  .node b { font-weight: normal; font-size: 18px; }
+  .tag { font-size: 13px; color: var(--muted); }
+  .leg { display: flex; gap: 26px; flex-wrap: wrap; font-size: 16px; align-items: center; }
+  .leg span { display: inline-flex; gap: 8px; align-items: center; }
+  .sw { display: inline-block; width: 18px; height: 18px; border: 2.5px solid; border-radius: 5px; }
+  #bar { position: fixed; top: 10px; right: 14px; z-index: 10; display: flex; gap: 10px; }
+  #bar a, #bar button { font: inherit; font-size: 16px; color: var(--ink); background: var(--bg); border: 2px solid var(--ink); border-radius: 10px; padding: 5px 14px; cursor: pointer; text-decoration: none; }
+  #bar button:disabled { opacity: .5; cursor: progress; }
+</style>
+</head>
+<body>
+<div id="bar"><a href="pipeline-3.0.html">← 3.0</a><button id="png">Download PNG</button></div>
+<div id="wrap"><div id="stage"><svg id="sk" width="2000" height="1780"></svg></div></div>
+<script>
+const W = 2000, H = 1780;
+const C = {
+  blue: ['#4dabf7', '#1c2b3a'], green: ['#51cf66', '#1b2e22'], orange: ['#ff922b', '#33261a'],
+  purple: ['#9775fa', '#262040'], teal: ['#3bc9db', '#16303a'], pink: ['#f06595', '#361d2a'],
+  red: ['#ff6b6b', '#3a1f22'], grey: ['#737b83', '#232529'], dark: ['#dee2e6', '#2e3238'],
+};
+const stage = document.getElementById('stage');
+const svg = document.getElementById('sk');
+const rc = window.rough ? rough.svg(svg) : null;
+let seed = 23;
+const DASH = [6, 5];
+
+function el(tag, attrs) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) if (attrs[k] !== undefined && attrs[k] !== '') e.setAttribute(k, attrs[k]);
+  return e;
+}
+function rrPath(x, y, w, h, r) {
+  return `M${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} L${x + r},${y + h} Q${x},${y + h} ${x},${y + h - r} L${x},${y + r} Q${x},${y} ${x + r},${y} Z`;
+}
+function shape(d, o) {
+  if (rc) svg.appendChild(rc.path(d, { stroke: o.stroke, strokeWidth: o.sw || 2, roughness: o.rough ?? 1.1, bowing: 1, seed: seed++, fill: o.fill, fillStyle: 'solid', strokeLineDash: o.dash }));
+  else svg.appendChild(el('path', { d, stroke: o.stroke, 'stroke-width': o.sw || 2, fill: o.fill || 'none', 'stroke-dasharray': o.dash ? o.dash.join(' ') : '' }));
+}
+function rect(x, y, w, h, col, o = {}) {
+  const [s, f] = C[col];
+  shape(rrPath(x, y, w, h, o.r ?? 14), { stroke: o.stroke || s, fill: o.nofill ? undefined : (o.fill || f), dash: o.dash, sw: o.sw, rough: o.rough });
+}
+function text(x, y, html, cls, w, h) {
+  const d = document.createElement('div');
+  d.className = 't ' + (cls || '');
+  d.style.left = x + 'px'; d.style.top = y + 'px';
+  if (w) d.style.width = w + 'px';
+  if (h) d.style.height = h + 'px';
+  d.innerHTML = html;
+  stage.appendChild(d);
+  return d;
+}
+function line(pts, color = '#dee2e6', o = {}) {
+  if (rc) svg.appendChild(rc.linearPath(pts, { stroke: color, strokeWidth: o.sw || 2.2, roughness: 0.7, seed: seed++, strokeLineDash: o.dash }));
+  else svg.appendChild(el('polyline', { points: pts.map(p => p.join(',')).join(' '), stroke: color, 'stroke-width': 2, fill: 'none' }));
+  if (o.head) {
+    const a = pts[pts.length - 2], b = pts[pts.length - 1], ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    for (const s of [-1, 1]) {
+      const t = ang + Math.PI - s * 0.42, p = [b[0] + 14 * Math.cos(t), b[1] + 14 * Math.sin(t)];
+      if (rc) svg.appendChild(rc.line(b[0], b[1], p[0], p[1], { stroke: color, strokeWidth: 2.2, roughness: 0.5, seed: seed++ }));
+    }
+  }
+}
+const q = s => String(s).replace(/\?/g, '<span class="red">?</span>');
+function bar(a, b, y, col, label, o = {}) {
+  rect(a, y, b - a, o.h || 30, col, { r: 6, sw: 1.8, dash: o.dash, fill: o.fill });
+  if (label) text(a + 4, y, q(label), 'bar', b - a - 8, o.h || 30);
+}
+
+/* ---------- header ---------- */
+text(20, 6, 'The pipeline, from first principles', 'title');
+text(24, 86, 'dev-skills 4.0 · 30 Sept 2026 · entry → prototype → plan → build → E2E gate → human gate → finish', 'subtitle');
+text(24, 124, `<div class="leg">
+  <span><i class="sw" style="border-color:#dee2e6;background:#2e3238"></i>you</span>
+  <span><i class="sw" style="border-color:#9775fa;background:#262040"></i>the orchestrator — the model you started with; never edits code</span>
+  <span><i class="sw" style="border-color:#ff922b;background:#33261a"></i>implementers — Sonnet, a clean context each</span>
+  <span><i class="sw" style="border-color:#3bc9db;background:#16303a"></i>workers — facts, prototypes, review, e2e</span>
+  <span><i class="sw" style="border-color:#51cf66;background:#1b2e22"></i>artifacts</span>
+  <span><i class="sw" style="border-color:#ff6b6b;border-style:dashed;background:transparent"></i>it stops for you</span></div>`, '', 1960);
+
+/* ---------- the lanes ---------- */
+const T0 = 196;
+text(14, T0, 'ONE PLAN, ON A TIME AXIS &nbsp;<span class="note">— lengths are schematic</span>', 'sec');
+const P = { y: T0 + 64 };
+const phases = [
+  ['1 · entry', 230, 470], ['2 · prototype', 470, 600, true], ['3 · plan', 600, 760], ['4 · build — phases by the graph', 760, 1150],
+  ['5 · E2E gate', 1150, 1480], ['6 · human gate', 1480, 1760], ['7 · finish', 1760, 1960],
+];
+for (const [n, a, b, dashed] of phases) {
+  rect(a + 2, P.y, b - a - 4, 38, 'grey', { fill: '#2a2d32', r: 8, sw: 1.8, dash: dashed ? DASH : undefined });
+  text(a + 4, P.y, n, 'bar row', b - a - 8, 38);
+}
+const L = { you: P.y + 54, orch: P.y + 102, impl: P.y + 150, work: P.y + 260, art: P.y + 334 };
+text(20, L.you + 2, 'you', 'row');
+text(20, L.orch + 2, 'orchestrator', 'row purple');
+text(20, L.impl + 38, 'implementers', 'row orange');
+text(20, L.work + 20, 'workers', 'row teal');
+text(20, L.art + 2, 'artifacts', 'row green');
+
+const stops = [
+  [470, 'we understand each other', true, 230], [760, 'your “go” on the plan', false, 200],
+  [1622, '✓ code', true, 110], [1760, '✓ e2e → passed', false, 170],
+];
+for (const [x, label, left, w] of stops) {
+  line([[x, P.y - 6], [x, L.art + 34]], '#ff6b6b', { dash: [8, 7], sw: 1.8 });
+  text(left ? x - w - 6 : x + 6, P.y - 30, label, 'lbl red' + (left ? ' right' : ''), w);
+}
+line([[1000, P.y - 6], [1000, L.art + 34]], '#9775fa', { dash: [3, 7], sw: 1.4 });
+text(1006, P.y - 30, 'a question → the orchestrator; you only for a product call', 'lbl purple', 420);
+
+bar(232, 466, L.you, 'dark', 'answer · decide');
+bar(474, 596, L.you, 'dark', 'yes or no', { dash: DASH });
+bar(764, 820, L.you, 'dark', 'go');
+bar(1484, 1618, L.you, 'dark', 'read the diff');
+bar(1626, 1756, L.you, 'dark', 'the use cases');
+bar(1764, 1880, L.you, 'dark', 'type finish');
+bar(1886, 1956, L.you, 'dark', 'retro?', { dash: DASH });
+
+bar(232, 466, L.orch, 'purple', 'talks · decides · conclusions');
+bar(474, 596, L.orch, 'purple', 'offers one');
+bar(604, 756, L.orch, 'purple', 'writes the plan');
+bar(764, 1146, L.orch, 'purple', 'runs the graph · registry · messages', { dash: [7, 6], fill: '#211c33' });
+bar(1154, 1476, L.orch, 'purple', 'join · one list of findings', { dash: [7, 6], fill: '#211c33' });
+bar(1484, 1756, L.orch, 'purple', 'the gate page');
+bar(1764, 1956, L.orch, 'purple', 'asks how to end');
+
+bar(770, 950, L.impl, 'orange', 'A · model · level 1');
+bar(770, 1060, L.impl + 36, 'orange', 'B · API · parallel, other files');
+bar(954, 1146, L.impl, 'orange', 'C · UI · waits for A');
+bar(1266, 1406, L.impl + 72, 'orange', 'new implementer');
+
+bar(290, 390, L.work, 'teal', 'facts');
+bar(474, 596, L.work, 'teal', 'draws it', { dash: DASH });
+bar(1154, 1226, L.work, 'teal', 'checks');
+bar(1230, 1296, L.work, 'teal', 'review');
+bar(1230, 1296, L.work + 36, 'teal', 'e2e');
+bar(1410, 1476, L.work, 'teal', 're-check');
+
+bar(232, 466, L.art, 'green', 'in the session', { dash: DASH });
+bar(474, 596, L.art, 'green', 'prototype file', { dash: DASH });
+bar(604, 756, L.art, 'green', 'plan · one screen');
+bar(764, 1476, L.art, 'green', 'the plan’s branch · a commit per step · statuses in the plan');
+bar(1484, 1756, L.art, 'green', 'branch vs base · the gate page');
+bar(1764, 1956, L.art, 'green', 'MR/local · squash/no-ff');
+
+line([[230, L.art + 44], [1975, L.art + 44]], '#dee2e6', { sw: 2.2, head: true });
+text(232, L.art + 54, 'a small task: the session that discussed it orchestrates; bigger: a new session from the plan file · an epic is several plans, only on your word · no tracker unless you ask', 'note', 1740);
+
+/* ---------- three cards ---------- */
+const cy = 700;
+rect(14, cy, 640, 540, 'orange', { fill: '#1f1c17', sw: 1.8, r: 16 });
+text(36, cy + 14, `<div class="card"><h3 class="orange">The plan — always a file, one screen</h3>
+  <div class="k">RESULT</div><p>what you can do when it is done — the feature, finished</p>
+  <div class="k">APPROACH</div><p>how it is solved and how the parts fit; only the decisions the implementer cannot make alone, one reason each</p>
+  <div class="k">OUT OF SCOPE</div><p>a few lines</p>
+  <div class="k">PHASES — 2 to 5 tasks for a capable engineer</div>
+  <ul><li>what to build and why · what becomes true</li><li>its <b>territory</b>: what it changes · what it waits for</li><li>a status: waiting, in progress, done</li></ul>
+  <div class="k">CHECKS</div><p>level-1 commands per phase; the full commands, the review, how e2e drives the system</p>
+  <div class="k">DONE</div><p>the use cases: do this → see that</p>
+  <div class="k">AND</div><p>a link to the prototype · no file lists beyond territories, no code, no mechanisms</p></div>`, '', 600);
+
+rect(680, cy, 640, 540, 'teal', { fill: '#16222a', sw: 1.8, r: 16 });
+text(702, cy + 14, `<div class="card"><h3 class="teal">Three levels of checks</h3>
+  <div class="k">1 · INSIDE A PHASE (4) — the fastest</div>
+  <ul><li>TDD, linters, typechecks, the project’s own scripts, as the plan’s Checks says</li><li>while a wave runs: only its own territory</li><li>its own findings: it fixes them itself</li><li>a plan-vs-code conflict: it rules, carries on, records the ruling</li></ul>
+  <div class="k">2 · THE E2E GATE (5) — the main one</div>
+  <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases</li><li>one list → one new implementer → re-check only what it touched</li><li>one pass, never “until clean”</li></ul>
+  <div class="k">3 · THE HUMAN GATE (6) — it approves</div>
+  <ul><li>nothing relies on you catching anything</li><li>only checked and tested work reaches it</li></ul></div>`, '', 600);
+
+rect(1346, cy, 640, 540, 'pink', { fill: '#231a20', sw: 1.8, r: 16 });
+text(1368, cy + 14, `<div class="card"><h3 class="pink">The human gate — one page</h3>
+  <div class="k">CODE · approval 1</div>
+  <ul><li>the plan’s branch against its base, in git or the editor; no generated file</li><li>a walkthrough, 5–10 lines: what changed, where, why</li><li>the rulings the implementers made alone, with their cost if wrong — read first</li></ul>
+  <div class="k">E2E · approval 2</div>
+  <ul><li>the Done use cases: do this → see that</li><li>beside each, the machine’s result: passed, a screenshot, the command output</li></ul>
+  <div class="k">THEN</div>
+  <ul><li>a note about the product → a new round: new implementer, stages 4–5, back here</li><li>approved → marked passed, waiting for finish</li></ul>
+  <div class="k">7 · FINISH — you type it</div>
+  <ul><li>it asks: MR or local? squash or --no-ff?</li><li>the message comes from Result; no push without your word; a retro in one line</li></ul></div>`, '', 600);
+
+/* ---------- the registry ---------- */
+const gy = 1270;
+text(14, gy, 'THE REGISTRY IS THE PLAN’S GRAPH &nbsp;<span class="note">— kept by the orchestrator; messages go through it</span>', 'sec');
+function node(x, y, w, h, col, title, sub, tag) {
+  rect(x, y, w, h, col, { r: 12, sw: 2 });
+  text(x, y, `<b>${title}</b><span class="tag">${sub}</span>${tag ? `<span class="tag">${tag}</span>` : ''}`, 'node', w, h);
+}
+node(40, gy + 50, 250, 96, 'orange', 'A · model', 'territory: src/model/', 'done');
+node(40, gy + 170, 250, 96, 'orange', 'B · API', 'territory: server/api/', 'in progress');
+node(390, gy + 50, 250, 96, 'orange', 'C · UI', 'territory: src/ui/', 'waiting for A');
+node(740, gy + 110, 190, 96, 'teal', 'quiet point', 'full project checks', '');
+node(1010, gy + 110, 190, 96, 'teal', 'E2E gate', 'review ∥ e2e', '');
+line([[290, gy + 98], [388, gy + 98]], '#ff922b', { head: true });
+line([[640, gy + 98], [738, gy + 150]], '#dee2e6', { head: true });
+line([[290, gy + 218], [738, gy + 172]], '#dee2e6', { head: true });
+line([[930, gy + 158], [1008, gy + 158]], '#dee2e6', { head: true });
+text(40, gy + 290, 'A and B run at the same time: their territories do not overlap. C waits for A. All three work in one tree, on the plan’s branch.<br>An implementer that needs a file outside its territory, or changed an interface a later phase uses, writes to the orchestrator.', 'note', 1180);
+
+/* ---------- always, and kinds of work ---------- */
+rect(1250, gy + 30, 736, 206, 'grey', { fill: '#232529', sw: 1.6, r: 16, rough: 0.6 });
+text(1272, gy + 44, `<div class="card"><h3>Always</h3><ul>
+  <li>the implementer is Sonnet in a clean context; the orchestrator never edits code</li>
+  <li>a prototype, an epic, how to finish, a retro: your call</li>
+  <li>every plan ends in a human gate; one branch per plan</li>
+  <li>the plugin ships no hooks or scripts; the project’s own tools do level 1</li></ul></div>`, '', 700);
+rect(1250, gy + 256, 736, 206, 'blue', { fill: '#1a2330', sw: 1.6, r: 16, rough: 0.6 });
+text(1272, gy + 270, `<div class="card"><h3 class="blue">Kinds of work</h3><ul>
+  <li>a feature: as drawn above</li>
+  <li>a bug: reproduction and its cause in entry; the red test is phase 1</li>
+  <li>a refactor, an improvement with tests: phase 1 pins today’s behaviour</li>
+  <li>no code change: no pipeline, just talk</li></ul></div>`, '', 700);
+
+/* ---------- fit and export ---------- */
+const wrap = document.getElementById('wrap');
+function fit() {
+  const s = Math.min(1, (window.innerWidth - 24) / W);
+  stage.style.transform = `scale(${s})`;
+  wrap.style.height = Math.ceil(H * s) + 'px';
+}
+window.addEventListener('resize', fit);
+fit();
+async function embedFontCSS() {
+  const css = await (await fetch('https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap')).text();
+  let out = css;
+  for (const [, u] of css.matchAll(/url\((https:[^)]+)\)/g)) {
+    const blob = await (await fetch(u)).blob();
+    const data = await new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(blob); });
+    out = out.split(u).join(data);
+  }
+  return out;
+}
+document.getElementById('png').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.textContent = 'Rendering…';
+  try {
+    await document.fonts.ready;
+    const fontEmbedCSS = await embedFontCSS();
+    const url = await htmlToImage.toPng(stage, { fontEmbedCSS, width: W, height: H, pixelRatio: 2, backgroundColor: '#1a1b1e', style: { transform: 'none', left: '0', top: '0' } });
+    const a = document.createElement('a');
+    a.download = 'pipeline-architecture.png'; a.href = url; a.click();
+  } catch (err) {
+    alert('PNG export failed: ' + (err && err.message ? err.message : err));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Download PNG';
+  }
+});
+</script>
+</body>
+</html>

@@ -56,8 +56,8 @@ instead of skipping it.
 - **Present the design in sections,** each scaled to its complexity, and ask
   after each whether it still looks right.
 - **Cover** the shape of the thing, how the pieces talk, what happens when it
-  fails, and how it will be checked: the scenarios someone will drive, and what
-  must look right.
+  fails, and how it will be checked: the use cases someone will drive (do this
+  → see that), and what must look right.
 - **Stay active.** The failure is passivity: forty recommended answers nodded
   through, and a design the model wrote. Push back on an answer that contradicts
   an earlier one.
@@ -66,8 +66,8 @@ instead of skipping it.
 
 ## Designing so it can be built and checked
 
-- Units with one clear purpose each, talking through well-defined interfaces,
-  understandable and testable on their own. If you cannot say what a unit does
+- Parts with one clear purpose each, talking through well-defined interfaces,
+  understandable and testable on their own. If you cannot say what a part does
   without describing its internals, the boundary is in the wrong place.
 - In an existing codebase, follow the patterns already there. Where existing
   code gets in the way of this work, include the targeted improvement. Propose

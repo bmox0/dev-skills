@@ -5,7 +5,7 @@ description: Use when a change has to be seen working in the real thing — open
 
 # Browser Test
 
-The web tester's tool: `dev-skills:verify` drives its scenarios through it.
+The web e2e tool: `dev-skills:verify` drives a plan's use cases through it.
 
 Verification runs against one long-lived tab, driven by `tab.mjs`. The browser runs detached on its own profile with a CDP port; every command is a separate node process that connects, does one thing, and exits without closing the browser. The tab, its session, `localStorage` and any live connection survive between commands and between sessions.
 

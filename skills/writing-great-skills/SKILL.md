@@ -60,7 +60,7 @@ Where the ladder decides _how far down_ a piece sits, **co-location** decides _w
 ### Referencing another skill
 
 - Write it `dev-skills:<name>` (for example, `dev-skills:plan`), never a bare name. That form is what `scripts/check` can check; a bare name is indistinguishable from prose.
-- Keep a skill's root to `SKILL.md` alone. What the agent reads goes in `references/`, what it runs goes in `scripts/` — each a **context pointer** target, not a place for `SKILL.md` itself to sprawl into.
+- What the agent reads goes in `references/` — a **context pointer** target, not a place for `SKILL.md` itself to sprawl into. The plugin ships no scripts; a skill's own tool, if it has one, sits beside its `SKILL.md`.
 
 ## When to split
 

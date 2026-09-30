@@ -2,13 +2,11 @@
 
 **Build.** none
 **Typecheck.** none
-**Lint.** none
+**Lint.** `scripts/check`
 **Tests.** `scripts/test`
 **Single test file.** `scripts/test <path>`
 **Dev server.** none
 **E2E.** none
-**Runtime.** a CLI invocation — every script under `skills/*/scripts/` is run
-directly from a shell, never through a browser or a server
-
-**bootstrap.** none — the tree runs as checked out
-**link.** `.ai-workflow` from the main checkout
+**Runtime.** a CLI invocation — `scripts/check`, `scripts/test`, `scripts/usage`
+and `skills/browser-test/tab.mjs` are run directly from a shell, never through
+a browser or a server

@@ -1,157 +1,97 @@
 ---
 name: plan
-description: Write the brief a fresh context builds a unit from — goal, decisions, shape, steps, acceptance. Use when the work will be built outside the context that discussed it, or across sessions.
+description: Write the plan a change is built from — one screen, phases with territories and a graph, how it is checked, what done looks like. Use after a grill, a discussion or a bug's accepted cause, before any code is written.
 ---
 
-# Writing a brief
+# Plan
 
-A brief carries one unit to a builder who was not in the conversation: a
-subagent, a tab, a new session, you tomorrow. Write what that builder cannot
-recover from the code and the project's rules, and nothing it can.
+This session is the orchestrator: it writes the plan and never edits code.
 
-Reach for it when the work will leave this context. Work that stays here needs
-no brief: the todo and the commits carry it.
+A plan is always a file, one screen, about 500 words. It holds only what an
+implementer cannot decide alone: the product decisions with a reason each, the
+interfaces where two phases meet, what is out, how it is checked. No file lists
+beyond territories, no code, no mechanisms: implementers explore the code
+themselves.
+
+A plan is a finished thing: its Result is the feature, done, nothing deferred.
+Work that does not fit one plan becomes an epic only on the user's word:
+propose it with the reason, and the user decides (`dev-skills:epic`).
 
 ## Before writing
 
-- **Settle the decisions first.** A brief records decisions; it does not make
-  them. If "done" is still unclear, `dev-skills:grill` first.
-- **Under an epic,** read it. Its Decisions bind this unit and are not repeated.
-- **Read the code the unit touches,** or send a Sonnet scout to read it and
-  return paths, abstractions and seams. A brief written from memory names paths
-  that do not exist.
-- **A bug found while planning** becomes an early step with its failing test,
-  not a note.
+- The decisions are settled: by a grill, a discussion, or a bug's accepted
+  cause.
+- After a grill or a discussion, a prototype was offered. If not, offer one in a
+  line: "A prototype? An HTML file, inside the app with real data, or code for
+  the logic?" (`dev-skills:prototype`). The user may decline.
+- A worker reads the code the plan touches, a Sonnet subagent that returns
+  paths and seams, so the territories are real.
+- Checks takes the project's commands from its `CLAUDE.md`:
+  [environment-contract.md](references/environment-contract.md).
 
-## Where it goes
+## The file
 
-`.ai-workflow/plans/<unit>.md`, where `<unit>` is the branch slug the unit will
-be built on (`feat/theme-toggle` → `theme-toggle`). The builder's `preflight`
-adds `.ai-workflow` to git's local exclude when nothing ignores it yet.
-
-## The seven sections
+`.ai-workflow/plans/YYYY-MM-DD-<slug>.md`, where `<slug>` is the slug of the
+branch the plan will be built on. If `git check-ignore -q .ai-workflow` fails,
+add `.ai-workflow` to `$(git rev-parse --git-path info/exclude)`. A worked
+example: [example.md](references/example.md).
 
 ```markdown
-# <unit title>
+# Plan: <what the user gets, in a few words>
 
-## Goal
-<One paragraph: what becomes true, for whom, and how anyone can tell.>
+Status: <draft | approved | building | at the human gate | passed | a merge-request link | landed> · branch `<branch>` · base `<sha>`
+Prototype: <path, the chosen variant> | none
 
-## Decisions
-- <decision> — <the reason, one clause>
-<or, under an epic, a single line instead of this section:>
-Epic: .ai-workflow/epics/<epic>.md
+## Result
+
+<Two or three lines: what the user can do when this plan is done.>
+
+## Approach
+
+<A short paragraph: how it is solved and how the parts fit together.>
+
+- <A decision the implementer cannot make alone> — <why, in one line>
 
 ## Out of scope
-- <what a reader would reasonably assume is included and is not>
 
-## Shape
-- **Paths:** <the files and directories this unit touches>
-- **Build on:** <existing abstractions, helpers, patterns to use, with paths>
-- **Do not introduce:** <new layers, dependencies, patterns this unit must not add>
-- **Interfaces:** <verbatim, only where two contexts meet>
+- <…>
 
-## Steps
-1. **<what becomes true>** — changes `<paths>`; how: <approach, and the test
-   that goes red first>.
-2. ...
+## Phases
 
-## Acceptance
-1. <starting state> → <action> → <what is seen>
-...
-Looks: <screen or state> — <compared with what: prototype path or description>
+### <n>. <task> — `<waiting | in progress | done>`
 
-Run: <filled by the builder: base SHA and branch>
+<What to build and why; what becomes true when it is done.>
+Territory: <the directories or files this phase changes>
+Waits for: <phases, and the interface it uses from them> | nothing
+
+## Checks
+
+- Every phase: <the project's commands>, on its own territory while other phases run.
+- After all phases: <the full commands>; a review against the project's rules;
+  e2e through <browser | simulator | curl | CLI>, <where the system runs>.
+
+## Done
+
+1. <do this> → <see that>
 ```
 
-The builder appends `## Corrections` below Run as it works. Nothing else is
-added to a brief after it is handed over.
+## Phases and the graph
 
-### Goal
-
-What the user or the system can do after this unit that it could not before,
-in terms someone can check. Not the implementation.
-
-### Decisions or Epic
-
-Every decision the builder must not reopen, each with its reason in a clause.
-Under an epic, one `Epic:` line replaces the section: the epic's Decisions are
-the unit's decisions, and a decision that belongs only to this unit is added to
-the epic, not here.
-
-### Out of scope
-
-The things a builder would reasonably do next and must not: the neighbouring
-refactor, the second screen, the migration of old data.
-
-### Shape
-
-Where the work sits in the code as it is. Name real paths and real symbols.
-Name what to reuse, so the builder does not write a second one. Name what not to
-introduce, so it does not add a layer the project does not have.
-
-**Interfaces are written verbatim only where two contexts meet:** a function
-another unit will call, a message format two sides of a parallel group
-exchange, a file format a later unit reads. Everywhere else, describe the
-behaviour and leave the code to the builder.
-
-**A refactor** states its frozen surface: the public names, signatures and
-observable behaviour that must not change. Its first step is characterisation:
-tests that pin today's behaviour at that surface, green before anything moves.
-
-### Steps
-
-Each step is one commit and leaves the project green. Write three things:
-
-- **what becomes true**, which is also the commit subject after `step N:`;
-- **what changes**, as paths;
-- **how**, in a sentence or two: the approach, and the test that goes red first
-  at the seam where the behaviour is observable.
-
-Order the steps so each one can be built and checked on its own. Put the risky
-one early.
-
-**A parallel group** is one sentence: the sides, the paths each side owns (they
-do not overlap), and the step that joins them. Anything the two sides exchange
-is an interface, written verbatim under Shape.
-
-### Acceptance
-
-About ten scenarios, each one line: a starting state, an action, what is seen.
-Each is driven on the running system at verify and gets one evidence file,
-`.ai-workflow/verify/<unit>/<n>.md`. Cover the paths a user takes, the edges
-they hit, and the failure they see when something is wrong. A scenario nobody
-can drive (no screen, no command, no request that reaches it) is rewritten
-until someone can, or it moves to a test step.
-
-Then **Looks**: every screen or state whose appearance matters, and what it is
-compared with, a prototype path or a short description. Verify checks these on
-captures: screenshots, and frames for motion.
-
-### Run
-
-One line, written by the builder when it cuts the branch: the base SHA and the
-branch. With the brief, it is how a new builder resumes: `git log BASE..HEAD`
-shows which steps have landed.
-
-## Size
-
-Under an epic, a brief stays under 200 lines. A one-feature brief is well
-under 3,000 words. If it grows past that, the unit is two units, or the brief is
-explaining what the builder could read in the code.
+- 2–5 phases, each a task for a capable engineer. The first one gives
+  something to look at.
+- Phases whose territories overlap never run side by side: one waits for the
+  other. An interface is written out only where two phases meet.
+- A bug: phase 1 starts from the red test that reproduces it. A refactor, or an
+  improvement with tests: phase 1 pins today's behaviour with tests.
+- Under an epic, an `Epic: <path>` line follows Status; the epic's decisions are
+  not repeated.
 
 ## Handing it over
 
-End by putting three lines to the user, and nothing else:
+Show the user the path, the Result and the graph in one line (`1 → 2 ∥ 3`). The
+user's "go" approves the plan and its graph: set Status to `approved`, with
+the branch named; build writes the base when it cuts it.
 
-```text
-Decided alone: <the calls you made without asking, one clause each>
-Out of scope: <the list, short>
-Will be checked: <the acceptance in one sentence, and the looks>
-```
-
-Silence is yes. An answer changes the brief before anyone builds from it. When
-the brief sits under an epic, set its entry to *in progress* in the epic's
-queue.
-
-The build is `dev-skills:implement <brief>`.
+Then offer, in one line, where to build it: here for a small task, or a new
+session started from the plan file for anything bigger. The user picks; the
+build is `dev-skills:build <plan>`.

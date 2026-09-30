@@ -5,16 +5,16 @@
     "url": "https://github.com/bmox0"
   },
   "metadata": {
-    "description": "An engineering workflow for Claude Code. One idea goes in; a reviewed, integrated commit comes out.",
-    "version": "3.0.0"
+    "description": "A development pipeline for Claude Code: the session you started orchestrates, Sonnet implementers build a one-screen plan, the machine checks it, you approve and finish.",
+    "version": "4.0.0"
   },
   "plugins": [
     {
       "name": "dev-skills",
       "source": "./",
-      "description": "Keeps a few things true on every task: work on its own branch, a green commit per step, behaviour driven on the running system before it is called done, a fresh bounded review, and the user asked at four points only. One git hook enforces the rules; grill, plan, epic and bug switch on when a task needs them.",
+      "description": "Seven stages at every size: a grill or a discussion, an offered prototype, a one-screen plan, implementers run by the plan's graph, the E2E gate (review and e2e at once), a human gate that approves, and finish. The session you started orchestrates and never edits code; the plugin ships no hooks and no scripts.",
       "repository": "https://github.com/bmox0/dev-skills",
-      "version": "3.0.0",
+      "version": "4.0.0",
       "license": "MIT",
       "category": "development",
       "keywords": [

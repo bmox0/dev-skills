@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The one command that stands for "the tree is sound": the reference layer,
 # the word budgets and every SKILL.md's frontmatter (scripts/check-links.py),
-# plus both manifests and hooks.json (claude plugin validate). The plugin
+# plus both manifests (claude plugin validate). The plugin
 # half fails on any warning except the one about this repository's own
 # CLAUDE.md, which is its development contract and is meant to stay.
 #

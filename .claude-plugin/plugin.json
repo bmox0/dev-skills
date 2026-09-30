@@ -1,7 +1,7 @@
 {
   "name": "dev-skills",
-  "version": "3.0.0",
-  "description": "An engineering workflow for Claude Code. One idea goes in; a reviewed, integrated commit comes out.",
+  "version": "4.0.0",
+  "description": "A development pipeline for Claude Code: the session you started orchestrates, Sonnet implementers build a one-screen plan, the machine checks it, you approve and finish.",
   "author": {
     "name": "bmox0"
   },

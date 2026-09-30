@@ -1,14 +1,13 @@
 ---
 name: tdd
-description: "Red before green: one failing test at the seam the brief names, then the simplest code that passes. Read by the builder when a step has tests."
+description: "Red before green: one failing test at the seam where the behaviour is observable, then the simplest code that passes. Read by the implementer."
 user-invocable: false
 ---
 
 # Red before green
 
-The brief's step names the seam: the place where the behaviour is observable,
-and the test that goes red first. Write tests there, the way the neighbouring
-tests in the project are written.
+Find the seam: the place where the behaviour is observable. Write tests there,
+the way the neighbouring tests in the project are written.
 
 ## The cycle
 
@@ -17,7 +16,7 @@ tests in the project are written.
    expected, because the behaviour is missing. A test that passes at once is
    testing something that already exists; a test you did not watch fail may not
    test anything.
-2. **Green.** The simplest code that passes. Nothing the step does not need.
+2. **Green.** The simplest code that passes. Nothing the phase does not need.
 3. **Green everywhere.** The test passes, its neighbours still pass, the output
    is clean. Tidy names and duplication only while green.
 

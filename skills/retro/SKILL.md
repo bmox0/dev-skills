@@ -1,21 +1,20 @@
 ---
 name: retro
-description: Propose environment changes after a finished unit — a check, a standards line, a pointer — each paired with what it removes. Offered once per unit, or on demand; applies nothing.
+description: Propose environment changes after a landed plan — a check, a standards line, a pointer — each paired with what it removes. Offered once by finish, or on demand; applies nothing.
 ---
 
 # Retro
 
-Read what the unit cost: the brief and its Corrections, the review lists, the
-evidence files, the commits, and where the session stalled or was corrected by
-the user. Then propose changes to the environment, so the next unit does not pay
-the same cost.
+Read what the plan cost: the plan with its `## Human gate` page, the commits,
+and where the session stalled or was corrected by the user. Then propose
+changes to the environment, so the next plan does not pay the same cost.
 
 ## What a proposal can be
 
-- **A mechanical mistake → a check that fails:** a test, a lint rule, a line in
-  a guard. It stops the mistake without anyone remembering it.
+- **A mechanical mistake → a check that fails:** a test, a lint rule, a check
+  in the project's scripts. It stops the mistake without anyone remembering it.
 - **A judgement call → one standards line** in the project's CLAUDE.md or style
-  skill, where the builder reads it first and the reviewer cites it.
+  skill, where the implementer reads it first and the reviewer cites it.
 - **Missing knowledge → a pointer:** a path, a command, a line in the
   `## Environment` block.
 - **A plugin problem → the same three kinds,** in the plugin.
@@ -35,4 +34,4 @@ A short list, most useful first: what happened, the change, where it goes, and
 what it removes. Nothing is applied. The user picks; applying a pick is ordinary
 work.
 
-Once per unit, never per step, never in a loop.
+Once per plan, never per phase, never in a loop.

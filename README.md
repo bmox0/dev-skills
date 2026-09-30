@@ -1,95 +1,87 @@
 # dev-skills
 
-A Claude Code plugin for building software with an agent. It keeps a few
-things true on every task, whatever its size, and offers a handful of entries
-for when a task needs more than a session and a todo.
+A Claude Code plugin for building software with an agent. The session you
+started orchestrates, Sonnet implementers write the code in clean contexts,
+the machine checks the result, and you approve it and finish it.
 
-What is always true:
+## The pipeline
 
-- **Work happens on its own branch or worktree**, cut before the first edit.
-  The default branch changes only through a merge the user asks for.
-- **Every step is a green commit**, and git is the state: there is no run, no
-  marker and no ledger to keep in sync.
-- **Changed behaviour is driven on the running system** before it is called
-  done, looks included, on screenshots and frames.
-- **A built unit gets a fresh review**, bounded to two fix rounds, never
-  "until clean".
-- **The user is asked at four points and nowhere else**: grill decisions, the
-  three lines under a new brief, a question the brief and epic do not answer,
-  and the merge.
-- **The plugin stays small**: every skill has a word budget that
-  `scripts/check` enforces.
+Seven stages, the same at every size. For a small task they get thinner; none
+is skipped, and every plan ends in a human gate.
 
-## How work goes
+1. **Entry.** A grill when it is unclear what is being built, a discussion when
+   it is lighter. Workers bring facts from the code; you make the decisions.
+   A bug adds its reproduction and its cause.
+2. **Prototype.** Offered after the entry; you pick the shape or decline: an
+   HTML file, inside the app with real data, or code. A worker draws it.
+3. **Plan.** Always a file, one screen: Result, Approach, Out of scope, Phases,
+   Checks, Done, and the prototype's link. Each phase names its territory and
+   what it waits for; together they form the graph. Your "go" approves it.
+4. **Build.** One branch per plan, one working tree. Every phase whose
+   dependencies are met starts at once, as an implementer that writes only
+   inside its territory and runs the project's checks on it.
+5. **The E2E gate.** The full checks, then at once a fresh review against the
+   project's rules and e2e over the plan's Done use cases. Their findings make
+   one list for one new implementer, then a targeted re-check. One pass.
+6. **The human gate.** One page: the code (the branch against its base, a
+   walkthrough, the rulings the implementers made alone) and the e2e (the use
+   cases with the machine's results), written into the plan. It approves; it does
+   not test.
+7. **Finish.** You type it. It asks: a merge request or local, squash or
+   `--no-ff`.
 
-**A small task.** A branch, a todo, edits under the project's rules, checks
-green, a commit. If behaviour changed, drive it and say what was seen. Merge
-on the user's word.
+The drawing: [docs/pipeline-4.0.html](docs/pipeline-4.0.html).
 
-**A one-session feature.** [`grill`](skills/grill/SKILL.md) when "done" is
-not yet clear, a [`prototype`](skills/prototype/SKILL.md) when the question is
-visual, then build it here on `feat/<topic>` with a commit per step.
-[`review`](skills/review/SKILL.md) the range if it has logic,
-[`verify`](skills/verify/SKILL.md) the scenarios the grill settled, and
-[`finish`](skills/finish/SKILL.md) on the user's word.
+## What you type
 
-**Work that leaves this context.** [`plan`](skills/plan/SKILL.md) writes a
-brief; [`implement <brief>`](skills/implement/SKILL.md) builds it in another
-seat, then review and verify follow. More than one unit goes under an
-[`epic`](skills/epic/SKILL.md), whose queue says what blocks what; a project
-can mirror it to its tracker.
+| You type | It does |
+|---|---|
+| [`grill`](skills/grill/SKILL.md), or just talk | reach a shared understanding; then a prototype is offered, then the plan |
+| [`bug`](skills/bug/SKILL.md) | a worker reproduces it and brings the cause; the red test becomes phase 1 |
+| [`prototype`](skills/prototype/SKILL.md) | a throwaway answer to a design question, drawn by a worker |
+| [`epic`](skills/epic/SKILL.md) | several plans in order, only when you say so |
+| [`plan`](skills/plan/SKILL.md) | the one-screen plan and its graph |
+| [`build <plan>`](skills/build/SKILL.md) | the branch, the implementers, the E2E gate, the human gate |
+| [`finish`](skills/finish/SKILL.md) | land it: a merge request or local, squash or `--no-ff` |
 
-**A bug.** [`bug`](skills/bug/SKILL.md): one command that goes red, the root
-cause named, the fix and its pinning test in the same context, driven, and
-committed as `fix(...)`. A brief only when the cause is a design flaw.
+A small task is built by the session that discussed it; anything bigger by a
+new session started from the plan file. `finish` is the only skill the model
+cannot start.
 
-## The acts
+## Who does what
 
-Each act is a command of its own, usable on any branch or range. The seat, the
-session, a subagent, a tab or the user, is whoever holds the tools.
+- **You** decide, approve, and type `finish`. A prototype, an epic, where to
+  build, how to finish and a retro are your call.
+- **The orchestrator** is the model you started with, from the first pipeline
+  skill you enter. It talks, writes the plan, runs the graph, relays messages
+  and sorts findings. It never edits code.
+- **Implementers** are the [`implementer`](agents/implementer.md) agent: Sonnet,
+  a clean context each, handed the whole plan, its phase, and what earlier
+  phases reported. When the plan and the code disagree, it rules, carries on,
+  and records the ruling with its cost if wrong.
+- **Workers** are subagents for side jobs: facts from the code, a prototype,
+  e2e, and the review, which runs on the strongest model as the
+  [`reviewer`](agents/reviewer.md) agent.
 
-| Act | Does | Returns |
-|---|---|---|
-| [`implement`](skills/implement/SKILL.md) | builds a brief's steps: one commit per step, three stop triggers, park and continue | commits and an inline report |
-| [`review`](skills/review/SKILL.md) | reads a range from a fresh, read-only context | Defects, Conventions, Observations |
-| [`verify`](skills/verify/SKILL.md) | drives the Acceptance on the running system | one evidence file per scenario |
-| [`finish`](skills/finish/SKILL.md) | squashes by meaning and merges `--no-ff` locally | a merge summary |
-
-`finish` is the only skill the model cannot start: the user types `/finish`,
-or an orchestrator does under a delegation that names merging.
-
-## What is always on
-
-- **`git-guard`**, one stateless hook on every Bash call. It refuses blanket
-  staging and `commit -a`, a subject that is not Conventional Commits or runs
-  past 72 characters, a body past 300, attribution trailers, `reset --hard`,
-  `clean -f`, `checkout .`, `restore .`, `branch -D`, a force push to the
-  default branch, and a commit on the default branch. It reads the command the
-  way the shell does, so text in a heredoc or a quoted string is never taken
-  for a git command, and it fails open.
-- **The session rule**, injected at start by [`bootstrap`](skills/bootstrap/SKILL.md).
-- **Prototypes open themselves**: a file written under `.ai-workflow/prototypes/`
-  opens in the browser (`open`, `xdg-open`, or `DEV_SKILLS_OPEN_CMD`).
+The plugin ships no hooks and no scripts. The pipeline lives in the skills'
+text; the level-1 checks are the project's own tests, linters and typechecks.
 
 ## The project's side
 
-The plugin reads the project's `CLAUDE.md` and style skills as the bar, and
-one block in `CLAUDE.md` for how the project runs:
+The plugin reads the project's `CLAUDE.md` and style skills as the bar for
+review, and one block in `CLAUDE.md` for the commands a plan's Checks names:
 
 ```markdown
 ## Environment
 
 **Tests.** `npm test`
+**Lint.** `npm run lint`
 **Dev server.** `npm run dev`, serves on `http://localhost:5173`
-**bootstrap.** `npm ci`
-**link.** `.env*`
-**Tracker.** Daily
+**Runtime.** a browser
 ```
 
-`bootstrap` and `link` prepare a fresh worktree. `Tracker` names where an
-epic's units are mirrored. A project that commits straight to its default
-branch adds `**main.** direct`. The full format is in
-[environment-contract.md](skills/implement/references/environment-contract.md).
+The full format is in
+[environment-contract.md](skills/plan/references/environment-contract.md).
 
 ## Install
 
@@ -100,30 +92,28 @@ branch adds `**main.** direct`. The full format is in
 
 Then restart the session. The repository carries its own
 [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), so it is a
-marketplace holding exactly one plugin — itself. Installing also brings the
-seat agents `builder` and `reviewer` and the hooks in
-[`hooks/hooks.json`](hooks/hooks.json).
+marketplace holding exactly one plugin, itself. Installing also brings the
+agents `implementer` and `reviewer`.
 
 ## Every skill
 
 | Skill | For |
 |---|---|
-| [`bootstrap`](skills/bootstrap/SKILL.md) | the session rule, injected at start |
-| [`browser-test`](skills/browser-test/SKILL.md) | drive a web app or an Electron build over CDP; the web tester's tool |
-| [`bug`](skills/bug/SKILL.md) | reproduce, find the root cause, fix and pin it |
+| [`browser-test`](skills/browser-test/SKILL.md) | drive a web app or an Electron build over CDP; the web e2e tool |
+| [`bug`](skills/bug/SKILL.md) | reproduce a bug and pin down its cause before the plan |
+| [`build`](skills/build/SKILL.md) | run a plan: the graph, the E2E gate, the human gate |
 | [`commit-work`](skills/commit-work/SKILL.md) | stage by path, split into logical commits, write the message |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | the glossary in `CONTEXT.md`, and an ADR when one is earned |
-| [`epic`](skills/epic/SKILL.md) | the decisions and the queue for more than one unit |
-| [`finish`](skills/finish/SKILL.md) | squash by meaning and merge, typed by the user |
-| [`grill`](skills/grill/SKILL.md) | talk an idea into a shared understanding, ending in a size call |
+| [`epic`](skills/epic/SKILL.md) | shared decisions and the ordered list of plans |
+| [`finish`](skills/finish/SKILL.md) | land a passed plan, typed by the user |
+| [`grill`](skills/grill/SKILL.md) | talk an idea into a shared understanding |
 | [`handoff`](skills/handoff/SKILL.md) | pack this session for a fresh context |
-| [`implement`](skills/implement/SKILL.md) | build a unit from a brief |
-| [`plan`](skills/plan/SKILL.md) | write the brief |
+| [`plan`](skills/plan/SKILL.md) | write the one-screen plan |
 | [`prototype`](skills/prototype/SKILL.md) | answer a design question with throwaway code |
-| [`retro`](skills/retro/SKILL.md) | propose environment changes after a unit, each with what it removes |
-| [`review`](skills/review/SKILL.md) | a fresh, read-only review of a range |
-| [`tdd`](skills/tdd/SKILL.md) | red before green, read by the builder |
-| [`verify`](skills/verify/SKILL.md) | drive the Acceptance, one evidence file per scenario |
+| [`retro`](skills/retro/SKILL.md) | propose environment changes after a plan, each with what it removes |
+| [`review`](skills/review/SKILL.md) | the code half of the E2E gate, or a review of any range |
+| [`tdd`](skills/tdd/SKILL.md) | red before green, read by the implementer |
+| [`verify`](skills/verify/SKILL.md) | the e2e half of the E2E gate: drive the Done use cases |
 | [`writing-great-skills`](skills/writing-great-skills/SKILL.md) | design or audit a skill |
 
 [`references/VOCABULARY.md`](references/VOCABULARY.md) defines the words they
@@ -131,22 +121,21 @@ share.
 
 ## Why it looks like this
 
-Version 3.0 was rebuilt from what had to stay true, after a month of real use
-showed the process costing more than the work. The diagrams:
-[before (2.7)](docs/pipeline-2.7.html), [a proposal that was not
-taken](docs/pipeline-proposal.html), and [the shape that was built
-(3.0)](docs/pipeline-3.0.html).
+Version 4.0 was designed from first principles after 3.0: time is the measure,
+the orchestrator and the models are a fast tool, and a fork the agent could
+take is the user's call. The diagrams: [2.7](docs/pipeline-2.7.html),
+[a proposal that was not taken](docs/pipeline-proposal.html),
+[3.0](docs/pipeline-3.0.html) and [4.0](docs/pipeline-4.0.html).
 
 ## Checking this repository
 
 `scripts/check` asks whether the tree is sound: every link resolves, every
 `dev-skills:` name exists, no retired name comes back, every markdown file is
 within its budget in [`scripts/word-budgets.txt`](scripts/word-budgets.txt),
-and the manifest and every `SKILL.md` frontmatter parse
-(`claude plugin validate`).
+and the manifests and every frontmatter parse (`claude plugin validate`).
 
-`scripts/test` runs the behavioural tests on the scripts and hooks; one file is
-`scripts/test <path>`.
+`scripts/test` runs the behavioural tests on the maintainer scripts and the
+plugin's shape; one file is `scripts/test <path>`.
 
 `scripts/usage` measures sessions from Claude Code's transcripts: wall and
 active hours, human messages, tokens, subagents, per project or per session

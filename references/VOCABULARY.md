@@ -3,59 +3,69 @@
 The words the dev-skills skills use, so that a human and a model reading any of
 them mean the same thing. A plain reference file, not a skill.
 
+## Roles
+
+**Orchestrator.** The model the user started with, from the first pipeline
+skill the user enters. It talks, decides with the user, writes the plan, runs
+the graph, relays messages and sorts findings. It holds conclusions, not raw
+code, and never edits code.
+
+**Implementer.** Sonnet in a clean context, the `implementer` agent. It builds
+one phase, a list of findings, or a note from the human gate.
+
+**Worker.** A subagent for a side job: facts from the code, drawing a
+prototype, review, e2e.
+
 ## The work
 
-**Unit.** Whatever fits one context: a todo done inline, or a brief built by one
-builder. It lands as its own branch. _Avoid:_ phase, segment, ticket.
+**Plan.** The file a change is built from, always written, one screen: Result,
+Approach, Out of scope, Phases, Checks, Done, and the prototype's link. Its
+result is a finished feature; nothing is deferred.
 
-**Brief.** The document a unit is built from when it leaves the context that
-discussed it: `.ai-workflow/plans/<unit>.md`, written by `plan`, seven sections.
-_Avoid:_ plan (for the file), spec, PRD.
+**Phase.** One task in a plan, for one implementer: what to build and why, its
+territory, what it waits for, its status.
 
-**Epic.** The document that holds more than one unit: shared decisions, the
-glossary, and the queue of units with what blocks what.
+**Territory.** The directories or files a phase changes. Its implementer reads
+anywhere and writes only there. Phases whose territories overlap never run side
+by side.
 
-**Run line.** The line after a brief's Acceptance: the base SHA and the branch,
-written by the builder when it cuts the branch. With `git log BASE..HEAD` it is
-how a unit resumes. _Avoid:_ run marker, ledger.
+**Graph.** The phases and what each waits for; every phase whose dependencies
+are met starts at once. The plan file is also the **registry**: each phase
+carries its status, `waiting`, `in progress` or `done`, kept by the
+orchestrator.
 
-**Corrections.** What the builder decided alone while building, appended to the
-brief under `## Corrections`.
+**Ruling.** What an implementer decided alone where the plan and the code
+disagreed: what, why, the cost if wrong. The human gate reads them first.
 
-**Acceptance.** About ten scenarios in a brief, each a starting state, an action
-and what is seen, then the looks list.
+**Checks.** The plan's section naming the project's commands for every phase,
+the full commands after all phases, and how e2e drives the system.
 
-**Evidence.** One file per Acceptance scenario, `.ai-workflow/verify/<unit>/<n>.md`:
-actions, expected, seen, captures, verdict. Written by `verify`.
+**Done.** The plan's use cases, each "do this → see that". The E2E gate drives
+them; the human gate shows them with the machine's results.
 
-## Acts and seats
+**Epic.** Several plans, only on the user's word: their shared decisions and
+the order they go in.
 
-**Act.** A verb with a command of its own, usable on anything: `implement`,
-`review`, `verify`, `finish`. `implement <brief>` runs build, review and verify
-in order; it is not a mode.
+## Checks at three levels
 
-**Seat.** Who performs an act: the session, a subagent, a tab or the human. The
-seat is chosen by who holds the tools, never fixed by the plugin. `builder` and
-`reviewer` ship as agents; the tester is whoever holds the tools; the
-orchestrator is the human, or a tab under the user's own `orchestrate` skill.
+**Level 1.** Inside a phase: TDD, linters, typechecks, the project's scripts,
+on the phase's own territory while other phases run.
 
-**Scout.** A read-only Sonnet subagent that looks up facts and returns paths and
-findings.
+**The E2E gate.** After the last phase: the full checks, then a review and e2e
+over Done at once. Their findings make one list for one new implementer, then a
+targeted re-check. One pass, never "until clean".
+
+**The human gate.** One page, two approvals: the code (the branch against its
+base, a walkthrough, the rulings) and the e2e (the use cases with the machine's
+results). It approves; it does not test. A note about the product opens a new
+**round**. Approved, the plan is `passed` and waits for `finish`.
 
 ## Review
 
 **Defect.** A finding about correctness, behaviour, security, data, an
-unreachable scenario, or a test that cannot fail. It opens a fix round; two
-rounds, then the user. _Avoid:_ blocker.
+unreachable use case, or a test that cannot fail. _Avoid:_ blocker.
 
-**Convention.** A departure from a written project rule, cited. Applied in one
-batch, listed, never reviewed again. _Avoid:_ advisory, nit.
+**Convention.** A departure from a written project rule, cited. Fixed in the
+same pass as the Defects. _Avoid:_ advisory, nit.
 
 **Observation.** True and worth knowing, but not a finding. Never blocks.
-
-## Retired
-
-These named parts of the old pipeline and are gone: Run (as a state with a
-marker), Phase, Moment, Storyboard, Dispatch, Brief-as-script-output, Frozen
-Contract, Write-Set, Ledger, Test Writer, Implementer, Gate A, Gate B, Fact and
-Decision (as a protocol), PLAN_CONFLICT, Segment, Checkpoint, Spec.

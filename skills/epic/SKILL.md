@@ -1,17 +1,17 @@
 ---
 name: epic
-description: Hold a body of work that is more than one unit — the shared decisions, the glossary, and the queue of units with what blocks what. Use when the work splits into several briefs.
+description: Hold work that is more than one plan — the shared decisions and the ordered list of plans. Only when the user asks for an epic.
 ---
 
-# Writing an epic
+# Epic
 
-An epic exists when the work is more than one unit. It holds what the units
-share and the order they go in. One unit needs no epic: its brief carries it.
+An epic exists only on the user's word; by default the work is one plan. It
+holds what the plans share and the order they go in.
 
 Write it to `.ai-workflow/epics/<topic>.md`:
 
 ```markdown
-# <topic>
+# Epic: <topic>
 
 ## Goal
 <what the whole body of work makes possible, in the user's terms>
@@ -19,57 +19,27 @@ Write it to `.ai-workflow/epics/<topic>.md`:
 ## Decisions
 - <decision> — <the reason>
 
-## Glossary
-<terms every unit uses the same way; definitions live in CONTEXT.md when it exists>
-
 ## Out of scope
 - <what a reader would assume is included and is not>
 
 ## Interfaces
-<shapes passed between units, verbatim, written once>
+<shapes passed between plans, written once>
 
-## Queue
-| # | Unit | Blocked by | State |
+## Plans
+| # | Plan | Waits for | Status |
 |---|---|---|---|
-| 1 | Transport and tool registration | — | ready |
-| 2 | First tool over the service layer | 1 | — |
+| 1 | Transport and tool registration | — | landed |
+| 2 | First tool over the service layer | 1 | building |
 | 3 | Call log and access revocation | 1 | — |
 ```
 
-## Decisions
+The decisions bind every plan, and no plan reopens one. A decision that turns
+up while planning one plan and binds another moves here; it is never copied.
 
-They bind every unit, and no brief reopens one. A decision that turns up while
-planning one unit and binds another moves here from the brief, leaving the
-brief's `Epic:` line. Move, never copy: two copies disagree by the third unit.
+Each row is a finished feature, not a step. Its plan is written when it is next
+(`dev-skills:plan`), with `Epic:` pointing here, and starts from the default
+branch once the plans it waits for have landed. Rows merge or split as planning
+shows what fits: the list is corrected, not defended.
 
-## The queue
-
-Lines, not files. Each unit fits one context and ends in a state someone can
-check. A brief is written for a unit when it is next (`dev-skills:plan`), under
-200 lines, with `Epic:` pointing here. `plan` sets a unit *in progress*;
-`finish` sets it *done*. The next unblocked unit branches from the last finished
-one that has not merged yet.
-
-Units merge or split as planning shows what fits: the queue is corrected, not
-defended.
-
-## The tracker
-
-When the project's `## Environment` block in CLAUDE.md has a `Tracker` line,
-mirror the queue there: one task per unit, with its blocking relations. Move a
-task's status when its unit's state changes here. Progress, briefs and evidence
-stay in `.ai-workflow/`.
-
-## An ADR
-
-A decision that is hard to reverse, surprising without context, and the result
-of a real trade-off is worth recording. Offer it through
-`dev-skills:domain-modeling`; the user decides.
-
-## When the epic arrives late
-
-The second unit often appears after the first brief exists. Create the epic,
-register the first brief as unit 1 in its real state, move its shared decisions
-here, and put `Epic:` in the brief where they were.
-
-End with the queue in front of the user; the first unblocked unit is next.
+End with the list in front of the user; the first row that waits for nothing is
+next.

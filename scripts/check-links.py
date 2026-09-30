@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the reference layer of the dev-skills tree.
 
-Walks skills/, agents/, hooks/ and references/ (recursively) plus the
+Walks skills/, agents/ and references/ (recursively) plus the
 repository root's own *.md files (root only, not recursive — this does not
 descend into .ai-workflow/ or other root-level directories), reads every .md
 file, and checks three things line by line (skipping anything inside a fenced
@@ -44,7 +44,7 @@ from collections import namedtuple
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-WALK_DIRS = ("skills", "agents", "hooks", "references")
+WALK_DIRS = ("skills", "agents", "references")
 BUDGET_DIRS = ("skills", "agents", "references")
 ALLOWLIST_PATH = Path(__file__).resolve().parent / "link-allow.txt"
 BUDGETS_PATH = Path(__file__).resolve().parent / "word-budgets.txt"
@@ -75,6 +75,12 @@ LEGACY_WORDS = (
     "commit-guard",
     "finish-guard",
     "branch-guard",
+    "builder",
+    "preflight",
+    "git-guard",
+    "open-prototype",
+    "session-start",
+    "find-polluter",
 )
 LEGACY_WORD_RE = re.compile(
     r"\b(" + "|".join(re.escape(w) for w in LEGACY_WORDS) + r")\b"

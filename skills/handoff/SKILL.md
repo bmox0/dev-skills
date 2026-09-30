@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Pack this session into a document a fresh context continues from — the work, or the thinking. Use when the work moves to another context mid-way, not as a build unit.
+description: Pack this session into a document a fresh context continues from — the work, or the thinking. Use when the work moves to another context mid-way, not as a plan.
 ---
 
 # Handing a session over
@@ -9,7 +9,7 @@ The next context has none of this conversation; what you write is everything it
 gets. Writing it is not the moment to finish the work: do not fix, build or
 commit while you write.
 
-A unit nobody has started gets a brief (`dev-skills:plan`), not a handoff.
+Work nobody has started gets a plan (`dev-skills:plan`), not a handoff.
 
 ## Ask once, then write
 
@@ -17,7 +17,7 @@ Ask, in one turn, only what the request left open:
 
 1. Does the new context carry the **work** forward or the **thinking**? Which
    entry does it start from (`dev-skills:bug`, `dev-skills:grill`,
-   `dev-skills:implement`, plain conversation)?
+   `dev-skills:build`, plain conversation)?
 2. A file, or text in the chat?
 
 ## Write from what this session holds
@@ -55,7 +55,7 @@ never asserted.
 
 - **Receipts:** `path:line`, a commit, a command for every checkable claim.
 - **Absolute paths** for anything outside the repository.
-- **Links, not copies,** of briefs, epics and ADRs.
+- **Links, not copies,** of plans, epics and ADRs.
 - **No secrets.**
 - **The entry** the new context starts from, named.
 
@@ -63,7 +63,7 @@ never asserted.
 
 **To a file:** `.ai-workflow/handoff/YYYY-MM-DD-<name>.md`. If
 `git check-ignore -q .ai-workflow` fails, add the line `.ai-workflow` to
-`$(git rev-parse --git-common-dir)/info/exclude`, never to a tracked file. Give
+`$(git rev-parse --git-path info/exclude)`, never to a tracked file. Give
 the user the path and nothing else.
 
 **To the chat:** the whole document in one fenced block, with nothing around
