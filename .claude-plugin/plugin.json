@@ -1,6 +1,6 @@
 {
   "name": "dev-skills",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "A development pipeline for Claude Code: the session you started orchestrates, Sonnet implementers build a one-screen plan, the machine checks it, you approve and finish.",
   "author": {
     "name": "bmox0"
