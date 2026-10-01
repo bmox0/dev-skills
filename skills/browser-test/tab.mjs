@@ -403,11 +403,215 @@ function fmt(entries) {
     .join("\n")
 }
 
+class Failed extends Error {}
+
+const TRACKED = new Set(["document", "fetch", "xhr"])
+
+/** The first line of a Playwright error, plus the locator it was waiting for when the call log names one. */
+function reason(err) {
+  const lines = String(err?.message ?? err).replace(/\x1b\[[0-9;]*m/g, "").split("\n")
+  const waiting = lines.find(l => l.includes("waiting for"))
+  return lines[0] + (waiting ? " — " + waiting.trim().replace(/^-\s*/, "") : "")
+}
+
+/** What a user would see of an element: "visible", or the reason they would not. */
+function seenBy(el) {
+  const r = el.getBoundingClientRect()
+  if (!r.width || !r.height) return "zero size"
+  if (r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return "outside the viewport"
+  for (let e = el; e; e = e.parentElement) {
+    const s = getComputedStyle(e)
+    if (s.display === "none" || s.visibility === "hidden") return "hidden"
+    if (Number(s.opacity) < 0.1) return `transparent (opacity ${s.opacity})`
+  }
+  const x = Math.min(innerWidth - 1, Math.max(0, r.left + r.width / 2))
+  const y = Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2))
+  const top = document.elementFromPoint(x, y)
+  if (top && top !== el && !el.contains(top) && !top.contains(el)) {
+    return `covered by ${top.tagName.toLowerCase()}${top.className ? "." + String(top.className).trim().split(/\s+/)[0] : ""}`
+  }
+  const backdrop = e => {
+    for (; e; e = e.parentElement) {
+      const c = getComputedStyle(e).backgroundColor
+      if (c && c !== "transparent" && !/rgba\(.*, 0\)$/.test(c)) return c
+    }
+    return "rgb(255, 255, 255)"
+  }
+  const color = getComputedStyle(el).color
+  if (el.innerText.trim() && color === backdrop(el)) return `text the colour of its background (${color})`
+  return "visible"
+}
+
+/** The controls a user can reach under `scope`, one line each: role, accessible name, state. */
+function controlsIn(scope) {
+  const root = document.querySelector(scope) || document.body
+  const query = "a[href],button,input:not([type=hidden]),select,textarea,[role=button],[role=link],[role=tab],[role=option],[role=menuitem],[role=checkbox],[role=radio],[role=switch],[role=combobox],[role=textbox],[contenteditable=true]"
+  const kinds = {checkbox: "checkbox", radio: "radio", search: "searchbox", button: "button", submit: "button", reset: "button", range: "slider", number: "spinbutton"}
+  const roleOf = el => {
+    const t = el.tagName
+    if (el.getAttribute("role")) return el.getAttribute("role")
+    if (t === "A") return "link"
+    if (t === "BUTTON") return "button"
+    if (t === "SELECT") return el.multiple ? "listbox" : "combobox"
+    if (t === "INPUT") return kinds[(el.type || "text").toLowerCase()] ?? "textbox"
+    return "textbox"
+  }
+  const nameOf = el => {
+    if (el.getAttribute("aria-label")) return el.getAttribute("aria-label")
+    const by = el.getAttribute("aria-labelledby")
+    if (by) return by.split(/\s+/).map(id => document.getElementById(id)?.innerText ?? "").join(" ")
+    if (el.labels?.length) return el.labels[0].innerText
+    if (!["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) && el.innerText?.trim()) return el.innerText
+    return el.placeholder || el.title || ""
+  }
+  const counts = new Map()
+  for (const el of root.querySelectorAll(query)) {
+    const r = el.getBoundingClientRect()
+    const s = getComputedStyle(el)
+    if (!r.width || !r.height || s.visibility === "hidden") continue
+    const name = nameOf(el).replace(/\s+/g, " ").trim().slice(0, 50)
+    let line = roleOf(el) + (name ? ` "${name}"` : " (no name)")
+    if (el.disabled) line += " disabled"
+    if (el.getAttribute("aria-haspopup")) line += " opens a " + el.getAttribute("aria-haspopup")
+    if (el.tagName === "SELECT") line += " [" + [...el.options].slice(0, 8).map(o => o.text).join("|") + "]"
+    if (["INPUT", "TEXTAREA"].includes(el.tagName) && el.type !== "password" && el.value) line += " = " + JSON.stringify(el.value.slice(0, 30))
+    counts.set(line, (counts.get(line) ?? 0) + 1)
+  }
+  const alike = new Map()
+  for (const line of [...counts].map(([line, n]) => (n > 1 ? `${line} ×${n}` : line))) {
+    const shape = line.replace(/\d+/g, "#")
+    alike.set(shape, [...(alike.get(shape) ?? []), line])
+  }
+  return [...alike.values()].flatMap(g => (g.length >= 3 ? [`${g[0]} … ${g.at(-1).match(/"[^"]*"/)?.[0] ?? ""} (${g.length} alike)`] : g))
+}
+
+const shown = expected =>
+  expected instanceof RegExp ? String(expected) : typeof expected === "function" ? "(predicate)" : JSON.stringify(expected)
+
+/**
+ * Runs a scenario file against the live tab, one line per step.
+ *
+ * A step's `expect` that does not hold is FAILED: the app did something else, the run goes on.
+ * Anything else that throws — a locator that never appears, a navigation that times out — is
+ * NOT REACHED: the run stops there and leaves the tab on that state, so the session can carry on
+ * by hand from the exact point instead of starting over.
+ */
+async function runScenario(page, file, only) {
+  const scenario = (await import(pathToFileURL(file).href + "?t=" + Date.now())).default
+  if (typeof scenario !== "function") die("a scenario file exports `default async ({page, step, expect, net, errors, shot, size}) => {…}`")
+
+  const events = []
+  const answered = new WeakSet()
+  let cur = 0
+  const short = u => {
+    const clean = cleanUrl(u)
+    try {
+      const origin = new URL(page.url()).origin
+      return clean.startsWith(origin) ? clean.slice(origin.length) || "/" : clean
+    } catch {
+      return clean
+    }
+  }
+  page.on("response", r => {
+    answered.add(r.request())
+    if (TRACKED.has(r.request().resourceType())) events.push({i: cur, k: "net", s: `${r.status()} ${r.request().method()} ${short(r.url())}`})
+  })
+  page.on("requestfailed", r => {
+    if (TRACKED.has(r.resourceType()) && !answered.has(r)) events.push({i: cur, k: "net", s: `ERR ${r.method()} ${short(r.url())} — ${r.failure()?.errorText}`})
+  })
+  page.on("console", m => {
+    if (m.type() === "error") events.push({i: cur, k: "err", s: m.text().slice(0, 300)})
+  })
+  page.on("pageerror", e => events.push({i: cur, k: "err", s: ("uncaught: " + e.message).slice(0, 300)}))
+
+  const ofStep = async k => {
+    await sleep(250)
+    return events.filter(e => e.i === cur && e.k === k).map(e => e.s)
+  }
+  const shot = async name => {
+    mkdirSync(SHOTS, {recursive: true})
+    const f = path.join(SHOTS, String(name).replace(/[^\w.-]/g, "_") + ".png")
+    await page.screenshot({path: f, scale: "css"})
+    return f
+  }
+
+  const lines = []
+  let n = 0
+  let stopped = false
+  const api = {
+    page,
+    net: () => ofStep("net"),
+    errors: () => ofStep("err"),
+    shot,
+    seen: async locator => ((await locator.count()) ? locator.first().evaluate(seenBy).catch(() => "not on the page") : "not on the page"),
+    size: (width, height) => page.setViewportSize({width, height}),
+    async expect(actual, expected, what = "value", {timeout = 3000} = {}) {
+      const holds = v =>
+        expected instanceof RegExp ? expected.test(String(v))
+        : typeof expected === "function" ? Boolean(expected(v))
+        : JSON.stringify(v) === JSON.stringify(expected)
+      const polled = typeof actual === "function"
+      const until = Date.now() + timeout
+      const trail = []
+      const note = v => {
+        const t = JSON.stringify(v) ?? String(v)
+        if (trail.at(-1) !== t) trail.push(t)
+      }
+      let v = polled ? await actual() : actual
+      note(v)
+      while (polled && !holds(v) && Date.now() < until) {
+        await sleep(100)
+        v = await actual()
+        note(v)
+      }
+      if (holds(v)) return v
+      const saw = trail.slice(-4).map(t => (t.length > 160 ? t.slice(0, 160) + "…" : t)).join(" → ")
+      throw new Failed(`${what}: expected ${shown(expected)}, saw ${saw}`)
+    },
+    async step(name, fn) {
+      n++
+      if (only && !only.includes(n)) return
+      if (stopped) return void lines.push(`skipped      ${n}. ${name}`)
+      cur = n
+      try {
+        const said = await fn()
+        lines.push(`ok           ${n}. ${name}${said ? " — " + said : ""}`)
+      } catch (err) {
+        if (err instanceof Failed) {
+          const f = await shot(`step${n}`).catch(() => null)
+          lines.push(`FAILED       ${n}. ${name} — ${err.message}${f ? ` · shot ${f}` : ""}`)
+          return
+        }
+        const blocked = String(err?.message).replace(/\x1b\[[0-9;]*m/g, "").split("\n").find(l => l.includes("intercepts pointer events"))
+        if (blocked) {
+          const f = await shot(`step${n}`).catch(() => null)
+          lines.push(`FAILED       ${n}. ${name} — a user cannot click it: ${blocked.trim().replace(/^-\s*/, "")}${f ? ` · shot ${f}` : ""}`)
+          return
+        }
+        stopped = true
+        const f = await shot(`step${n}-stopped`).catch(() => null)
+        const recent = k => events.filter(e => e.k === k).slice(-5).map(e => e.s).join(" | ")
+        lines.push(`NOT REACHED  ${n}. ${name} — ${reason(err)}`, `  stopped at ${page.url()}${f ? ` · shot ${f}` : ""}`)
+        if (recent("net")) lines.push(`  last requests: ${recent("net")}`)
+        if (recent("err")) lines.push(`  console errors: ${recent("err")}`)
+        lines.push("  the tab is left on this state — carry on by hand from here")
+      }
+    },
+  }
+
+  try {
+    await scenario(api)
+  } catch (err) {
+    lines.push(`scenario error outside a step: ${reason(err)}`)
+  }
+  return lines.join("\n") || "(no steps ran)"
+}
+
 async function main() {
   const argv = process.argv.slice(2)
   const cmd = argv.shift()
   if (!cmd || cmd === "help" || cmd === "--help") {
-    out(`tab.mjs — one persistent tab, one short command per action
+    out(`tab.mjs — one persistent tab: a scenario per check, single commands to dig in
 
   up [url]                 start a browser if down, open url (default ${BASE})
   attach [port]            adopt an app already serving CDP (Electron); never
@@ -435,8 +639,17 @@ async function main() {
        [--inflate] [--grep p]           including sockets living in a worker;
                                         --inflate decodes permessage-deflate
                                         frames (needs --reload)
-  size [WxH]               set the viewport (default 1440x900)
+  size [WxH|reset]         emulate the viewport; it sticks for every later
+                           command until \`size reset\`
   shot [name] [--full]     screenshot → prints path only
+
+  map [selector]           the controls a user can reach, one line each
+  seen <sel>               "visible", or why a user would not see it
+
+  run <file.mjs> [--only 2,5] [--slow ms]   a scenario in this tab, one line
+                           per step: ok, FAILED (the app did something else,
+                           goes on) or NOT REACHED (stops, leaves the tab
+                           there); 250 ms per action while headed
 
 Selectors are Playwright's: css, text=Login, role=button[name="Save"], #id.
 Artifacts: ${OUT}
@@ -502,8 +715,10 @@ Env: TAB_BASE, TAB_PORT, TAB_HEADLESS=1, TAB_TIMEOUT, TAB_BROWSER, TAB_PROFILE, 
   }
 
   const chromium = await loadChromium()
-  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`)
+  const slowMo = cmd === "run" ? Number(flag(argv, "slow", HEADLESS ? 0 : 250)) || 0 : 0
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`, {slowMo})
   const {ctx, page} = await getPage(browser)
+  if (state.size && cmd !== "size") await page.setViewportSize(state.size).catch(() => {})
 
   const done = s => {
     out(s)
@@ -631,12 +846,35 @@ Env: TAB_BASE, TAB_PORT, TAB_HEADLESS=1, TAB_TIMEOUT, TAB_BROWSER, TAB_PROFILE, 
       break
     }
     case "size": {
-      const [w, h] = (argv[0] ?? "1440x900").split("x").map(Number)
-      const s = await ctx.newCDPSession(page)
-      const {windowId} = await s.send("Browser.getWindowForTarget")
-      await s.send("Browser.setWindowBounds", {windowId, bounds: {windowState: "normal", width: w, height: h + 88}})
-      await sleep(250)
+      if (!argv[0] || argv[0] === "reset") {
+        writeState({size: null})
+        done("reset · " + (await page.evaluate("innerWidth + 'x' + innerHeight")))
+        break
+      }
+      const [width, height] = argv[0].split("x").map(Number)
+      if (!width || !height) die("size takes WxH, e.g. 375x812, or reset")
+      writeState({size: {width, height}})
+      await page.setViewportSize({width, height})
       done(await page.evaluate("innerWidth + 'x' + innerHeight"))
+      break
+    }
+    case "map": {
+      const lines = await page.evaluate(controlsIn, argv[0] ?? "body")
+      done(lines.length ? lines.slice(0, 150).join("\n") + (lines.length > 150 ? `\n… +${lines.length - 150} more — scope it: map <selector>` : "") : "(no controls)")
+      break
+    }
+    case "seen": {
+      const target = page.locator(argv.join(" "))
+      done((await target.count()) ? await target.first().evaluate(seenBy) : "not on the page")
+      break
+    }
+    case "run": {
+      const only = flag(argv, "only", null)
+      if (!argv[0]) die("run takes a scenario file: run <file.mjs> [--only 2,5]")
+      await ctx.addInitScript(HOOK)
+      await install(page)
+      const list = typeof only === "string" ? only.split(",").map(Number) : null
+      done(await runScenario(page, path.resolve(argv[0]), list))
       break
     }
     case "shot": {

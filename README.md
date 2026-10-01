@@ -105,7 +105,7 @@ agents `implementer` and `reviewer`.
 
 | Skill | For |
 |---|---|
-| [`browser-test`](skills/browser-test/SKILL.md) | drive a web app or an Electron build over CDP; the web e2e tool, used instead of a browser MCP server or Playwright scripts because tests showed it costs fewer tokens |
+| [`browser-test`](skills/browser-test/SKILL.md) | the web e2e tool: the use cases as one Playwright scenario in a visible tab you can watch, single commands to dig in; a web app or an Electron build over CDP |
 | [`bug`](skills/bug/SKILL.md) | reproduce a bug and pin down its cause before the plan |
 | [`build`](skills/build/SKILL.md) | run a plan: the graph, the E2E gate, the human gate |
 | [`commit-work`](skills/commit-work/SKILL.md) | stage by path, split into logical commits, write the message |

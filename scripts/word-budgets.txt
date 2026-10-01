@@ -7,6 +7,7 @@ agents/implementer.md 310
 agents/reviewer.md 100
 references/VOCABULARY.md 500
 skills/browser-test/SKILL.md 1100
+skills/browser-test/references/WEBSOCKETS.md 300
 skills/bug/SKILL.md 450
 skills/bug/references/condition-based-waiting.md 325
 skills/bug/references/defense-in-depth.md 300

@@ -1,82 +1,80 @@
 ---
 name: browser-test
-description: Use when a change has to be checked in the running app — opening it, clicking through a flow, filling a form, reading console errors or failed requests, recording WebSocket frames, or taking a screenshot. Drives a web app or an Electron build over CDP; use it instead of one-off Playwright scripts or browser MCP servers, which cost more tokens.
+description: Use when a change has to be checked in the running app — clicking through a flow, filling a form, reading console errors or failed requests, recording WebSocket frames, or taking a screenshot. Runs the use cases as one Playwright scenario in a visible, long-lived tab the user can watch and sign in to; single commands dig into what failed. Drives a web app or an Electron build over CDP.
 ---
 
 # Browser Test
 
 The web e2e tool: `dev-skills:verify` drives a plan's use cases through it.
 
-Verification runs against one long-lived tab, driven by `tab.mjs`. The browser runs detached on its own profile with a CDP port; every command is a separate node process that connects, does one thing, and exits without closing the browser. The tab, its session, `localStorage` and any live connection survive between commands and between sessions.
+One long-lived tab, driven by `tab.mjs`. The browser runs detached on its own profile with a CDP port, in a window the user can watch; the tab, its session and `localStorage` survive between commands and between sessions. A check is a scenario: the whole Done as one Playwright file, run in that tab in one call. Single commands are for digging into what the scenario could not settle.
 
 ## First, get `tab` on PATH
 
-Every later call is then one short word. Run this once per machine:
+Run this once per machine:
 
 ```bash
 node "$(printf '%s\n' "$HOME"/.claude/plugins/cache/dev-skills/dev-skills/*/skills/browser-test/tab.mjs | sort -V | tail -1)" shim
 ```
 
-It writes `~/.local/bin/tab`, which re-resolves the plugin on each call and so survives version bumps. If it reports that the directory is not on PATH, keep using the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a checkout, for anyone working on this skill itself. Everything below is written as `tab`.
+It writes `~/.local/bin/tab`, which re-resolves the plugin on each call and so survives version bumps. If that directory is not on PATH, use the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a checkout.
 
-## Then, point it at the app
+## A check is a scenario
 
-```bash
-tab up http://localhost:5173     # a web app — launches a browser if none is up
-tab attach                       # an Electron build already serving CDP
-tab help                         # full command list
-tab down                         # when the task is finished
+1. **`tab up <url>`**, the url from the `**Dev server.**` line in `CLAUDE.md`; the server must already run. Where the login is the user's, ask them to sign in in that window; the session stays in the profile.
+2. **`tab map main`** — the controls a user can reach, one line each: `button "Export"`, `searchbox "Search orders"`, `link "ORD-1001" … "ORD-1025" (25 alike)`. Take selectors from it: `role=button[name='Export']`. Map again on each new screen.
+3. **Write the whole Done as one file**, a step per use case, and edit it with the file editor:
+
+```js
+// done.mjs
+export default async ({page, step, expect, net, errors, seen, shot, size}) => {
+  await step("1. a wrong password shows an error", async () => {
+    await page.fill("role=textbox[name='Email']", "demo@example.com")
+    await page.click("role=button[name='Sign in']")
+    await expect(() => page.locator("[role=alert]").innerText(), /wrong/i, "error text")
+    return (await net()).join(", ")
+  })
+}
 ```
 
-**Take the URL from the project's environment contract** — the `**Dev server.**` line in `CLAUDE.md` states the command and the url it serves on. Pass it to `up` once; the origin is remembered in `.ai-workflow/browser-test/state.json`, so later navigation is relative: `tab goto /settings`. The server has to be running already — this tool drives the app, it does not start it.
+4. **`tab run done.mjs`** — one line per step, at 250 ms per action while the window is up, so the user can follow it; `--slow 0` when nobody watches.
+5. **Dig into what is not `ok` by hand**, from where the run left the tab, then fix the step and `tab run done.mjs --only 3`.
 
-**Electron** is `attach`, not `up`. The app must have been started with `--remote-debugging-port=9222` (Electron reads it from `argv`, or `app.commandLine.appendSwitch("remote-debugging-port", "9222")`). `attach` adopts whatever is on that port and, from then on, this tool never launches a browser and never kills the app — `down` only detaches. Two things a renderer cannot show you: the **main process** is not a page target, so its `console` output is not in `logs` — read it from the terminal the app was started in; and a build with several windows exposes several page targets, so `tab pages` lists them and `tab use <n>` picks the one to drive.
+`page` is the live tab with Playwright's API. `expect(fn, expected, label)` polls `fn` for 3 s and, when it fails, prints the states it saw; `net()` and `errors()` are this step's requests and console errors; `seen(locator)` is below; `size(w, h)` sets the width for the rest of the run; a step's return value is printed as its evidence.
 
-## Core rule
+Each step ends one of three ways. `ok`. `FAILED` — the app did something else, a click that something covers included; the run goes on. `NOT REACHED` — anything else threw, usually a locator that never appeared: the run stops, prints where, a screenshot, the last requests and errors, and leaves the tab there. A FAILED is a finding; a NOT REACHED is a question for the screenshot.
 
-**Never pull the page into context.** No `innerHTML` dumps, no accessibility trees, no "show me the DOM so I can find the button". Ask a precise question and get a precise answer back:
+## What the user sees, not what the DOM says
 
-```bash
-tab eval '[...document.querySelectorAll("[role=alert]")].map(e=>e.innerText)'
-tab text '.row:first-child'
-tab net --grep auth
-```
+**"Visible to the user" is a look.** Text in the DOM is not seen: white on white, transparent or covered text is there and invisible. `seen(locator)` answers `"visible"` or why not — covered by, transparent, text the colour of its background, outside the viewport; a screenshot taken at that moment is the other proof.
 
-That discipline is where the token saving comes from — the tool cannot enforce it. A whole login flow (click, fill, submit, assert the error, confirm the 401) costs under 400 tokens driven this way; a browser MCP server or Playwright returns a page snapshot on every look.
+**Click as the user does.** Playwright's click refuses an element something covers, and the run reports that as FAILED. A click that only `el.click()` in `eval` gets through is a failed use case: the user cannot do it.
 
-## Which readout answers which question
+**The user may be watching.** They see what no check looks for — a form that works and looks wrong. Keep the window up while the scenario runs.
 
-**Did the app do the right thing?** `eval` — it returns exactly the expression's value.
-**Did it break?** `logs --errors` — patched `console` plus `error`/`unhandledrejection`.
-**Did the request go out, and what came back?** `net --grep <pattern>` — one line per `fetch`/XHR: `14:08:45 401 POST /auth/login (234ms)`.
-**Does it look right?** `shot <name>`, then read the printed path — and only then. An image costs ~1.5k tokens, so it is for questions about layout, spacing and colour, never for finding out what the page contains.
-
-`logs` and `net` read a 200-entry ring buffer kept in `sessionStorage`, so **they survive a reload** — a `goto` or `reload` still shows what happened before it. `--clear` before an action you want to read cleanly.
-
-## Recording a socket
-
-`ws [secs] [--reload]` records WebSocket frames through CDP, and it is the one command that reads traffic rather than driving the UI. **Run it only when the question is about the feed** — it is never part of a routine check.
-
-It attaches to worker targets as well as the page, which is often the only way to see anything: a client that picks a worker implementation whenever `Worker` exists puts the socket somewhere nothing on the main thread can observe.
-
-Reading the output: outgoing frames are plain text and readable as sent. Incoming frames are frequently `permessage-deflate` binary — by default only frame count and byte total mean anything, and `--inflate` decodes them:
+## Single commands
 
 ```bash
-tab ws 20 --reload --inflate --grep '"type":"position"'
+tab goto /settings     tab click <sel>     tab fill <sel> <value>     tab press <key>
+tab text <sel>         tab eval <js>       tab seen <sel>             tab map [sel]
+tab logs --errors      tab net --grep p    tab shot <name>            tab size 375x812
+tab help               tab down
 ```
 
-That extension compresses a whole connection as one stream, so a frame only decodes when every frame before it was captured too — **`--inflate` needs `--reload`**, and the tool says so rather than guessing when it cannot decode. Pair it with `--grep` (a regex over the decoded text); without one it prints the first few frames. Snapshots are large, so grep for what you came for.
+**Never pull the page into context.** No `innerHTML` dumps, no accessibility trees: `map` for the controls, a precise `eval` or `text` for a value. `logs` and `net` read a 200-entry buffer kept in `sessionStorage`, so they survive a reload; `--clear` before an action you want to read cleanly. `size` is emulated, so any width works, and it sticks until `size reset`. `shot` prints a path; read the image only for a question about looks — it costs ~1.5k tokens.
 
-Cheaper first stop: if the app logs its own frames to the console, `logs --grep <pattern>` answers the question with no recording at all. Reach for `--inflate` when you need a frame the app does not log. Use `--reload` when you need the handshake — CDP cannot name a socket that was already open, though the tool caches `requestId → url` and labels it next time. Query strings are stripped everywhere, so session tokens never reach the output or the cache file.
+**Electron** is `tab attach`, not `up`: the app was started with `--remote-debugging-port=9222`, and from then on the tool never launches a browser and never kills the app — `down` only detaches. Its main process is not a page target, so its `console` is in the terminal that started it; several windows are several targets: `tab pages`, `tab use <n>`.
+
+**A WebSocket feed** is `tab ws` — see [WEBSOCKETS.md](references/WEBSOCKETS.md); never part of a routine check.
 
 ## Rules that keep it working
 
-**Leave it up for the length of a task, `down` when finished.** Relaunching per check throws away the logged-in session that makes the next check cheap.
+**Leave it up for the length of a task, `down` when finished.** Relaunching throws away the session that makes the next check cheap.
 
-**It never touches the human's own browser.** Own profile at `~/.cache/tab-browser-profile`, own port 9222; Chromium's single-instance lock is per profile, so their windows are untouched. Do not point `TAB_PROFILE` at their real profile. Brave, Chrome, Chromium and Edge are found in that order; `TAB_BROWSER` overrides.
+**It never touches the human's own browser.** Own profile at `~/.cache/tab-browser-profile`, own port 9222. Do not point `TAB_PROFILE` at their real profile. Brave, Chrome, Chromium and Edge are found in that order; `TAB_BROWSER` overrides.
 
-**Artifacts go to `.ai-workflow/browser-test/`** — screenshots, the state file and the socket-url cache, under `.ai-workflow/`, which git should ignore (`git check-ignore -q .ai-workflow`).
+**Artifacts go to `.ai-workflow/browser-test/`** — screenshots and the state file, under `.ai-workflow/`, which git should ignore.
 
-**Nothing is injected into the app beyond the console/fetch/XHR hook.** `window.WebSocket` is deliberately left alone: frames are read through CDP, where patching cannot mislead and cannot break the app under test.
+**Nothing is injected into the app beyond the console/fetch/XHR hook.** Frames are read through CDP, where patching cannot mislead and cannot break the app under test.
 
-**Playwright is resolved, not installed.** The tool imports it from the project if it is a dependency, otherwise from the `npx` cache; if neither exists it says so. `npx playwright@latest --version` once is enough to populate the cache.
+**Playwright is resolved, not installed** — from the project, else the `npx` cache; `npx playwright@latest --version` once populates it.
