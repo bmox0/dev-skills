@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A development pipeline for Claude Code: the session you started orchestrates, Sonnet implementers build a one-screen plan, the machine checks it, you approve and finish.",
-    "version": "4.0.1"
+    "version": "4.0.2"
   },
   "plugins": [
     {
@@ -14,7 +14,7 @@
       "source": "./",
       "description": "Seven stages at every size: a grill or a discussion, an offered prototype, a one-screen plan, implementers run by the plan's graph, the E2E gate (review and e2e at once), a human gate that approves, and finish. The session you started orchestrates and never edits code; the plugin ships no hooks and no scripts.",
       "repository": "https://github.com/bmox0/dev-skills",
-      "version": "4.0.1",
+      "version": "4.0.2",
       "license": "MIT",
       "category": "development",
       "keywords": [
