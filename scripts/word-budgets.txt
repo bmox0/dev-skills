@@ -33,6 +33,6 @@ skills/review/SKILL.md 300
 skills/review/references/CRITERIA.md 600
 skills/tdd/SKILL.md 300
 skills/verify/SKILL.md 300
-skills/writing-great-skills/SKILL.md 1700
-skills/writing-great-skills/references/GLOSSARY.md 2800
-skills/writing-great-skills/references/TESTING.md 650
+skills/writing-skills/SKILL.md 1700
+skills/writing-skills/references/GLOSSARY.md 2800
+skills/writing-skills/references/TESTING.md 650

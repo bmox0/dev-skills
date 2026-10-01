@@ -119,7 +119,7 @@ agents `implementer` and `reviewer`.
 | [`review`](skills/review/SKILL.md) | the code half of the E2E gate, or a review of any range |
 | [`tdd`](skills/tdd/SKILL.md) | red before green, read by the implementer |
 | [`verify`](skills/verify/SKILL.md) | the e2e half of the E2E gate: drive the Done use cases |
-| [`writing-great-skills`](skills/writing-great-skills/SKILL.md) | design or audit a skill |
+| [`writing-skills`](skills/writing-skills/SKILL.md) | design or audit a skill |
 
 [`references/VOCABULARY.md`](references/VOCABULARY.md) defines the words they
 share.

@@ -81,6 +81,7 @@ LEGACY_WORDS = (
     "open-prototype",
     "session-start",
     "find-polluter",
+    "writing-great-skills",
 )
 LEGACY_WORD_RE = re.compile(
     r"\b(" + "|".join(re.escape(w) for w in LEGACY_WORDS) + r")\b"

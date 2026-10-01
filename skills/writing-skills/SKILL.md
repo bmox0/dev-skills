@@ -1,5 +1,5 @@
 ---
-name: writing-great-skills
+name: writing-skills
 description: Use when a skill must behave predictably — designing a new skill, auditing or editing an existing one, or diagnosing a skill whose agent varies from run to run.
 ---
 
