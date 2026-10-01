@@ -7,7 +7,7 @@ description: Drive a plan's Done use cases on the running system — a browser, 
 
 The session that asks for e2e dispatches a worker, a Sonnet subagent that
 follows the steps below, and reads only its lines. It drives what the user will
-see at the human gate, so the user confirms rather than rediscovers.
+see at the human gate.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e
 drives the system and where it runs (the plan's Checks, the project's
@@ -17,11 +17,12 @@ drives the system and where it runs (the plan's Checks, the project's
    start a second one or restart theirs. If none is up, start it the way the
    project says, and stop it when you are done.
 2. **Drive each use case** as a user would: a web app through
-   `dev-skills:browser-test`, iOS through the simulator's MCP server, a backend
-   with curl, a CLI by running it.
+   `dev-skills:browser-test`, all of them as one scenario in the window the
+   user watches; iOS through the simulator's MCP server, a backend with curl, a
+   CLI by running it. A click only a script gets through is failed.
 3. **Check looks on captures:** a screenshot for each state whose appearance
-   matters, frames for anything that moves, compared with the prototype. A
-   verdict on looks needs a capture; sampled pixels are not one.
+   matters, frames for anything that moves, compared with the prototype.
+   "Visible" is a look: text in the DOM is not one, nor are sampled pixels.
 
 **Returns** one line per use case, failures first:
 
