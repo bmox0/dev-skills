@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: A fresh review of a commit range on the strongest model. Dispatch with the range, the plan when there is one, and where the project's rules live.
+description: A fresh review of a commit range, on Opus. Dispatch with the range, the plan when there is one, and where the project's rules live.
 model: opus
 ---
 

@@ -7,7 +7,7 @@ description: Build an approved plan — its branch, implementers run by the plan
 
 `build <plan>`. This session is the orchestrator: it runs the graph, relays
 messages and sorts findings. It never edits code: implementers write it,
-workers check it.
+Sonnet workers check it.
 
 ## 1. The branch
 
@@ -48,8 +48,8 @@ When every phase is done:
    `dev-skills:verify`.
 3. One list: red checks, Defects, Conventions, use cases failed or not reached.
    One new implementer fixes all of it.
-4. A targeted re-check: a worker's full checks, then at once the reviewer
-   over the fix's commits only and those use cases again.
+4. A targeted re-check: a worker's full checks, then at once the reviewer on
+   Sonnet over the fix's commits only and those use cases again.
 
 One pass, never "until clean". What is still open goes first on the gate page.
 
@@ -60,13 +60,13 @@ page into the plan under `## Human gate`, and put it in front of the user:
 
 - **Code, approval 1.** The rulings with their cost if wrong, first. Then a
   walkthrough in 5–10 lines: what changed, where, why. The change itself is
-  `git diff <base>..<branch>`, read in git or the editor.
+  `git diff <base>..<branch>`.
 - **E2E, approval 2.** Each Done use case as "do this → see that", with the
   machine's result beside it: passed, a screenshot's path, the command's
   output.
 
 A note about the product opens a new round: a new implementer with the note,
-the E2E gate on what it changed, then this page again. A conflict at `finish` is
+the E2E gate on what it changed (reviewer on Sonnet), then this page again. A conflict at `finish` is
 a round too: an implementer rebases the branch onto the default branch; write
 `git merge-base <default> <branch>` into the plan as its base before the gates.
 

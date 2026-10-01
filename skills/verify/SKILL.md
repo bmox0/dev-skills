@@ -5,8 +5,8 @@ description: Drive a plan's Done use cases on the running system — a browser, 
 
 # Verify
 
-The session that asks for e2e dispatches a worker, a subagent that follows the
-steps below, and reads only its lines. It drives what the user will see at the
+The session that asks for e2e dispatches a worker, a Sonnet subagent that
+follows the steps below, and reads only its lines. It drives what the user will see at the
 human gate, so the user confirms rather than rediscovers.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e

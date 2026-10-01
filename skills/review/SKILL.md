@@ -6,9 +6,9 @@ description: Review a commit range from a fresh context against the project's ru
 # Review
 
 The session that asks for a review dispatches `dev-skills:reviewer`, a fresh
-context on the strongest model, and reads its lists; the reviewer follows the
-steps below. Any range works: a plan's branch, a fix's commits, last week's
-work, someone else's.
+context on Opus, and reads its lists; `build` sends its later reviews on
+Sonnet. The reviewer follows the steps below. Any range works: a plan's
+branch, a fix's commits, last week's work, someone else's.
 
 **Receives:** the range `BASE..HEAD`, the plan when there is one, where the
 project's rules live (`CLAUDE.md`, its style skills), and the full checks'

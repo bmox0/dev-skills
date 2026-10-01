@@ -144,7 +144,7 @@ checkpoint_out=$(cd "$repo_root" && grep -rn 'Checkpoint [0-9]' skills/ 2>/dev/n
 segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
 [ -z "$segment_col_out" ] || fail "TC-11: expected no match for '| Segment |', found: $segment_col_out"
 
-# --- TC-13: no hooks, no skill scripts, no tool limits, Sonnet implementers --
+# --- TC-13: no hooks, no skill scripts, no tool limits, the agents' models ---
 
 [ ! -e "$repo_root/hooks" ] || fail "TC-13: the plugin ships no hooks/"
 skill_scripts=$(cd "$repo_root" && find skills -type d -name scripts 2>/dev/null)
@@ -154,6 +154,10 @@ for f in "$repo_root"/agents/*.md; do
 done
 frontmatter "$repo_root/agents/implementer.md" | grep -qx 'model: sonnet' \
   || fail "TC-13: the implementer should run on sonnet"
+frontmatter "$repo_root/agents/reviewer.md" | grep -qx 'model: opus' \
+  || fail "TC-13: the reviewer should run on opus"
+grep -q '(reviewer on Sonnet)' "$repo_root/skills/build/SKILL.md" \
+  || fail "TC-13: build should send its later reviews on sonnet"
 plugin_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.claude-plugin/plugin.json")
 market_versions=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["metadata"]["version"], d["plugins"][0]["version"])' "$repo_root/.claude-plugin/marketplace.json")
 assert_eq "$plugin_version $plugin_version" "$market_versions" "TC-13: both manifests carry one version" || fail "TC-13"

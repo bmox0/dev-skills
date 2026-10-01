@@ -62,9 +62,11 @@ cannot start.
   a clean context each, handed the whole plan, its phase, and what earlier
   phases reported. When the plan and the code disagree, it rules, carries on,
   and records the ruling with its cost if wrong.
-- **Workers** are subagents for side jobs: facts from the code, a prototype,
-  e2e, and the review, which runs on the strongest model as the
-  [`reviewer`](agents/reviewer.md) agent.
+- **Workers** are Sonnet subagents for side jobs: facts from the code, a
+  prototype, the full checks, e2e.
+- **The reviewer** is the [`reviewer`](agents/reviewer.md) agent: Opus for the
+  first review of a plan's branch and for a range you name, Sonnet for the
+  re-check and every later round.
 
 The plugin ships no hooks and no scripts. The pipeline lives in the skills'
 text; the level-1 checks are the project's own tests, linters and typechecks.
@@ -136,7 +138,7 @@ and the manifests and every frontmatter parse (`claude plugin validate`).
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
 plugin's shape — TC-13 pins the shape itself (no hooks, no skill scripts,
-Sonnet implementers), TC-14 pins the plan's statuses across `plan`, `build`,
+Sonnet implementers, an Opus reviewer), TC-14 pins the plan's statuses across `plan`, `build`,
 `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 
 `scripts/usage` measures sessions from Claude Code's transcripts: wall and

@@ -13,8 +13,10 @@ code, and never edits code.
 **Implementer.** Sonnet in a clean context, the `implementer` agent. It builds
 one phase, a list of findings, or a note from the human gate.
 
-**Worker.** A subagent for a side job: facts from the code, drawing a
-prototype, review, e2e.
+**Worker.** A Sonnet subagent for a side job: facts from the code, a
+prototype, checks, e2e.
+
+**Reviewer.** The `reviewer` agent: Opus first, then Sonnet.
 
 ## The work
 
