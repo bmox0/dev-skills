@@ -1,6 +1,6 @@
 ---
 name: browser-test
-description: Use when a change has to be seen working in the real thing — opening the app, clicking through a flow, filling a form, reading console errors or failed requests, recording WebSocket frames, or taking a screenshot. Drives a web app or an Electron build over CDP; replaces one-off Playwright scripts and browser MCP servers for every interactive check.
+description: Use when a change has to be checked in the running app — opening it, clicking through a flow, filling a form, reading console errors or failed requests, recording WebSocket frames, or taking a screenshot. Drives a web app or an Electron build over CDP; use it instead of one-off Playwright scripts or browser MCP servers, which cost more tokens.
 ---
 
 # Browser Test
@@ -42,7 +42,7 @@ tab text '.row:first-child'
 tab net --grep auth
 ```
 
-That discipline is where the token saving comes from — the tool cannot enforce it. A whole login flow (click, fill, submit, assert the error, confirm the 401) costs under 400 tokens when driven this way.
+That discipline is where the token saving comes from — the tool cannot enforce it. A whole login flow (click, fill, submit, assert the error, confirm the 401) costs under 400 tokens driven this way; a browser MCP server or Playwright returns a page snapshot on every look.
 
 ## Which readout answers which question
 

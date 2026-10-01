@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Pack this session into a document a fresh context continues from — the work, or the thinking. Use when the work moves to another context mid-way, not as a plan.
+description: Write this session down as a document a new context continues from — the work, or the thinking. Use when the work moves to another context mid-way, not as a plan.
 ---
 
 # Handing a session over

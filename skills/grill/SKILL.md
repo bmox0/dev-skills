@@ -1,6 +1,6 @@
 ---
 name: grill
-description: Talk an idea through into a shared understanding before anything is built — "let's grill this", "think this through with me", "I'm not sure what we're building". Use when it is unclear what is being built, or the change is hard to row back from.
+description: Question an idea with the user until both agree on what is being built, before any plan or code — "let's grill this", "think this through with me", "I'm not sure what we're building". Use when it is unclear what is being built, or the change is hard to undo.
 ---
 
 # Grill

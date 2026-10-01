@@ -1,7 +1,7 @@
 {
   "name": "dev-skills",
   "version": "4.0.2",
-  "description": "A development pipeline for Claude Code: the session you started orchestrates, Sonnet implementers build a one-screen plan, the machine checks it, you approve and finish.",
+  "description": "Claude Code skills and agents that take a change from discussion to merge: a plan file, phases built by Sonnet subagents, a review and an e2e check, then human approval.",
   "author": {
     "name": "bmox0"
   },

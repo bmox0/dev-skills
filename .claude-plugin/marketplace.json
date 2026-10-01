@@ -5,14 +5,14 @@
     "url": "https://github.com/bmox0"
   },
   "metadata": {
-    "description": "A development pipeline for Claude Code: the session you started orchestrates, Sonnet implementers build a one-screen plan, the machine checks it, you approve and finish.",
+    "description": "Claude Code skills and agents that take a change from discussion to merge: a plan file, phases built by Sonnet subagents, a review and an e2e check, then human approval.",
     "version": "4.0.2"
   },
   "plugins": [
     {
       "name": "dev-skills",
       "source": "./",
-      "description": "Seven stages at every size: a grill or a discussion, an offered prototype, a one-screen plan, implementers run by the plan's graph, the E2E gate (review and e2e at once), a human gate that approves, and finish. The session you started orchestrates and never edits code; the plugin ships no hooks and no scripts.",
+      "description": "Seven stages for every change: a grill or a discussion, an optional prototype, a plan file, phases built by implementer subagents, a review and an e2e check, a human approval, and finish. The session the user started coordinates and does not edit code. Skills and agents only, no hooks or scripts.",
       "repository": "https://github.com/bmox0/dev-skills",
       "version": "4.0.2",
       "license": "MIT",

@@ -1,6 +1,6 @@
 ---
 name: commit-work
-description: "Create high-quality git commits: review and stage intended changes, split into logical commits, and write clear commit messages (Conventional Commits). Use when the user asks to commit, craft a commit message, stage changes, or split work into multiple commits."
+description: "Commit changes: review and stage them by path, split them into logical commits, and write Conventional Commits messages. Use when the user asks to commit, write a commit message, stage changes, or split work into several commits."
 ---
 
 # Commit work

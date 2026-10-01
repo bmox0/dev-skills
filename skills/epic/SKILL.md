@@ -1,6 +1,6 @@
 ---
 name: epic
-description: Hold work that is more than one plan — the shared decisions and the ordered list of plans. Only when the user asks for an epic.
+description: Keep work that needs more than one plan — the shared decisions and the ordered list of plans. Only when the user asks for an epic.
 ---
 
 # Epic

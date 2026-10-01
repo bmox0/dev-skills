@@ -1,13 +1,14 @@
 # dev-skills
 
-A Claude Code plugin for building software with an agent. The session you
-started orchestrates, Sonnet implementers write the code in clean contexts,
-the machine checks the result, and you approve it and finish it.
+A Claude Code plugin of skills and two agents for building a change:
+discussion, a plan file, implementation by Sonnet subagents, a review and an
+e2e check, and your approval before merge. The session you start coordinates
+the work and does not edit code.
 
 ## The pipeline
 
-Seven stages, the same at every size. For a small task they get thinner; none
-is skipped, and every plan ends in a human gate.
+Every change goes through the same seven stages. For a small task each stage
+is shorter; none is skipped, and every plan ends in a human gate.
 
 1. **Entry.** A grill when it is unclear what is being built, a discussion when
    it is lighter. Workers bring facts from the code; you make the decisions.
@@ -104,11 +105,11 @@ agents `implementer` and `reviewer`.
 
 | Skill | For |
 |---|---|
-| [`browser-test`](skills/browser-test/SKILL.md) | drive a web app or an Electron build over CDP; the web e2e tool |
+| [`browser-test`](skills/browser-test/SKILL.md) | drive a web app or an Electron build over CDP; the web e2e tool, used instead of a browser MCP server or Playwright scripts because tests showed it costs fewer tokens |
 | [`bug`](skills/bug/SKILL.md) | reproduce a bug and pin down its cause before the plan |
 | [`build`](skills/build/SKILL.md) | run a plan: the graph, the E2E gate, the human gate |
 | [`commit-work`](skills/commit-work/SKILL.md) | stage by path, split into logical commits, write the message |
-| [`domain-modeling`](skills/domain-modeling/SKILL.md) | the glossary in `CONTEXT.md`, and an ADR when one is earned |
+| [`domain-modeling`](skills/domain-modeling/SKILL.md) | the glossary in `CONTEXT.md`, and an ADR for a decision that needs one |
 | [`epic`](skills/epic/SKILL.md) | shared decisions and the ordered list of plans |
 | [`finish`](skills/finish/SKILL.md) | land a passed plan, typed by the user |
 | [`grill`](skills/grill/SKILL.md) | talk an idea into a shared understanding |
@@ -126,8 +127,10 @@ share.
 
 ## Principles
 
-Time is the measure: every stage earns its time. The orchestrator and the
-models are a fast tool. A fork the agent could take is the user's call.
+- A stage stays only if it saves more time than it takes.
+- The skills do not restrict the models or make them work one step after
+  another without a reason.
+- Where the work could go two ways, the user chooses, not the agent.
 
 ## Checking this repository
 

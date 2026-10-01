@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Build and sharpen a project's domain model — the glossary, and an ADR when one is earned. Invoke it directly to pin down vocabulary or record a decision; dev-skills:grill also reaches for it as terms settle.
+description: Update a project's domain model — the glossary, and an ADR when a decision needs one. Invoke it directly to pin down vocabulary or record a decision; dev-skills:grill also reaches for it as terms settle.
 ---
 
 # Domain Modeling
