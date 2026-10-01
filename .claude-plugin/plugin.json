@@ -1,6 +1,6 @@
 {
   "name": "dev-skills",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "description": "Claude Code skills and agents that take a change from discussion to merge: a plan file, phases built by Sonnet subagents, a review and an e2e check, then human approval.",
   "author": {
     "name": "bmox0"
