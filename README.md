@@ -29,8 +29,11 @@ is shorter; none is skipped, and every plan ends in a human gate.
    one list for one new implementer, then a targeted re-check. One pass.
 6. **The human gate.** One page: the code (the branch against its base, a
    walkthrough, the rulings the implementers made alone) and the e2e (the use
-   cases with the machine's results), written into the plan. It approves; it does
-   not test.
+   cases, each with its last result and the commit it ran on), written into the
+   plan. You try the running app. What you say about the product goes into a
+   notes file beside the plan, and nothing starts on it until you say so; then
+   a round builds every open note like a phase: an implementer, its checks, a
+   review, and e2e where the diff reaches past what the notes name.
 7. **Finish.** You type it. It asks: a merge request or local, squash or
    `--no-ff`.
 

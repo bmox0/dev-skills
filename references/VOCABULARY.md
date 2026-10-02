@@ -11,7 +11,7 @@ the graph, relays messages and sorts findings. It holds conclusions, not raw
 code, and never edits code.
 
 **Implementer.** Sonnet in a clean context, the `implementer` agent. It builds
-one phase, a list of findings, or a note from the human gate.
+one phase, a list of findings, or a round's notes.
 
 **Worker.** A Sonnet subagent for a side job: facts from the code, a
 prototype, checks, e2e.
@@ -43,7 +43,7 @@ disagreed: what, why, the cost if wrong. The human gate reads them first.
 the full commands after all phases, and how e2e drives the system.
 
 **Done.** The plan's use cases, each "do this → see that". The E2E gate drives
-them; the human gate shows them with the machine's results.
+them; the human gate shows them with their results.
 
 **Epic.** Several plans, only on the user's word: their shared decisions and
 the order they go in.
@@ -59,8 +59,9 @@ targeted re-check. One pass, never "until clean".
 
 **The human gate.** One page, two approvals: the code (the branch against its
 base, a walkthrough, the rulings) and the e2e (the use cases with the machine's
-results). It approves; it does not test. A note about the product opens a new
-**round**. Approved, the plan is `passed` and waits for `finish`.
+results). The user tries the app; a **round**, on their word, builds the open
+**notes** in the plan's notes file. Approved, the plan is `passed` and waits for
+`finish`.
 
 ## Review
 

@@ -205,8 +205,8 @@ text(702, cy + 14, `<div class="card"><h3 class="teal">Three levels of checks</h
   <ul><li>TDD, linters, typechecks, the project’s own scripts, as the plan’s Checks says</li><li>while a wave runs: only its own territory</li><li>its own findings: it fixes them itself</li><li>a plan-vs-code conflict: it rules, carries on, records the ruling</li></ul>
   <div class="k">2 · THE E2E GATE (5) — the main one</div>
   <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases</li><li>one list → one new implementer → re-check only what it touched</li><li>one pass, never “until clean”</li></ul>
-  <div class="k">3 · THE HUMAN GATE (6) — it approves</div>
-  <ul><li>nothing relies on you catching anything</li><li>only checked and tested work reaches it</li></ul></div>`, '', 600);
+  <div class="k">3 · THE HUMAN GATE (6) — you try it</div>
+  <ul><li>only checked and tested work reaches it</li><li>what you find goes to the notes file; nothing starts until you say so</li></ul></div>`, '', 600);
 
 rect(1346, cy, 640, 540, 'pink', { fill: '#231a20', sw: 1.8, r: 16 });
 text(1368, cy + 14, `<div class="card"><h3 class="pink">The human gate — one page</h3>
@@ -215,7 +215,7 @@ text(1368, cy + 14, `<div class="card"><h3 class="pink">The human gate — one p
   <div class="k">E2E · approval 2</div>
   <ul><li>the Done use cases: do this → see that</li><li>beside each, the machine’s result: passed, a screenshot, the command output</li></ul>
   <div class="k">THEN</div>
-  <ul><li>a note about the product → a new round: new implementer, stages 4–5, back here</li><li>approved → marked passed, waiting for finish</li></ul>
+  <ul><li>your word → a round over every open note: implementer, review, e2e where the diff reaches further, back here</li><li>approved → marked passed, waiting for finish</li></ul>
   <div class="k">7 · FINISH — you type it</div>
   <ul><li>it asks: MR or local? squash or --no-ff?</li><li>the message comes from Result; no push without your word; a retro in one line</li></ul></div>`, '', 600);
 

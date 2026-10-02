@@ -5,17 +5,17 @@ description: Drive a plan's Done use cases on the running system — a browser, 
 
 # Verify
 
-The session that asks for e2e dispatches a worker, a Sonnet subagent that
-follows the steps below, and reads only its lines. It drives what the user will
-see at the human gate.
+The session that asks for e2e dispatches a worker, a fresh Sonnet subagent
+each run, that follows the steps below, and reads only its lines. It drives
+what the user will see at the human gate.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e
 drives the system and where it runs (the plan's Checks, the project's
 `CLAUDE.md`); the prototype when the plan links one.
 
-1. **Find the running system.** If the user's dev instance is up, use it; do not
-   start a second one or restart theirs. If none is up, start it the way the
-   project says, and stop it when you are done.
+1. **Find the running system.** If the user's dev instance is up, use it; never
+   start a second one or restart theirs. If none is up, start it as the project
+   says, and stop it when done.
 2. **Drive each use case** as a user would: a web app through
    `dev-skills:browser-test`, all of them as one scenario in the window the
    user watches; iOS through the simulator's MCP server, a backend with curl, a

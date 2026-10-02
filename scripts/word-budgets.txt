@@ -13,6 +13,7 @@ skills/bug/references/condition-based-waiting.md 325
 skills/bug/references/defense-in-depth.md 300
 skills/bug/references/root-cause-tracing.md 325
 skills/build/SKILL.md 575
+skills/build/references/rounds.md 400
 skills/commit-work/SKILL.md 300
 skills/commit-work/references/commit-message-template.md 700
 skills/domain-modeling/SKILL.md 650

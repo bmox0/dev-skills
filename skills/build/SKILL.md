@@ -49,25 +49,28 @@ When every phase is done:
 3. One list: red checks, Defects, Conventions, use cases failed or not reached.
    One new implementer fixes all of it.
 4. A targeted re-check: a worker's full checks, then at once the reviewer on
-   Sonnet over the fix's commits only and those use cases again.
+   Sonnet over the fix's commits only and a fresh worker on those use cases.
 
 One pass, never "until clean". What is still open goes first on the gate page.
 
 ## 4. The human gate
 
-It approves; it does not test. Set Status to `at the human gate`, write one
-page into the plan under `## Human gate`, and put it in front of the user:
+Set Status to `at the human gate`, write one page under the plan's
+`## Human gate`, and put it in front of the user, who tries the running app:
 
 - **Code, approval 1.** The rulings with their cost if wrong, first. Then a
   walkthrough in 5–10 lines: what changed, where, why. The change itself is
   `git diff <base>..<branch>`.
-- **E2E, approval 2.** Each Done use case as "do this → see that", with the
-  machine's result beside it: passed, a screenshot's path, the command's
-  output.
+- **E2E, approval 2.** Each Done use case as "do this → see that", with its
+  last result and the commit it ran on; mark one touched since.
 
-A note about the product opens a new round: a new implementer with the note,
-the E2E gate on what it changed (reviewer on Sonnet), then this page again. A conflict at `finish` is
-a round too: an implementer rebases the branch onto the default branch; write
-`git merge-base <default> <branch>` into the plan as its base before the gates.
+Both approvals: set Status to `passed` and show the notes left for later. The
+plan waits for the user's `finish`.
 
-Both approvals: set Status to `passed`. The plan waits for the user's `finish`.
+## 5. Notes and rounds
+
+From the first phase on, the user's notes about the product go into
+`.ai-workflow/plans/<slug>.notes.md`. Nothing starts on one; no running agent
+hears of it. A round, on the user's word, builds every open note or a
+conflict at `finish` like a phase (reviewer on Sonnet):
+[rounds.md](references/rounds.md).
