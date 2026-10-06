@@ -24,12 +24,25 @@ pruning have each been checked deliberately.
 
 ## Invocation
 
-Two choices, trading different costs:
+Both Claude Code and Codex require a nonempty **description**. Invocation
+policy, not removing metadata, selects between two choices:
 
-- A **model-invoked** skill keeps a **description**, so the agent can fire it autonomously _and_ other skills can reach it (you can still type its name too). It contributes to **context load** — the description sits in the window every turn. Mechanics: omit `disable-model-invocation`, and write a model-facing description with rich trigger phrasing ("Use when the user wants…, mentions…").
-- A **user-invoked** skill strips the description from the agent's reach: only you, typing its name, can invoke it — and no other skill can. Zero context load, but it spends **cognitive load**: _you_ are the index that must remember it exists. Mechanics: set `disable-model-invocation: true`; the `description` becomes human-facing — a one-line summary, trigger lists stripped.
+- A **model-invoked** skill is selected automatically or reached by another
+  skill, and you can type its name. It spends **context load** on discovery.
+  Omit Claude's `disable-model-invocation`; keep Codex's default implicit
+  invocation. Describe its purpose and distinct triggers.
+- A **user-invoked** skill requires an explicit user request. It spends
+  **cognitive load**: you remember it. Set Claude frontmatter
+  `disable-model-invocation: true`; for Codex set
+  `policy.allow_implicit_invocation: false` in `agents/openai.yaml`. Its
+  description remains a concise purpose summary.
 
-Pick model-invocation only when the agent must reach the skill on its own, or another skill must. If it only ever fires by hand, make it user-invoked and pay no context load.
+Claude's `user-invocable: false` hides the shortcut; it still permits model
+invocation, as in `dev-skills:tdd`. Codex has no equivalent shortcut flag;
+do not translate it into disabling implicit invocation.
+
+Pick model-invocation when the agent or another skill must reach it. If it
+only fires by hand, make it user-invoked; retain its description.
 
 When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each.
 
@@ -39,7 +52,8 @@ A model-invoked **description** does two jobs — state what the skill is, and l
 
 - **Front-load the skill's leading word** — the description is where it does its invocation work.
 - **One trigger per branch.** Synonyms that rename a single branch are **duplication** — "build features using TDD … asks for test-first development" is one branch written twice. Collapse them; keep only genuinely distinct branches.
-- **Cut identity that's already in the body.** Keep the description to triggers, plus any "when another skill needs…" reach clause.
+- **Keep purpose and triggers concise.** Remove details already in the body,
+  but retain what the skill does and any necessary reach clause.
 
 ## Information hierarchy
 
@@ -59,7 +73,9 @@ Where the ladder decides _how far down_ a piece sits, **co-location** decides _w
 
 ### Referencing another skill
 
-- Write it `dev-skills:<name>` (for example, `dev-skills:plan`), never a bare name. That form is what `scripts/check` can check; a bare name is indistinguishable from prose.
+- Write it `dev-skills:<name>` (for example, `dev-skills:plan`), never a bare
+  name. `scripts/check` validates that public namespace; resolve it through
+  [RUNTIME.md](../../references/RUNTIME.md) in each host.
 - What the agent reads goes in `references/` — a **context pointer** target, not a place for `SKILL.md` itself to sprawl into. The plugin ships no scripts; a skill's own tool, if it has one, sits beside its `SKILL.md`.
 
 ## When to split

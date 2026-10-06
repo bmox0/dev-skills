@@ -1,8 +1,9 @@
 # The project's commands
 
 A plan's Checks names the commands each phase runs, the full commands run after
-all phases, and how e2e drives the system. They come from one block in the
-project's `CLAUDE.md`, stated once so that no plan has to discover them:
+all phases, and how e2e drives the system. Read project instructions through
+[RUNTIME.md](../../../references/RUNTIME.md); commands come from their Environment
+block, stated once:
 
 ```markdown
 ## Environment
@@ -22,4 +23,5 @@ State facts, not prohibitions. "none, this project has no test framework" is a
 fact and it is worth a line.
 
 When the block is missing, find the commands in the project's manifests and
-scripts, write them into Checks, and offer the user the block for `CLAUDE.md`.
+scripts, write them into Checks, and offer the block for the host's project
+instructions file.

@@ -20,8 +20,9 @@ answers one question, in the shape the user picked:
 
 ## A worker draws it
 
-Dispatch a Sonnet subagent with the question, the shape and the variants in the
-user's words, and the output path under `.ai-workflow/prototypes/`:
+Read [RUNTIME.md](../../references/RUNTIME.md). Dispatch a worker with the
+question, the shape and the variants in the user's words, and the output path
+under `.ai-workflow/prototypes/`:
 `YYYY-MM-DD-<topic>.html` for the HTML file, a `YYYY-MM-DD-<topic>/` directory
 for code. It draws what it is handed and never designs: a control, a screen or
 wording the conversation never named comes back as a question, not an

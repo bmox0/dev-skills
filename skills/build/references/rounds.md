@@ -1,7 +1,7 @@
 # Notes and rounds
 
-How `dev-skills:build` keeps what the user says about the product, and builds
-it in rounds.
+Product notes and rounds in `dev-skills:build`.
+Use [RUNTIME.md](../../../references/RUNTIME.md) for dispatch.
 
 ## The notes file
 
@@ -34,11 +34,12 @@ the user's words, with its kind: bug, polish, text or new.
 
 On the user's word, take every open note:
 
-1. A new `dev-skills:implementer` with the notes; its territory is what they
+1. A new implementer with the notes; its territory is what they
    touch. Its checks, as for any phase.
-2. At once: the reviewer on Sonnet over the round's commits, and the blast
-   radius from the diff. Confined to what the notes name: tell the user what
-   to look at, since they asked for it. Reaching shared code, logic or
+2. In parallel within slots: a targeted reviewer in clean new context over the
+   round's commits, and the blast radius from the diff. Confined to what the
+   notes name: tell the user what to look at, since they asked for it.
+   Reaching shared code, logic or
    anything else: a fresh worker drives the Done use cases the diff touches
    through `dev-skills:verify`, since nobody asked to look there. Say which,
    and why, in one line; the user can overrule.

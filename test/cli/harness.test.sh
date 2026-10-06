@@ -144,7 +144,7 @@ checkpoint_out=$(cd "$repo_root" && grep -rn 'Checkpoint [0-9]' skills/ 2>/dev/n
 segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
 [ -z "$segment_col_out" ] || fail "TC-11: expected no match for '| Segment |', found: $segment_col_out"
 
-# --- TC-13: no hooks, no skill scripts, no tool limits, the agents' models ---
+# --- TC-13: both hosts expose the same package and explicit-only finish ----
 
 [ ! -e "$repo_root/hooks" ] || fail "TC-13: the plugin ships no hooks/"
 skill_scripts=$(cd "$repo_root" && find skills -type d -name scripts 2>/dev/null)
@@ -152,15 +152,10 @@ skill_scripts=$(cd "$repo_root" && find skills -type d -name scripts 2>/dev/null
 for f in "$repo_root"/agents/*.md; do
   ! frontmatter "$f" | grep -q '^tools:' || fail "TC-13: $(basename "$f") should carry no tools: line"
 done
-frontmatter "$repo_root/agents/implementer.md" | grep -qx 'model: sonnet' \
-  || fail "TC-13: the implementer should run on sonnet"
-frontmatter "$repo_root/agents/reviewer.md" | grep -qx 'model: opus' \
-  || fail "TC-13: the reviewer should run on opus"
-grep -q '(reviewer on Sonnet)' "$repo_root/skills/build/SKILL.md" \
-  || fail "TC-13: build should send its later reviews on sonnet"
-plugin_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.claude-plugin/plugin.json")
-market_versions=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["metadata"]["version"], d["plugins"][0]["version"])' "$repo_root/.claude-plugin/marketplace.json")
-assert_eq "$plugin_version $plugin_version" "$market_versions" "TC-13: both manifests carry one version" || fail "TC-13"
+package_out=$(python3 "$repo_root/scripts/check-plugin.py" "$repo_root" --library-only 2>&1)
+package_rc=$?
+[ "$package_rc" -eq 0 ] \
+  || fail "TC-13: manifest versions, shared resources, agent metadata and finish policy should agree: $package_out"
 
 # --- TC-12: every other test file is green on its own ------------------------
 
@@ -245,7 +240,7 @@ while IFS= read -r v; do
   case "$v" in
     "in progress") grep -qi 'mark it `in progress`' "$build_skill" ;;
     done)          grep -qi 'mark it `done`' "$build_skill" ;;
-    waiting)       grep -qi 'mark it `waiting`' "$build_skill" ;;
+    waiting)       grep -qiE 'mark (it|phases) `waiting`' "$build_skill" ;;
     *) false ;;
   esac || fail "TC-14: skills/plan/SKILL.md's phase status list names \`$v\`, but skills/build/SKILL.md never sets it"
 done <<EOF

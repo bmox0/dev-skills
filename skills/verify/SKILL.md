@@ -5,13 +5,13 @@ description: Drive a plan's Done use cases on the running system — a browser, 
 
 # Verify
 
-The session that asks for e2e dispatches a worker, a fresh Sonnet subagent
-each run, that follows the steps below, and reads only its lines. It drives
-what the user will see at the human gate.
+Read [RUNTIME.md](../../references/RUNTIME.md). The orchestrator dispatches a
+fresh worker and reads its result. An assigned worker runs these steps
+directly, without dispatching another child.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e
 drives the system and where it runs (the plan's Checks, the project's
-`CLAUDE.md`); the prototype when the plan links one.
+Environment); the prototype when the plan links one.
 
 1. **Find the running system.** If the user's dev instance is up, use it; never
    start a second one or restart theirs. If none is up, start it as the project
