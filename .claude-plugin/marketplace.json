@@ -5,14 +5,14 @@
     "url": "https://github.com/bmox0"
   },
   "metadata": {
-    "description": "Shared Claude Code and Codex skills for taking a change from discussion to a plan, implementation, review, e2e checks and human approval.",
+    "description": "Skills and agents for Claude Code and Codex that take a change from discussion to merge: a plan file, phases built by subagents, a review and an e2e check, then human approval.",
     "version": "4.3.0"
   },
   "plugins": [
     {
       "name": "dev-skills",
       "source": "./",
-      "description": "Seven stages for every change: discussion, an optional prototype, a plan file, implementation by subagents, review and e2e checks, human approval, and finish. The session the user started coordinates the work.",
+      "description": "Seven stages for every change: a grill or a discussion, an optional prototype, a plan file, phases built by implementer subagents, a review and an e2e check, a human approval, and finish. The session the user started coordinates and does not edit code. Skills and agents only, no hooks or scripts.",
       "repository": "https://github.com/bmox0/dev-skills",
       "version": "4.3.0",
       "license": "MIT",

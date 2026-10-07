@@ -1,7 +1,7 @@
 {
   "name": "dev-skills",
   "version": "4.3.0",
-  "description": "Shared Claude Code and Codex skills for taking a change from discussion to a plan, implementation, review, e2e checks and human approval.",
+  "description": "Skills and agents for Claude Code and Codex that take a change from discussion to merge: a plan file, phases built by subagents, a review and an e2e check, then human approval.",
   "author": {
     "name": "bmox0"
   },
