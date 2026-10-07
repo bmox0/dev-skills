@@ -5,6 +5,8 @@ description: Reproduce a bug and pin down its root cause before anything is fixe
 
 # Bug
 
+In Codex, read [CODEX.md](../../references/CODEX.md) first.
+
 This session is the orchestrator: it judges the evidence and never edits code.
 A bug adds one stage in front of the plan: its reproduction and its cause. The
 fix is built from a plan whose phase 1 is the red test.

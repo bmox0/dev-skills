@@ -5,6 +5,8 @@ description: Build a throwaway prototype to answer a design question before the 
 
 # Prototype
 
+In Codex, read [CODEX.md](../../references/CODEX.md) first.
+
 After a grill or a discussion, offer one in a line, its shape part of the
 question: "A prototype? An HTML file, inside the app with real data, or code
 for the logic?" The user picks a shape or declines. This session is the

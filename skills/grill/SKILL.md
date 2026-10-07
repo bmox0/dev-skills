@@ -5,6 +5,8 @@ description: Question an idea with the user until both agree on what is being bu
 
 # Grill
 
+In Codex, read [CODEX.md](../../references/CODEX.md) first.
+
 This session is the orchestrator from here: it talks, decides with the user,
 and never edits code. Turn the idea into a design you and the user both agree
 on, through questions. Nothing is built until the user confirms.

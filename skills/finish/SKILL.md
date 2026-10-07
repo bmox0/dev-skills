@@ -1,6 +1,6 @@
 ---
 name: finish
-description: Merge the branch of a plan at `passed` — a merge request or local, squash or --no-ff, the message drafted from the plan's Result. Typed by the user as /finish.
+description: Merge the branch of a plan at `passed` — a merge request or local, squash or --no-ff, the message drafted from the plan's Result. Typed by the user.
 disable-model-invocation: true
 ---
 

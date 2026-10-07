@@ -1,0 +1,22 @@
+{
+  "name": "dev-skills",
+  "version": "4.3.0",
+  "description": "Skills and agents for Claude Code and Codex that take a change from discussion to merge: a plan file, phases built by subagents, a review and an e2e check, then human approval.",
+  "author": {
+    "name": "bmox0"
+  },
+  "repository": "https://github.com/bmox0/dev-skills",
+  "license": "MIT",
+  "keywords": ["workflow", "planning", "tdd", "code-review", "skills"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "dev-skills",
+    "shortDescription": "Plan, build, review and finish",
+    "longDescription": "A shared development workflow: discuss a change, write a plan, delegate implementation, run review and e2e checks, and get human approval before finish.",
+    "developerName": "bmox0",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Interactive"],
+    "defaultPrompt": "Let's grill this change before we plan it.",
+    "websiteURL": "https://github.com/bmox0/dev-skills"
+  }
+}

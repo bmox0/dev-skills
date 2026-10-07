@@ -11,17 +11,17 @@ One long-lived tab, driven by `tab.mjs`. The browser runs detached on its own pr
 
 ## First, get `tab` on PATH
 
-Run this once per machine:
+Run this once per machine. `<this skill's directory>` is the folder this `SKILL.md` sits in: Claude Code gives it as the skill's base directory, Codex in its skill list.
 
 ```bash
-node "$(printf '%s\n' "$HOME"/.claude/plugins/cache/dev-skills/dev-skills/*/skills/browser-test/tab.mjs | sort -V | tail -1)" shim
+node "<this skill's directory>/tab.mjs" shim
 ```
 
-It writes `~/.local/bin/tab`, which re-resolves the plugin on each call and so survives version bumps. If that directory is not on PATH, use the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a checkout.
+It writes `~/.local/bin/tab`, which picks the newest installed copy of the plugin on each call and so survives version bumps. If that directory is not on PATH, use the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a checkout.
 
 ## A check is a scenario
 
-1. **`tab up <url>`**, the url from the `**Dev server.**` line in `CLAUDE.md`; the server must already run. Where the login is the user's, ask them to sign in in that window; the session stays in the profile.
+1. **`tab up <url>`**, the url from the `**Dev server.**` line in the project's `AGENTS.md` or `CLAUDE.md`; the server must already run. Where the login is the user's, ask them to sign in in that window; the session stays in the profile.
 2. **`tab map main`** — the controls a user can reach, one line each: `button "Export"`, `searchbox "Search orders"`, `link "ORD-1001" … "ORD-1025" (25 alike)`. Take selectors from it: `role=button[name='Export']`. Map again on each new screen.
 3. **Write the whole Done as one file**, a step per use case, and edit it with the file editor:
 

@@ -1,7 +1,7 @@
 # dev-skills
 
-A Claude Code plugin of skills and two agents for building a change:
-discussion, a plan file, implementation by Sonnet subagents, a review and an
+A plugin for Claude Code and Codex: skills and two agents for building a
+change — discussion, a plan file, implementation by subagents, a review and an
 e2e check, and your approval before merge. The session you start coordinates
 the work and does not edit code.
 
@@ -72,13 +72,19 @@ cannot start.
   first review of a plan's branch and for a range you name, Sonnet for the
   re-check and every later round.
 
+In Codex the same roles are Codex subagents on the session's model, at
+reasoning effort `high` where Claude Code uses Sonnet and `xhigh` for the first
+review. The skills name Claude Code's tools;
+[`references/CODEX.md`](references/CODEX.md) says what each one is in Codex.
+
 The plugin ships no hooks and no scripts. The pipeline lives in the skills'
 text; the level-1 checks are the project's own tests, linters and typechecks.
 
 ## The project's side
 
-The plugin reads the project's `CLAUDE.md` and style skills as the bar for
-review, and one block in `CLAUDE.md` for the commands a plan's Checks names:
+The plugin reads the project's `AGENTS.md` or `CLAUDE.md` and its style skills
+as the bar for review, and one block in that file for the commands a plan's
+Checks names:
 
 ```markdown
 ## Environment
@@ -91,18 +97,40 @@ review, and one block in `CLAUDE.md` for the commands a plan's Checks names:
 
 The full format is in
 [environment-contract.md](skills/plan/references/environment-contract.md).
+`AGENTS.md` serves both hosts: Codex reads it, and Claude Code reads it where
+the project has no `CLAUDE.md`, or one that imports it with `@AGENTS.md`.
 
 ## Install
+
+In Claude Code:
 
 ```
 /plugin marketplace add bmox0/dev-skills
 /plugin install dev-skills@dev-skills
 ```
 
-Then restart the session. The repository carries its own
-[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), so it is a
-marketplace holding exactly one plugin, itself. Installing also brings the
-agents `implementer` and `reviewer`.
+Then restart the session. Installing also brings the agents `implementer` and
+`reviewer`.
+
+In Codex:
+
+```sh
+codex plugin marketplace add bmox0/dev-skills
+codex plugin add dev-skills@dev-skills
+```
+
+Then start a new session, and name a skill with `$`: `$dev-skills:grill`,
+`$dev-skills:build <plan>`, `$dev-skills:finish`. Codex's own `/plan` is not
+this plugin's. To update, `codex plugin marketplace upgrade dev-skills`, then
+`codex plugin add dev-skills@dev-skills` again. In the default
+`workspace-write` sandbox `.git` is read-only, so the first `git add` and
+`git commit` of a build ask for approval; approve each kind once.
+
+The repository is a marketplace holding exactly one plugin, itself:
+[`.claude-plugin/`](.claude-plugin/marketplace.json) for Claude Code,
+[`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) and
+[`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) for Codex. Both hosts
+install the same skills.
 
 ## Every skill
 
@@ -141,10 +169,13 @@ share.
 `dev-skills:` name exists, no retired name comes back, every markdown file is
 within its budget in [`scripts/word-budgets.txt`](scripts/word-budgets.txt),
 and the manifests and every frontmatter parse (`claude plugin validate`).
+It also installs the plugin into a throwaway Codex home and reads back the
+skills Codex shows its model: all of them but `finish`
+([`scripts/check-codex.py`](scripts/check-codex.py)).
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
 plugin's shape — TC-13 pins the shape itself (no hooks, no skill scripts,
-Sonnet implementers, an Opus reviewer), TC-14 pins the plan's statuses across `plan`, `build`,
+Sonnet implementers, an Opus reviewer, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
 `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 
 `scripts/usage` measures sessions from Claude Code's transcripts: wall and
@@ -153,7 +184,8 @@ active hours, human messages, tokens, subagents, per project or per session
 
 Working on this repository with the installed plugin also active runs the
 pipeline twice; turn it off first: `claude --settings
-'{"enabledPlugins":{"dev-skills@dev-skills":false}}'`.
+'{"enabledPlugins":{"dev-skills@dev-skills":false}}'`, or in Codex
+`codex -c 'plugins.dev-skills@dev-skills.enabled=false'`.
 
 ## Licence
 
