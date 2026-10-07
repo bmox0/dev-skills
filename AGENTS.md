@@ -6,10 +6,9 @@
 **Tests.** `scripts/test`
 **Single test file.** `scripts/test <path>`
 **Dev server.** none
-**E2E.** native plugin discovery with a local marketplace config override
-**Runtime.** CLI commands; Node for `skills/browser-test/tab.mjs`
-
-The repository contains the plugin's source. Use its maintainer checks;
-loading the installed dev-skills pipeline while editing it runs the workflow
-twice. Disable that plugin for this task with
-`codex -c 'plugins."dev-skills@dev-skills".enabled=false'`.
+**E2E.** none
+**Runtime.** a CLI invocation — `scripts/check`, `scripts/test`, `scripts/usage`
+and `skills/browser-test/tab.mjs` are run directly from a shell, never through
+a browser or a server
+**Plugin off.** Claude Code: `claude --settings '{"enabledPlugins":{"dev-skills@dev-skills":false}}'`;
+Codex: `codex -c 'plugins.dev-skills@dev-skills.enabled=false'`
