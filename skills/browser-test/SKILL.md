@@ -7,23 +7,21 @@ description: Use when a change has to be checked in the running app — clicking
 
 The web e2e tool: `dev-skills:verify` drives a plan's use cases through it.
 
-Follow [RUNTIME.md](../../references/RUNTIME.md) for project rules and skill invocation in Claude Code or Codex.
-
 One long-lived tab, driven by `tab.mjs`. The browser runs detached on its own profile with a CDP port, in a window the user can watch; the tab, its session and `localStorage` survive between commands and between sessions. A check is a scenario: the whole Done as one Playwright file, run in that tab in one call. Single commands are for digging into what the scenario could not settle.
 
 ## First, get `tab` on PATH
 
-Resolve `tab.mjs` beside the `SKILL.md` you just read, then run its absolute path:
+Run this once per machine:
 
 ```bash
-node "/absolute/path/to/skills/browser-test/tab.mjs" shim
+node "$(printf '%s\n' "$HOME"/.claude/plugins/cache/dev-skills/dev-skills/*/skills/browser-test/tab.mjs | sort -V | tail -1)" shim
 ```
 
-It writes `~/.local/bin/tab`, pinned to this copy. After updating or moving the plugin, rerun `shim` from the new copy. Do not search another host's plugin cache. If that directory is not on PATH, use the full `node …/tab.mjs` path instead. `TAB_MJS` overrides the target with an existing file; an invalid override falls back to the pinned copy.
+It writes `~/.local/bin/tab`, which re-resolves the plugin on each call and so survives version bumps. If that directory is not on PATH, use the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a checkout.
 
 ## A check is a scenario
 
-1. **`tab up <url>`**, the url from the `**Dev server.**` line in the applicable project rules; the server must already run. Where the login is the user's, ask them to sign in in that window; the session stays in the profile.
+1. **`tab up <url>`**, the url from the `**Dev server.**` line in `CLAUDE.md`; the server must already run. Where the login is the user's, ask them to sign in in that window; the session stays in the profile.
 2. **`tab map main`** — the controls a user can reach, one line each: `button "Export"`, `searchbox "Search orders"`, `link "ORD-1001" … "ORD-1025" (25 alike)`. Take selectors from it: `role=button[name='Export']`. Map again on each new screen.
 3. **Write the whole Done as one file**, a step per use case, and edit it with the file editor:
 

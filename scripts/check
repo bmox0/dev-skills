@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 # The one command that stands for "the tree is sound": the reference layer,
 # the word budgets and every SKILL.md's frontmatter (scripts/check-links.py),
-# plus the portable, Claude Code and Codex plugin/marketplace manifests
-# (scripts/check-plugin.py). External Claude validation runs when available;
-# only the root CLAUDE.md development-contract warning is permitted.
+# both Claude Code manifests (claude plugin validate --strict, where a warning
+# fails), and the plugin as Codex loads it (scripts/check-codex.py).
 #
-# Both checks run regardless of whether the first one fails, so one call
-# surfaces everything wrong at once. Structural package checks require only
-# python3, so they also work in a Codex-only environment. A missing Claude CLI
-# is reported as an explicit skip of the external validation.
+# Every check runs regardless of whether an earlier one fails, so one call
+# surfaces everything wrong at once. If `claude` or `codex` is not on PATH,
+# its half cannot run at all; that is a failure of this check, not something
+# to skip past — a check that could not run is not a check that passed.
 #
 # Usage: scripts/check
-# Exit:  0 both checks passed · 1 either failed
+# Exit:  0 every check passed · 1 any failed, or could not run
 set -uo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,6 +20,14 @@ status=0
 
 python3 "$script_dir/check-links.py" || status=1
 
-python3 "$script_dir/check-plugin.py" "$repo_root" || status=1
+if ! command -v claude >/dev/null 2>&1; then
+  echo "scripts/check: 'claude' is not on PATH — cannot run 'claude plugin validate'" >&2
+  status=1
+else
+  (cd "$repo_root" && claude plugin validate . --strict) || status=1
+  (cd "$repo_root" && claude plugin validate .claude-plugin/plugin.json --strict) || status=1
+fi
+
+python3 "$script_dir/check-codex.py" "$repo_root" || status=1
 
 exit "$status"

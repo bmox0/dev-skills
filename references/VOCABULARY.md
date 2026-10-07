@@ -1,6 +1,7 @@
 # Vocabulary
 
-Shared terms for humans and agents reading dev-skills. A reference, not a skill.
+The words the dev-skills skills use, so that a human and a model reading any of
+them mean the same thing. A plain reference file, not a skill.
 
 ## Roles
 
@@ -9,14 +10,13 @@ skill the user enters. It talks, decides with the user, writes the plan, runs
 the graph, relays messages and sorts findings. It holds conclusions, not raw
 code, and never edits code.
 
-**Implementer.** A clean context with the `implementer` role. It builds
+**Implementer.** Sonnet in a clean context, the `implementer` agent. It builds
 one phase, a list of findings, or a round's notes.
 
-**Worker.** A subagent for facts, prototypes, checks or e2e.
+**Worker.** A Sonnet subagent for a side job: facts from the code, a
+prototype, checks, e2e.
 
-**Reviewer.** A fresh review: initial over the full branch or a user-named
-range, targeted over fixes and later rounds. Models and dispatch are defined
-once in [RUNTIME.md](RUNTIME.md).
+**Reviewer.** The `reviewer` agent: Opus first, then Sonnet.
 
 ## The work
 
@@ -31,8 +31,8 @@ territory, what it waits for, its status.
 anywhere and writes only there. Phases whose territories overlap never run side
 by side.
 
-**Graph.** The phases and what each waits for; ready phases start up to the
-host's available slots. The plan file is also the **registry**: each phase
+**Graph.** The phases and what each waits for; every phase whose dependencies
+are met starts at once. The plan file is also the **registry**: each phase
 carries its status, `waiting`, `in progress` or `done`, kept by the
 orchestrator.
 

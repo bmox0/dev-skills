@@ -5,6 +5,8 @@ description: Build a throwaway prototype to answer a design question before the 
 
 # Prototype
 
+In Codex, read [CODEX.md](../../references/CODEX.md) first.
+
 After a grill or a discussion, offer one in a line, its shape part of the
 question: "A prototype? An HTML file, inside the app with real data, or code
 for the logic?" The user picks a shape or declines. This session is the
@@ -20,9 +22,8 @@ answers one question, in the shape the user picked:
 
 ## A worker draws it
 
-Read [RUNTIME.md](../../references/RUNTIME.md). Dispatch a worker with the
-question, the shape and the variants in the user's words, and the output path
-under `.ai-workflow/prototypes/`:
+Dispatch a Sonnet subagent with the question, the shape and the variants in the
+user's words, and the output path under `.ai-workflow/prototypes/`:
 `YYYY-MM-DD-<topic>.html` for the HTML file, a `YYYY-MM-DD-<topic>/` directory
 for code. It draws what it is handed and never designs: a control, a screen or
 wording the conversation never named comes back as a question, not an

@@ -5,8 +5,9 @@ description: Write the plan a change is built from — one screen, phases with t
 
 # Plan
 
-This session is the orchestrator: it writes the plan, never code.
-Read [RUNTIME.md](../../references/RUNTIME.md).
+In Codex, read [CODEX.md](../../references/CODEX.md) first.
+
+This session is the orchestrator: it writes the plan and never edits code.
 
 A plan is always a file, one screen, about 500 words. It holds only what an
 implementer cannot decide alone: the product decisions with a reason each, the
@@ -25,9 +26,9 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
 - After a grill or a discussion, a prototype was offered. If not, offer one in a
   line: "A prototype? An HTML file, inside the app with real data, or code for
   the logic?" (`dev-skills:prototype`). The user may decline.
-- A worker reads the code the plan touches and returns paths and seams,
-  so the territories are real.
-- Checks takes the project's commands from its Environment block:
+- A worker reads the code the plan touches, a Sonnet subagent that returns
+  paths and seams, so the territories are real.
+- Checks takes the project's commands from its `CLAUDE.md`:
   [environment-contract.md](references/environment-contract.md).
 
 ## The file

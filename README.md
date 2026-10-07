@@ -1,7 +1,7 @@
 # dev-skills
 
-A plugin for Claude Code and Codex, with shared skills and two agent roles:
-discussion, a plan file, implementation by subagents, a review and an
+A plugin for Claude Code and Codex: skills and two agents for building a
+change — discussion, a plan file, implementation by subagents, a review and an
 e2e check, and your approval before merge. The session you start coordinates
 the work and does not edit code.
 
@@ -22,7 +22,7 @@ is shorter; none is skipped, and every plan ends in a human gate.
    `a merge-request link` when finish opens one; your "go" takes it from
    draft to approved.
 4. **Build.** One branch per plan, one working tree. Every phase whose
-   dependencies are met starts as capacity allows, as an implementer that writes only
+   dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it.
 5. **The E2E gate.** The full checks, then at once a fresh review against the
    project's rules and e2e over the plan's Done use cases. Their findings make
@@ -52,8 +52,8 @@ The drawing: [docs/pipeline.html](docs/pipeline.html).
 | [`finish`](skills/finish/SKILL.md) | land it: a merge request or local, squash or `--no-ff` |
 
 A small task is built by the session that discussed it; anything bigger by a
-new session started from the plan file. `finish` requires an explicit user
-request in both hosts.
+new session started from the plan file. `finish` is the only skill the model
+cannot start.
 
 ## Who does what
 
@@ -62,32 +62,28 @@ request in both hosts.
 - **The orchestrator** is the model you started with, from the first pipeline
   skill you enter. It talks, writes the plan, runs the graph, relays messages
   and sorts findings. It never edits code.
-- **Implementers** follow the [`implementer`](agents/implementer.md) role:
+- **Implementers** are the [`implementer`](agents/implementer.md) agent: Sonnet,
   a clean context each, handed the whole plan, its phase, and what earlier
   phases reported. When the plan and the code disagree, it rules, carries on,
   and records the ruling with its cost if wrong.
-- **Workers** are subagents for side jobs: facts from the code, a
+- **Workers** are Sonnet subagents for side jobs: facts from the code, a
   prototype, the full checks, e2e.
-- **The reviewer** follows the [`reviewer`](agents/reviewer.md) role in a fresh
-  context: an initial review of the branch or a named range, then targeted
-  reviews for fixes and later rounds.
+- **The reviewer** is the [`reviewer`](agents/reviewer.md) agent: Opus for the
+  first review of a plan's branch and for a range you name, Sonnet for the
+  re-check and every later round.
 
-Model choices and host tools are defined once in
-[`references/RUNTIME.md`](references/RUNTIME.md). It maps Claude's role tiers
-to Codex's Sol model and reasoning effort, and explains dispatch, messaging,
-project rules and skill invocation. Claude registers the two agent files;
-Codex dispatches their instructions through its available subagent tools.
-Build needs a host with subagent support and the configured model tiers.
+In Codex the same roles are Codex subagents on the session's model, at
+reasoning effort `high` where Claude Code uses Sonnet and `xhigh` for the first
+review. The skills name Claude Code's tools;
+[`references/CODEX.md`](references/CODEX.md) says what each one is in Codex.
 
-The plugin ships no hooks. The pipeline lives in the skills' text, with a
-browser-test tool for web e2e; level-1 checks are the project's own tests,
-linters and typechecks. The root scripts maintain this repository.
+The plugin ships no hooks and no scripts. The pipeline lives in the skills'
+text; the level-1 checks are the project's own tests, linters and typechecks.
 
 ## The project's side
 
-The plugin reads applicable `CLAUDE.md` files in Claude Code and scoped
-`AGENTS.md` files in Codex, plus the project's style skills. An Environment
-block supplies the commands a plan's Checks names:
+The plugin reads the project's `CLAUDE.md` and style skills as the bar for
+review, and one block in `CLAUDE.md` for the commands a plan's Checks names:
 
 ```markdown
 ## Environment
@@ -100,43 +96,38 @@ block supplies the commands a plan's Checks names:
 
 The full format is in
 [environment-contract.md](skills/plan/references/environment-contract.md).
-Codex can reuse an existing `CLAUDE.md` Environment block; otherwise it
-discovers commands from project manifests and scripts.
 
 ## Install
 
 In Claude Code:
 
-```text
+```
 /plugin marketplace add bmox0/dev-skills
 /plugin install dev-skills@dev-skills
 ```
 
-In Codex CLI (verified with 0.153.4), one shell command adds the marketplace
-and installs the whole package:
+Then restart the session. Installing also brings the agents `implementer` and
+`reviewer`.
+
+In Codex:
 
 ```sh
-codex plugin marketplace add bmox0/dev-skills && codex plugin add dev-skills@dev-skills
+codex plugin marketplace add bmox0/dev-skills
+codex plugin add dev-skills@dev-skills
 ```
 
-Once the marketplace is registered, installation is just
-`codex plugin add dev-skills@dev-skills`. Refresh it with
-`codex plugin marketplace upgrade dev-skills`, then run `plugin add` again
-to refresh the installed package. Start a new session after installation.
-In Codex desktop, the repo catalog also supplies a source in the Plugins
-directory when working in this checkout; restart the app to refresh it.
+Then start a new session, and name a skill with `$`: `$dev-skills:grill`,
+`$dev-skills:build <plan>`, `$dev-skills:finish`. Codex's own `/plan` is not
+this plugin's. To update, `codex plugin marketplace upgrade dev-skills`, then
+`codex plugin add dev-skills@dev-skills` again. In the default
+`workspace-write` sandbox `.git` is read-only, so the first `git add` and
+`git commit` of a build ask for approval; approve each kind once.
 
-The repo is its own marketplace, containing one plugin. Claude uses
-[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json); Codex uses
-[`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json).
-[`plugin.json`](plugin.json) is the portable manifest, with
-[`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) for compatibility.
-Both hosts install the same skills, role instructions and references.
-
-Use `/dev-skills:plan` in Claude Code. In Codex, choose the plugin's skill
-from the skill picker or mention it with `$`; `/plan` is a built-in Codex
-command, not this package's plan skill. The runtime explains internal
-`dev-skills:<name>` calls.
+The repository is a marketplace holding exactly one plugin, itself:
+[`.claude-plugin/`](.claude-plugin/marketplace.json) for Claude Code,
+[`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) and
+[`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) for Codex. Both hosts
+install the same skills.
 
 ## Every skill
 
@@ -174,18 +165,15 @@ share.
 `scripts/check` asks whether the tree is sound: every link resolves, every
 `dev-skills:` name exists, no retired name comes back, every markdown file is
 within its budget in [`scripts/word-budgets.txt`](scripts/word-budgets.txt),
-and the portable, Claude and Codex manifests agree. Package checks use Python's
-standard library. When the Claude CLI is present, both Claude manifests also
-run through `claude plugin validate --strict --json`; only the known warning
-about this repository's root `CLAUDE.md` is accepted. A missing Claude CLI
-is reported as a skip of that external validation.
+and the manifests and every frontmatter parse (`claude plugin validate`).
+It also installs the plugin into a throwaway Codex home and reads back the
+skills Codex shows its model: all of them but `finish`
+([`scripts/check-codex.py`](scripts/check-codex.py)).
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
-plugin's shape — TC-13 pins the shared package and runtime roles,
-TC-14 pins the plan's statuses across `plan`, `build`,
+plugin's shape — TC-13 pins the shape itself (no hooks, no skill scripts,
+Sonnet implementers, an Opus reviewer, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
 `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
-Package fixtures cover manifest drift and explicit-only finish; browser shim
-tests cover installed paths, quoting and updates.
 
 `scripts/usage` measures sessions from Claude Code's transcripts: wall and
 active hours, human messages, tokens, subagents, per project or per session
@@ -193,8 +181,8 @@ active hours, human messages, tokens, subagents, per project or per session
 
 Working on this repository with the installed plugin also active runs the
 pipeline twice; turn it off first: `claude --settings
-'{"enabledPlugins":{"dev-skills@dev-skills":false}}'`.
-For Codex, use `codex -c 'plugins."dev-skills@dev-skills".enabled=false'`.
+'{"enabledPlugins":{"dev-skills@dev-skills":false}}'`, or in Codex
+`codex -c 'plugins.dev-skills@dev-skills.enabled=false'`.
 
 ## Licence
 

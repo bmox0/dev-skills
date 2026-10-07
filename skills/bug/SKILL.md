@@ -5,16 +5,18 @@ description: Reproduce a bug and pin down its root cause before anything is fixe
 
 # Bug
 
+In Codex, read [CODEX.md](../../references/CODEX.md) first.
+
 This session is the orchestrator: it judges the evidence and never edits code.
-A bug adds reproduction and cause before the plan; phase 1 is the red test.
-Read [RUNTIME.md](../../references/RUNTIME.md) before dispatch.
+A bug adds one stage in front of the plan: its reproduction and its cause. The
+fix is built from a plan whose phase 1 is the red test.
 
 **No fix without a root cause.** A symptom fix is a failure, not a partial
 success, and it holds hardest when the fix looks obvious.
 
 ## 1. A worker reproduces and traces
 
-Dispatch a worker with the symptom in the user's words and
+Dispatch a worker, a Sonnet subagent, with the symptom in the user's words and
 a slug for it. It leaves the tree as it found it, and returns:
 
 - **A red test and the command that runs it**, red every time: a failing test

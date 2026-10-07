@@ -9,7 +9,7 @@
 # "diagnose" as an ordinary verb — "Use these to diagnose issues the user
 # may be having with the skill" — not a reference to the old Superpowers
 # `diagnose` skill.
-skills/writing-skills/SKILL.md:111:diagnose
+skills/writing-skills/SKILL.md:95:diagnose
 
 # "brainstorming" as a generic example class of skill — "a brainstorming
 # skill should predictably diverge" — illustrating Predictability, not

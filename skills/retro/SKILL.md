@@ -5,15 +5,15 @@ description: Propose environment changes after a landed plan — a check, a stan
 
 # Retro
 
-Read [RUNTIME.md](../../references/RUNTIME.md) for project instructions, then
-the plan's `## Human gate`, commits, and session stalls or user corrections.
-Propose environment changes so the next plan avoids the same cost.
+Read what the plan cost: the plan with its `## Human gate` page, the commits,
+and where the session stalled or was corrected by the user. Then propose
+changes to the environment, so the next plan does not pay the same cost.
 
 ## What a proposal can be
 
 - **A mechanical mistake → a check that fails:** a test, a lint rule, a check
   in the project's scripts. It stops the mistake without anyone remembering it.
-- **A judgement call → one standards line** in project instructions or a style
+- **A judgement call → one standards line** in the project's CLAUDE.md or style
   skill, where the implementer reads it first and the reviewer cites it.
 - **Missing knowledge → a pointer:** a path, a command, a line in the
   `## Environment` block.
