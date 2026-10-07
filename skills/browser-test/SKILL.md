@@ -21,7 +21,7 @@ It writes `~/.local/bin/tab`, which re-resolves the plugin on each call and so s
 
 ## A check is a scenario
 
-1. **`tab up <url>`**, the url from the `**Dev server.**` line in `CLAUDE.md`; the server must already run. Where the login is the user's, ask them to sign in in that window; the session stays in the profile.
+1. **`tab up <url>`**, the url from the `**Dev server.**` line in the project's `AGENTS.md` or `CLAUDE.md`; the server must already run. Where the login is the user's, ask them to sign in in that window; the session stays in the profile.
 2. **`tab map main`** — the controls a user can reach, one line each: `button "Export"`, `searchbox "Search orders"`, `link "ORD-1001" … "ORD-1025" (25 alike)`. Take selectors from it: `role=button[name='Export']`. Map again on each new screen.
 3. **Write the whole Done as one file**, a step per use case, and edit it with the file editor:
 

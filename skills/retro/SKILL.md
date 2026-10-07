@@ -13,8 +13,9 @@ changes to the environment, so the next plan does not pay the same cost.
 
 - **A mechanical mistake → a check that fails:** a test, a lint rule, a check
   in the project's scripts. It stops the mistake without anyone remembering it.
-- **A judgement call → one standards line** in the project's CLAUDE.md or style
-  skill, where the implementer reads it first and the reviewer cites it.
+- **A judgement call → one standards line** in the project's AGENTS.md,
+  CLAUDE.md or style skill, where the implementer reads it first and the
+  reviewer cites it.
 - **Missing knowledge → a pointer:** a path, a command, a line in the
   `## Environment` block.
 - **A plugin problem → the same three kinds,** in the plugin.

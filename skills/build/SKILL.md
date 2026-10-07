@@ -13,11 +13,11 @@ Sonnet workers check it.
 
 ## 1. The branch
 
-Read the plan, its epic, and the project's `CLAUDE.md`. On a clean tree, cut
-the branch named on the plan's Status line from the default branch with plain
-git, and write the base SHA and `building` there; under an epic, its row
-gets `building` too. Every phase commits to this branch, in one working
-tree; no worktrees.
+Read the plan, its epic, and the project's `AGENTS.md` or `CLAUDE.md`. On a
+clean tree, cut the branch named on the plan's Status line from the default
+branch with plain git, and write the base SHA and `building` there; under an
+epic, its row gets `building` too. Every phase commits to this branch, in one
+working tree; no worktrees.
 
 Resuming: switch to the branch; the statuses in the plan and
 `git log <base>..HEAD` say what's done.

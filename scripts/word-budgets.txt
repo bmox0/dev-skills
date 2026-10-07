@@ -13,7 +13,7 @@ skills/bug/SKILL.md 455
 skills/bug/references/condition-based-waiting.md 325
 skills/bug/references/defense-in-depth.md 300
 skills/bug/references/root-cause-tracing.md 325
-skills/build/SKILL.md 580
+skills/build/SKILL.md 585
 skills/build/references/rounds.md 400
 skills/commit-work/SKILL.md 300
 skills/commit-work/references/commit-message-template.md 700
@@ -25,7 +25,7 @@ skills/finish/SKILL.md 350
 skills/grill/SKILL.md 275
 skills/grill/references/INTERVIEW.md 550
 skills/handoff/SKILL.md 450
-skills/plan/SKILL.md 650
+skills/plan/SKILL.md 655
 skills/plan/references/environment-contract.md 200
 skills/plan/references/example.md 475
 skills/prototype/SKILL.md 375
@@ -35,7 +35,7 @@ skills/retro/SKILL.md 300
 skills/review/SKILL.md 300
 skills/review/references/CRITERIA.md 600
 skills/tdd/SKILL.md 300
-skills/verify/SKILL.md 305
+skills/verify/SKILL.md 310
 skills/writing-skills/SKILL.md 1700
 skills/writing-skills/references/GLOSSARY.md 2800
 skills/writing-skills/references/TESTING.md 650

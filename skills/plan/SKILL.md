@@ -28,7 +28,7 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   the logic?" (`dev-skills:prototype`). The user may decline.
 - A worker reads the code the plan touches, a Sonnet subagent that returns
   paths and seams, so the territories are real.
-- Checks takes the project's commands from its `CLAUDE.md`:
+- Checks takes the project's commands from its `AGENTS.md` or `CLAUDE.md`:
   [environment-contract.md](references/environment-contract.md).
 
 ## The file

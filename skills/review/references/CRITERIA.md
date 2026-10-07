@@ -9,7 +9,7 @@ defines it.
 
 - the plan or its epic: the Result, a decision in the Approach, Out of scope,
   a phase, a Done use case;
-- a written project rule: CLAUDE.md, the project's style skills,
+- a written project rule: AGENTS.md or CLAUDE.md, the project's style skills,
   CONTRIBUTING, an ADR, CONTEXT.md for names;
 - a check that fails, or a behaviour you can show: the input, the path through
   the code, the wrong result;

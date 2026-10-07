@@ -13,7 +13,7 @@ what the user will see at the human gate.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e
 drives the system and where it runs (the plan's Checks, the project's
-`CLAUDE.md`); the prototype when the plan links one.
+`AGENTS.md` or `CLAUDE.md`); the prototype when the plan links one.
 
 1. **Find the running system.** If the user's dev instance is up, use it; never
    start a second one or restart theirs. If none is up, start it as the project

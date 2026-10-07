@@ -82,8 +82,9 @@ text; the level-1 checks are the project's own tests, linters and typechecks.
 
 ## The project's side
 
-The plugin reads the project's `CLAUDE.md` and style skills as the bar for
-review, and one block in `CLAUDE.md` for the commands a plan's Checks names:
+The plugin reads the project's `AGENTS.md` or `CLAUDE.md` and its style skills
+as the bar for review, and one block in that file for the commands a plan's
+Checks names:
 
 ```markdown
 ## Environment
@@ -96,6 +97,8 @@ review, and one block in `CLAUDE.md` for the commands a plan's Checks names:
 
 The full format is in
 [environment-contract.md](skills/plan/references/environment-contract.md).
+`AGENTS.md` serves both hosts: Codex reads it, and Claude Code reads it where
+the project has no `CLAUDE.md`, or one that imports it with `@AGENTS.md`.
 
 ## Install
 
