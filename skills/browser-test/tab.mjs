@@ -661,12 +661,14 @@ Env: TAB_BASE, TAB_PORT, TAB_HEADLESS=1, TAB_TIMEOUT, TAB_BROWSER, TAB_PROFILE, 
   if (cmd === "shim") {
     const dir = process.env.TAB_SHIM_DIR ?? path.join(homedir(), ".local", "bin")
     const file = path.join(dir, "tab")
-    const glob = '"$HOME"/.claude/plugins/cache/dev-skills/dev-skills/*/skills/browser-test/tab.mjs'
+    const sh = (s) => "'" + s.replaceAll("'", "'\\''") + "'"
+    const plugin = path.resolve(HERE, "../../../..")
+    const cached = path.basename(path.dirname(path.dirname(plugin))) === "cache"
+    const newest = cached
+      ? `[ -f "$T" ] || T="$(printf '%s\\n' ${sh(plugin)}/*/skills/browser-test/tab.mjs 2>/dev/null | sort -V | tail -1)"\n`
+      : ""
     mkdirSync(dir, {recursive: true})
-    writeFileSync(
-      file,
-      `#!/bin/sh\nT="\${TAB_MJS:-}"\n[ -f "$T" ] || T="$(printf '%s\\n' ${glob} 2>/dev/null | sort -V | tail -1)"\n[ -f "$T" ] || T="${HERE}"\nexec node "$T" "$@"\n`,
-    )
+    writeFileSync(file, `#!/bin/sh\nT="\${TAB_MJS:-}"\n${newest}[ -f "$T" ] || T=${sh(HERE)}\nexec node "$T" "$@"\n`)
     chmodSync(file, 0o755)
     const onPath = (process.env.PATH ?? "").split(":").includes(dir)
     out(`${file}${onPath ? "" : `\n${dir} is not on PATH — add it, or call tab.mjs by its full path`}`)

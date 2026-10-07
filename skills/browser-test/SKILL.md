@@ -11,13 +11,13 @@ One long-lived tab, driven by `tab.mjs`. The browser runs detached on its own pr
 
 ## First, get `tab` on PATH
 
-Run this once per machine:
+Run this once per machine. `<this skill's directory>` is the folder this `SKILL.md` sits in: Claude Code gives it as the skill's base directory, Codex in its skill list.
 
 ```bash
-node "$(printf '%s\n' "$HOME"/.claude/plugins/cache/dev-skills/dev-skills/*/skills/browser-test/tab.mjs | sort -V | tail -1)" shim
+node "<this skill's directory>/tab.mjs" shim
 ```
 
-It writes `~/.local/bin/tab`, which re-resolves the plugin on each call and so survives version bumps. If that directory is not on PATH, use the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a checkout.
+It writes `~/.local/bin/tab`, which picks the newest installed copy of the plugin on each call and so survives version bumps. If that directory is not on PATH, use the full `node …/tab.mjs` path instead. `TAB_MJS` points the shim at a checkout.
 
 ## A check is a scenario
 
