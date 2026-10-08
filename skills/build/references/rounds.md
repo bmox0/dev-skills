@@ -32,9 +32,12 @@ the user's words, with its kind: bug, polish, text or new.
 
 ## A round
 
-On the user's word, take every open note:
+The user's word is a request to build the notes; a note given while they are
+still trying the app is not one. Name in a line what the round takes, any new
+first; the user can overrule. Then take every open note:
 
-1. A new `dev-skills:implementer` with the notes; its territory is what they
+1. A new `dev-skills:implementer` with the notes file's path and the numbers
+   it takes: it reads the user's words there. Its territory is what they
    touch. Its checks, as for any phase.
 2. At once: the reviewer on Sonnet over the round's commits, and the blast
    radius from the diff. Confined to what the notes name: tell the user what
@@ -42,8 +45,8 @@ On the user's word, take every open note:
    anything else: a fresh worker drives the Done use cases the diff touches
    through `dev-skills:verify`, since nobody asked to look there. Say which,
    and why, in one line; the user can overrule.
-3. Defects, Conventions and failed use cases become open notes, first on the
-   gate page.
+3. Defects and failed use cases become open notes, under Open on the gate
+   page; Conventions and Observations are folded there.
 4. Each note moves under its round with its commit and its check; a new one
    taken adds its use case to Done. Then the gate page again.
 

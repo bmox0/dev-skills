@@ -35,8 +35,8 @@ declared with no test and no path to it is a Defect too.
 
 ## Conventions
 
-A departure from a written project rule, with the rule cited. Conventions are
-fixed in the same pass as the Defects.
+A departure from a written project rule, with the rule cited. Conventions go
+on the gate page, folded; the user decides which are fixed.
 
 ## Observations
 

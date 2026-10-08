@@ -39,4 +39,4 @@ source:
 
 Then what could not be judged from the range, and why.
 
-One pass, never "until clean": a re-check reads only the fix's commits.
+A re-check reads only the fix's commits.

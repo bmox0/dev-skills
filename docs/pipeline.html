@@ -195,7 +195,7 @@ text(36, cy + 14, `<div class="card"><h3 class="orange">The plan — always a fi
   <div class="k">OUT OF SCOPE</div><p>a few lines</p>
   <div class="k">PHASES — 2 to 5 tasks for a capable engineer</div>
   <ul><li>what to build and why · what becomes true</li><li>its <b>territory</b>: what it changes · what it waits for</li><li>a status: waiting, in progress, done</li></ul>
-  <div class="k">CHECKS</div><p>level-1 commands per phase; the full commands, the review, how e2e drives the system</p>
+  <div class="k">CHECKS</div><p>level-1 commands per phase; the full commands, the review, how e2e drives the system; the gate’s level</p>
   <div class="k">DONE</div><p>the use cases: do this → see that</p>
   <div class="k">AND</div><p>a link to the prototype · no file lists beyond territories, no code, no mechanisms</p></div>`, '', 600);
 
@@ -204,14 +204,14 @@ text(702, cy + 14, `<div class="card"><h3 class="teal">Three levels of checks</h
   <div class="k">1 · INSIDE A PHASE (4) — the fastest</div>
   <ul><li>TDD, linters, typechecks, the project’s own scripts, as the plan’s Checks says</li><li>while a wave runs: only its own territory</li><li>its own findings: it fixes them itself</li><li>a plan-vs-code conflict: it rules, carries on, records the ruling</li></ul>
   <div class="k">2 · THE E2E GATE (5) — the main one</div>
-  <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases</li><li>one list → one new implementer → re-check only what it touched</li><li>one pass, never “until clean”</li></ul>
+  <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases</li><li>one list → one new implementer → re-check only what it touched</li><li>at the plan’s level — small, normal, wide; two fixes at most</li></ul>
   <div class="k">3 · THE HUMAN GATE (6) — you try it</div>
   <ul><li>only checked and tested work reaches it</li><li>what you find goes to the notes file; nothing starts until you say so</li></ul></div>`, '', 600);
 
 rect(1346, cy, 640, 540, 'pink', { fill: '#231a20', sw: 1.8, r: 16 });
 text(1368, cy + 14, `<div class="card"><h3 class="pink">The human gate — one page</h3>
   <div class="k">CODE · approval 1</div>
-  <ul><li>the plan’s branch against its base, in git or the editor; no generated file</li><li>a walkthrough, 5–10 lines: what changed, where, why</li><li>the rulings the implementers made alone, with their cost if wrong — read first</li></ul>
+  <ul><li>the plan’s branch against its base, in git or the editor; no generated file</li><li>a walkthrough, 5–10 lines: what changed, where, why</li><li>decided without you: the rulings and the product calls, with their cost if wrong — read first</li></ul>
   <div class="k">E2E · approval 2</div>
   <ul><li>the Done use cases: do this → see that</li><li>beside each, the machine’s result: passed, a screenshot, the command output</li></ul>
   <div class="k">THEN</div>

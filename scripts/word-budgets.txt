@@ -3,30 +3,31 @@
 # A change that raises a budget names what it removes. Words are counted as
 # whitespace-separated tokens, the way wc -w counts them.
 
-agents/implementer.md 315
+agents/implementer.md 365
 agents/reviewer.md 100
 references/CODEX.md 400
-references/VOCABULARY.md 500
+references/VOCABULARY.md 545
 skills/browser-test/SKILL.md 1100
 skills/browser-test/references/WEBSOCKETS.md 300
 skills/bug/SKILL.md 455
 skills/bug/references/condition-based-waiting.md 325
 skills/bug/references/defense-in-depth.md 300
 skills/bug/references/root-cause-tracing.md 325
-skills/build/SKILL.md 585
-skills/build/references/rounds.md 400
+skills/build/SKILL.md 730
+skills/build/references/gate.md 405
+skills/build/references/rounds.md 455
 skills/commit-work/SKILL.md 300
 skills/commit-work/references/commit-message-template.md 700
 skills/domain-modeling/SKILL.md 650
 skills/domain-modeling/references/ADR-FORMAT.md 450
 skills/domain-modeling/references/CONTEXT-FORMAT.md 350
 skills/epic/SKILL.md 300
-skills/finish/SKILL.md 350
+skills/finish/SKILL.md 375
 skills/grill/SKILL.md 275
 skills/grill/references/INTERVIEW.md 550
 skills/handoff/SKILL.md 450
-skills/plan/SKILL.md 655
-skills/plan/references/environment-contract.md 200
+skills/plan/SKILL.md 790
+skills/plan/references/environment-contract.md 250
 skills/plan/references/example.md 475
 skills/prototype/SKILL.md 375
 skills/prototype/references/LOGIC.md 450
@@ -35,7 +36,7 @@ skills/retro/SKILL.md 300
 skills/review/SKILL.md 300
 skills/review/references/CRITERIA.md 600
 skills/tdd/SKILL.md 300
-skills/verify/SKILL.md 310
+skills/verify/SKILL.md 360
 skills/writing-skills/SKILL.md 1700
 skills/writing-skills/references/GLOSSARY.md 2800
 skills/writing-skills/references/TESTING.md 650

@@ -62,6 +62,7 @@ Waits for: 1 — `getBindings()` and its change event. Runs beside 2.
   while other phases run.
 - After all phases: the same commands on the whole project; a review against
   the project's rules; e2e in the running Electron app through browser-test.
+- Gate: wide — the bindings are stored user data that every window reads.
 
 ## Done
 
@@ -73,4 +74,5 @@ Waits for: 1 — `getBindings()` and its change event. Runs beside 2.
 4. Reset on the row → the default comes back and works; Reset all → every row
    is back to its default.
 5. Press ⌥ alone while recording → nothing is recorded.
+6. Open Shortcuts → it reads like the rest of Settings — you check
 ```

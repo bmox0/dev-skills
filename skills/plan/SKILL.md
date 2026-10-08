@@ -9,7 +9,7 @@ In Codex, read [CODEX.md](../../references/CODEX.md) first.
 
 This session is the orchestrator: it writes the plan and never edits code.
 
-A plan is always a file, one screen, about 500 words. It holds only what an
+A plan is always a file, one screen, about 1000 words. It holds only what an
 implementer cannot decide alone: the product decisions with a reason each, the
 interfaces where two phases meet, what is out, how it is checked. No file lists
 beyond territories, no code, no mechanisms: implementers explore the code
@@ -27,7 +27,8 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   line: "A prototype? An HTML file, inside the app with real data, or code for
   the logic?" (`dev-skills:prototype`). The user may decline.
 - A worker reads the code the plan touches, a Sonnet subagent that returns
-  paths and seams, so the territories are real.
+  paths and seams, so the territories are real. Code outside this repository
+  that a decision points at gets its path.
 - Checks takes the project's commands from its `AGENTS.md` or `CLAUDE.md`:
   [environment-contract.md](references/environment-contract.md).
 
@@ -71,10 +72,12 @@ Waits for: <phases, and the interface it uses from them> | nothing
 - Every phase: <the project's commands>, on its own territory while other phases run.
 - After all phases: <the full commands>; a review against the project's rules;
   e2e through <browser | simulator | curl | CLI>, <where the system runs>.
+- Gate: <small | normal | wide> — <why, in one line>
 
 ## Done
 
 1. <do this> → <see that>
+2. <do this> → <see that> — you check
 ```
 
 ## Phases and the graph
@@ -90,9 +93,21 @@ Waits for: <phases, and the interface it uses from them> | nothing
 
 ## Handing it over
 
-Show the user the path, the Result and the graph in one line (`1 → 2 ∥ 3`). The
-user's "go" approves the plan and its graph: set Status to `approved`, with
-the branch named; build writes the base when it cuts it.
+Before showing it:
+
+- **What e2e cannot do.** A Done use case e2e cannot reach with the project's
+  Environment block, its Access and Devices lines included, or one judged by
+  its look alone, is marked `you check`: the user checks it at the human gate.
+  What e2e needs from the user is asked now, with the go.
+- **The gate level** goes into Checks, from the table in
+  [gate.md](../build/references/gate.md).
+- **Other plans** at `building` or `at the human gate` whose territories
+  overlap this one's are named in a line.
+
+Show the user the path, the Result, and in one line the graph, the level and
+the plan's word count (`1 → 2 ∥ 3 · normal · 1100 words`). The user's "go"
+approves the plan and its graph: set Status to `approved`, with the branch
+named; build writes the base when it cuts it.
 
 Then offer, in one line, where to build it: here for a small task, or a new
 session started from the plan file for anything bigger. The user picks; the
