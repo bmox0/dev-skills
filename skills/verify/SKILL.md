@@ -15,13 +15,17 @@ what the user will see at the human gate.
 drives the system and where it runs (the plan's Checks, the project's
 `AGENTS.md` or `CLAUDE.md`); the prototype when the plan links one.
 
-1. **Find the running system.** If the user's dev instance is up, use it; never
-   start a second one or restart theirs. If none is up, start it as the project
-   says, and stop it when done.
+1. **Find the running system.** If the user's dev instance of the tree you were
+   handed is up, use it; never start a second one or restart theirs. If none
+   is up, start it as the project says, on a port of its own in a worktree, and
+   stop it when done. The project's Environment block, its Access and Devices
+   lines included, is all you set up: what it does not cover is
+   `not reached: needs <what>`.
 2. **Drive each use case** as a user would: a web app through
    `dev-skills:browser-test`, all of them as one scenario in the window the
    user watches; iOS through the simulator's MCP server, a backend with curl, a
-   CLI by running it. A click only a script gets through is failed.
+   CLI by running it. A click only a script gets through is failed. One
+   device, one theme, one size, unless the plan's Checks names more.
 3. **Check looks on captures:** a screenshot for each state whose appearance
    matters, frames for anything that moves, compared with the prototype.
    "Visible" is a look: text in the DOM is not one, nor are sampled pixels.

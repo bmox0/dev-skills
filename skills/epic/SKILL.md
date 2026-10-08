@@ -26,17 +26,18 @@ Write it to `.ai-workflow/epics/<topic>.md`:
 <shapes passed between plans, written once>
 
 ## Plans
-| # | Plan | Waits for | Status |
-|---|---|---|---|
-| 1 | Transport and tool registration | — | landed |
-| 2 | First tool over the service layer | 1 | building |
-| 3 | Call log and access revocation | 1 | |
+| # | Plan | Territory | Waits for | Status |
+|---|---|---|---|---|
+| 1 | Transport and tool registration | `server/transport/` | — | landed |
+| 2 | First tool over the service layer | `server/tools/` | 1 | building |
+| 3 | Call log and access revocation | `server/log/`, `server/auth/` | 1 | |
 ```
 
 The decisions bind every plan, and no plan reopens one. A decision that turns
 up while planning one plan and binds another moves here; it is never copied.
 
-Each row is a finished feature, not a step. Its plan is written when it is next
+Each row is a finished feature, not a step. Its territory is where its plan
+will write; rows whose territories overlap wait for each other. Its plan is written when it is next
 (`dev-skills:plan`), with `Epic:` pointing here, and starts from the default
 branch once the plans it waits for have landed. A row's Status is empty until
 its plan exists. Rows merge or split as planning shows what fits: the list is

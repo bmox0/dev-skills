@@ -13,14 +13,21 @@ Sonnet workers check it.
 
 ## 1. The branch
 
-Read the plan, its epic, and the project's `AGENTS.md` or `CLAUDE.md`. On a
-clean tree, cut the branch named on the plan's Status line from the default
-branch with plain git, and write the base SHA and `building` there; under an
-epic, its row gets `building` too. Every phase commits to this branch, in one
-working tree; no worktrees.
+Read the plan, its epic, and the project's `AGENTS.md` or `CLAUDE.md`, and the
+other plans at `building` or `at the human gate`: a territory this plan shares
+with one is named to the user in a line.
 
-Resuming: switch to the branch; the statuses in the plan and
-`git log <base>..HEAD` say what's done.
+Cut the branch named on the plan's Status line from the default branch with
+plain git: here on a clean tree; when another plan's branch is checked out
+here, in a worktree of its own (`git worktree add ../<repo>-<slug> -b <branch>
+<default>`). Write the base SHA and `building` on the Status line; under an
+epic, its row gets `building` too. Every phase commits to this branch, in that
+one tree. From a worktree, hand every implementer and worker its path; the
+plan, its notes and the rest of `.ai-workflow/` stay in the main tree, and the
+app runs from the worktree on a port of its own.
+
+Resuming: switch to the branch, or its worktree in `git worktree list`; the
+statuses in the plan and `git log <base>..HEAD` say what's done.
 
 ## 2. The graph
 
@@ -33,38 +40,40 @@ start what it unblocks.
 - **Messages go through you.** An implementer writes to you for a file outside
   its territory, or a product call the plan does not hold, and carries on
   meanwhile. Grant the file when no running phase owns it, or pass it to the
-  phase that does; put a product call to the user; answer with `SendMessage`.
-  No git running: clear a stuck `index.lock`.
+  phase that does. Answer a product call yourself, from the plan, its epic and
+  what the user said, and tell the user in a line; only an irreversible one,
+  deleting data, sending outside, production, waits for the user, whose answer
+  goes on in their words. Answer with `SendMessage`. No git running: clear a
+  stuck `index.lock`.
 - **A changed interface** a later phase uses goes into that phase's hand-off.
-- **Rulings**, what an implementer decided alone where the plan and the code
-  disagreed, with the cost if wrong, are kept for the human gate.
+- **Decided without you**, kept for the human gate: the rulings, what an
+  implementer decided alone where the plan and the code disagreed, and the
+  product calls you answered; each with the question as asked and where it
+  came from, the answer, why, and the cost if wrong.
 
 ## 3. The E2E gate
 
-When every phase is done:
-
-1. A worker runs the plan's full checks and returns only what failed. Red is a
-   finding.
-2. At once: `dev-skills:reviewer` over `<base>..HEAD` with the plan and the
-   checks' result, and a worker driving the plan's Done through
-   `dev-skills:verify`.
-3. One list: red checks, Defects, Conventions, use cases failed or not reached.
-   One new implementer fixes all of it.
-4. A targeted re-check: a worker's full checks, then at once the reviewer on
-   Sonnet over the fix's commits only and a fresh worker on those use cases.
-
-One pass, never "until clean". What is still open goes first on the gate page.
+When every phase is done, run the gate at the level the plan's Checks names:
+the full checks, then at once the reviewer and e2e, one list for one new
+implementer, a targeted re-check. Read [gate.md](references/gate.md) then, not
+before.
 
 ## 4. The human gate
 
 Set Status to `at the human gate`, write one page under the plan's
-`## Human gate`, and put it in front of the user, who tries the running app:
+`## Human gate`, and put it in front of the user, who tries the running app;
+from a worktree, say how to run it there. The page, in this order:
 
-- **Code, approval 1.** The rulings with their cost if wrong, first. Then a
-  walkthrough in 5–10 lines: what changed, where, why. The change itself is
-  `git diff <base>..<branch>`.
-- **E2E, approval 2.** Each Done use case as "do this → see that", with its
-  last result and the commit it ran on; mark one touched since.
+1. **Decided without you**, each with its cost if wrong.
+2. **Open**: findings that survived their fix, use cases not reached and what
+   they need, a round's open notes.
+3. **Code, approval 1.** The level, and why if raised. A walkthrough in 5–10
+   lines: what changed, where, why; Fix 1 and Fix 2 with their commits. The
+   change itself is `git diff <base>..<branch>`.
+4. **E2E, approval 2.** Each Done use case as "do this → see that", with its
+   last result and the commit it ran on; mark one touched since. The
+   `you check` ones last, with any capture e2e took.
+5. **Folded**: the Conventions and Observations.
 
 Both approvals: set Status to `passed` and show the notes left for later. The
 plan waits for the user's `finish`.

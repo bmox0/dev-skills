@@ -28,12 +28,12 @@ The user's answer approves the message too.
 
 ## 3. Land it
 
-On a clean tree:
+Locally, in the clean tree that has `<default>` checked out
+(`git worktree list`; with none, here after `git switch <default>`):
 
-- **Local, squash:** `git switch <default>`, `git merge --squash <branch>`,
-  then `git commit` with the message.
-- **Local, `--no-ff`:** `git switch <default>`, then
-  `git merge --no-ff <branch>` with the message.
+- **Local, squash:** `git merge --squash <branch>`, then `git commit` with the
+  message.
+- **Local, `--no-ff`:** `git merge --no-ff <branch>` with the message.
 - **A merge request:** `git push -u origin <branch>`, then
   `gh pr create --base <default>`, the message as its title and the plan's
   `## Human gate` page as its body, with the captures named by where they sit
@@ -51,4 +51,6 @@ pushing the plan's branch, nothing else. Leave the plan's branch in place.
 
 Local: set Status to `landed`. A merge request: set it to the request's
 link — step 1 lands it once merged. Under an epic, the plan's row follows.
+Landed from a worktree of its own: `git worktree remove <path>`; the branch
+stays.
 Offer a retro (`dev-skills:retro`); the user decides.

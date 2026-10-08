@@ -21,16 +21,21 @@ is shorter; none is skipped, and every plan ends in a human gate.
    `approved` → `building` → `at the human gate` → `passed` → `landed`, via
    `a merge-request link` when finish opens one; your "go" takes it from
    draft to approved.
-4. **Build.** One branch per plan, one working tree. Every phase whose
+4. **Build.** One branch and one working tree per plan: this one, or a
+   worktree when another plan is building here. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it.
-5. **The E2E gate.** The full checks, then at once a fresh review against the
-   project's rules and e2e over the plan's Done use cases. Their findings make
-   one list for one new implementer, then a targeted re-check. One pass.
-6. **The human gate.** One page: the code (the branch against its base, a
-   walkthrough, the rulings the implementers made alone) and the e2e (the use
-   cases, each with its last result and the commit it ran on), written into the
-   plan. You try the running app. What you say about the product goes into a
+5. **The E2E gate.** At the level the plan names, small, normal or wide: the
+   full checks, then at once a fresh review against the project's rules and
+   e2e over what you would not see by trying the app. Defects and failures make
+   one list for one new implementer, then a targeted re-check; two fixes at
+   most.
+6. **The human gate.** One page, written into the plan: what was decided
+   without you (the rulings the implementers made alone, the product questions
+   the orchestrator answered), the code (the branch against its base, a
+   walkthrough) and the e2e (the use cases, each with its last result and the
+   commit it ran on; the ones marked "you check" are yours). You try the
+   running app. What you say about the product goes into a
    notes file beside the plan, and nothing starts on it until you say so; then
    a round builds every open note like a phase: an implementer, its checks, a
    review, and e2e where the diff reaches past what the notes name.
@@ -61,7 +66,9 @@ cannot start.
   build, how to finish and a retro are your call.
 - **The orchestrator** is the model you started with, from the first pipeline
   skill you enter. It talks, writes the plan, runs the graph, relays messages
-  and sorts findings. It never edits code.
+  and sorts findings. During a build it answers product questions itself,
+  except an irreversible one, and shows each answer at the human gate. It never
+  edits code.
 - **Implementers** are the [`implementer`](agents/implementer.md) agent: Sonnet,
   a clean context each, handed the whole plan, its phase, and what earlier
   phases reported. When the plan and the code disagree, it rules, carries on,
@@ -93,6 +100,7 @@ Checks names:
 **Lint.** `npm run lint`
 **Dev server.** `npm run dev`, serves on `http://localhost:5173`
 **Runtime.** a browser
+**Access.** a test account without a one-time code, its password in `.env.local`
 ```
 
 The full format is in
@@ -161,7 +169,9 @@ share.
 - A stage stays only if it saves more time than it takes.
 - The skills do not restrict the models or make them work one step after
   another without a reason.
-- Where the work could go two ways, the user chooses, not the agent.
+- Where the work could go two ways, the user chooses, not the agent. During a
+  build the orchestrator chooses and the human gate shows each choice; an
+  irreversible one waits for the user.
 
 ## Checking this repository
 

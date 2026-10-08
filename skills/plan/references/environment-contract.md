@@ -17,10 +17,15 @@ discover them:
 **E2E.** `<command>` — or: none
 **Runtime.** <how the observable behaviour is driven here: a browser, a request,
 the simulator, a CLI invocation>
+**Access.** <how e2e signs in: the account, its roles, where its credentials
+live (an env var, `.env.local`, the keychain), where a one-time code comes
+from> — or: none
+**Devices.** <what e2e runs on, and what it leaves alone> — or: any
 ```
 
 State facts, not prohibitions. "none, this project has no test framework" is a
-fact and it is worth a line.
+fact and it is worth a line. Access names where a credential lives, never the
+credential: the file is committed.
 
 When the block is missing, find the commands in the project's manifests and
 scripts, write them into Checks, and offer the user the block for the file the

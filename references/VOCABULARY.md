@@ -37,13 +37,15 @@ carries its status, `waiting`, `in progress` or `done`, kept by the
 orchestrator.
 
 **Ruling.** What an implementer decided alone where the plan and the code
-disagreed: what, why, the cost if wrong. The human gate reads them first.
+disagreed: what, why, the cost if wrong. The human gate reads them first,
+under Decided without you, with the product calls the orchestrator answered.
 
 **Checks.** The plan's section naming the project's commands for every phase,
 the full commands after all phases, and how e2e drives the system.
 
 **Done.** The plan's use cases, each "do this → see that". The E2E gate drives
-them; the human gate shows them with their results.
+them; the human gate shows them with their results. One marked `you check`,
+which e2e cannot reach or which is judged by its look alone, is the user's.
 
 **Epic.** Several plans, only on the user's word: their shared decisions and
 the order they go in.
@@ -53,9 +55,10 @@ the order they go in.
 **Level 1.** Inside a phase: TDD, linters, typechecks, the project's scripts,
 on the phase's own territory while other phases run.
 
-**The E2E gate.** After the last phase: the full checks, then a review and e2e
-over Done at once. Their findings make one list for one new implementer, then a
-targeted re-check. One pass, never "until clean".
+**The E2E gate.** After the last phase, at the level the plan names, small,
+normal or wide: the full checks, then a review and e2e over Done at once. Their
+findings make one list for one new implementer, then a targeted re-check; two
+fixes at most.
 
 **The human gate.** One page, two approvals: the code (the branch against its
 base, a walkthrough, the rulings) and the e2e (the use cases with the machine's
@@ -68,7 +71,7 @@ results). The user tries the app; a **round**, on their word, builds the open
 **Defect.** A finding about correctness, behaviour, security, data, an
 unreachable use case, or a test that cannot fail. _Avoid:_ blocker.
 
-**Convention.** A departure from a written project rule, cited. Fixed in the
-same pass as the Defects. _Avoid:_ advisory, nit.
+**Convention.** A departure from a written project rule, cited. Folded on the
+gate page; fixed once the user makes it a note. _Avoid:_ advisory, nit.
 
 **Observation.** True and worth knowing, but not a finding. Never blocks.
