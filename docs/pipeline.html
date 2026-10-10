@@ -109,7 +109,7 @@ function bar(a, b, y, col, label, o = {}) {
 
 /* ---------- header ---------- */
 text(20, 6, 'The dev-skills pipeline', 'title');
-text(24, 86, 'entry → prototype → plan → build → E2E gate → human gate → finish', 'subtitle');
+text(24, 86, 'entry → prototype → plan → build → E2E gate → human gate → land and code review → finish', 'subtitle');
 text(24, 124, `<div class="leg">
   <span><i class="sw" style="border-color:#dee2e6;background:#2e3238"></i>you</span>
   <span><i class="sw" style="border-color:#9775fa;background:#262040"></i>the orchestrator — the model you started with; never edits code</span>
@@ -123,8 +123,8 @@ const T0 = 196;
 text(14, T0, 'ONE PLAN, ON A TIME AXIS &nbsp;<span class="note">— lengths are schematic</span>', 'sec');
 const P = { y: T0 + 64 };
 const phases = [
-  ['1 · entry', 230, 470], ['2 · prototype', 470, 600, true], ['3 · plan', 600, 760], ['4 · build — phases by the graph', 760, 1150],
-  ['5 · E2E gate', 1150, 1480], ['6 · human gate', 1480, 1760], ['7 · finish', 1760, 1960],
+  ['1 · entry', 230, 440], ['2 · prototype', 440, 560, true], ['3 · plan', 560, 700], ['4 · build — phases by the graph', 700, 1040],
+  ['5 · E2E gate', 1040, 1320], ['6 · human gate', 1320, 1560], ['7 · land · code review', 1560, 1800], ['8 · finish', 1800, 1960],
 ];
 for (const [n, a, b, dashed] of phases) {
   rect(a + 2, P.y, b - a - 4, 38, 'grey', { fill: '#2a2d32', r: 8, sw: 1.8, dash: dashed ? DASH : undefined });
@@ -138,50 +138,53 @@ text(20, L.work + 20, 'workers', 'row teal');
 text(20, L.art + 2, 'artifacts', 'row green');
 
 const stops = [
-  [470, 'we understand each other', true, 230], [760, 'your “go” on the plan', false, 200],
-  [1622, '✓ code', true, 110], [1760, '✓ e2e → passed', false, 170],
+  [440, 'we understand each other', true, 210], [700, 'your “go” on the plan', false, 200],
+  [1560, '✓ e2e → land', true, 150], [1800, '✓ code → passed', false, 170],
 ];
 for (const [x, label, left, w] of stops) {
   line([[x, P.y - 6], [x, L.art + 34]], '#ff6b6b', { dash: [8, 7], sw: 1.8 });
   text(left ? x - w - 6 : x + 6, P.y - 30, label, 'lbl red' + (left ? ' right' : ''), w);
 }
-line([[1000, P.y - 6], [1000, L.art + 34]], '#9775fa', { dash: [3, 7], sw: 1.4 });
-text(1006, P.y - 30, 'a question → the orchestrator; you only for a product call', 'lbl purple', 420);
+line([[940, P.y - 6], [940, L.art + 34]], '#9775fa', { dash: [3, 7], sw: 1.4 });
+text(946, P.y - 30, 'a question → the orchestrator; you only for a product call', 'lbl purple', 420);
 
-bar(232, 466, L.you, 'dark', 'answer · decide');
-bar(474, 596, L.you, 'dark', 'yes or no', { dash: DASH });
-bar(764, 820, L.you, 'dark', 'go');
-bar(1484, 1618, L.you, 'dark', 'read the diff');
-bar(1626, 1756, L.you, 'dark', 'the use cases');
-bar(1764, 1880, L.you, 'dark', 'type finish');
-bar(1886, 1956, L.you, 'dark', 'retro?', { dash: DASH });
+bar(232, 436, L.you, 'dark', 'answer · decide');
+bar(444, 556, L.you, 'dark', 'yes or no', { dash: DASH });
+bar(704, 760, L.you, 'dark', 'go');
+bar(1324, 1556, L.you, 'dark', 'the use cases · notes');
+bar(1564, 1640, L.you, 'dark', 'type land');
+bar(1644, 1796, L.you, 'dark', 'read the commits');
+bar(1804, 1900, L.you, 'dark', 'type finish');
+bar(1904, 1956, L.you, 'dark', 'retro?', { dash: DASH });
 
-bar(232, 466, L.orch, 'purple', 'talks · decides · conclusions');
-bar(474, 596, L.orch, 'purple', 'offers one');
-bar(604, 756, L.orch, 'purple', 'writes the plan');
-bar(764, 1146, L.orch, 'purple', 'runs the graph · registry · messages', { dash: [7, 6], fill: '#211c33' });
-bar(1154, 1476, L.orch, 'purple', 'join · one list of findings', { dash: [7, 6], fill: '#211c33' });
-bar(1484, 1756, L.orch, 'purple', 'the gate page');
-bar(1764, 1956, L.orch, 'purple', 'asks how to end');
+bar(232, 436, L.orch, 'purple', 'talks · decides · conclusions');
+bar(444, 556, L.orch, 'purple', 'offers one');
+bar(564, 696, L.orch, 'purple', 'writes the plan');
+bar(704, 1036, L.orch, 'purple', 'runs the graph · registry · messages', { dash: [7, 6], fill: '#211c33' });
+bar(1044, 1316, L.orch, 'purple', 'join · one list of findings', { dash: [7, 6], fill: '#211c33' });
+bar(1324, 1556, L.orch, 'purple', 'the gate page');
+bar(1564, 1796, L.orch, 'purple', 'rewrites history · review page');
+bar(1804, 1956, L.orch, 'purple', 'asks how to end');
 
-bar(770, 950, L.impl, 'orange', 'A · model · level 1');
-bar(770, 1060, L.impl + 36, 'orange', 'B · API · parallel, other files');
-bar(954, 1146, L.impl, 'orange', 'C · UI · waits for A');
-bar(1266, 1406, L.impl + 72, 'orange', 'new implementer');
+bar(710, 880, L.impl, 'orange', 'A · model · level 1');
+bar(710, 970, L.impl + 36, 'orange', 'B · API · parallel, other files');
+bar(884, 1036, L.impl, 'orange', 'C · UI · waits for A');
+bar(1150, 1280, L.impl + 72, 'orange', 'new implementer');
 
-bar(290, 390, L.work, 'teal', 'facts');
-bar(474, 596, L.work, 'teal', 'draws it', { dash: DASH });
-bar(1154, 1226, L.work, 'teal', 'checks');
-bar(1230, 1296, L.work, 'teal', 'review');
-bar(1230, 1296, L.work + 36, 'teal', 'e2e');
-bar(1410, 1476, L.work, 'teal', 're-check');
+bar(280, 380, L.work, 'teal', 'facts');
+bar(444, 556, L.work, 'teal', 'draws it', { dash: DASH });
+bar(1044, 1110, L.work, 'teal', 'checks');
+bar(1114, 1180, L.work, 'teal', 'review');
+bar(1114, 1180, L.work + 36, 'teal', 'e2e');
+bar(1250, 1316, L.work, 'teal', 're-check');
 
-bar(232, 466, L.art, 'green', 'in the session', { dash: DASH });
-bar(474, 596, L.art, 'green', 'prototype file', { dash: DASH });
-bar(604, 756, L.art, 'green', 'plan · one screen');
-bar(764, 1476, L.art, 'green', 'the plan’s branch · a commit per step · statuses in the plan');
-bar(1484, 1756, L.art, 'green', 'branch vs base · the gate page');
-bar(1764, 1956, L.art, 'green', 'MR/local · squash/no-ff');
+bar(232, 436, L.art, 'green', 'in the session', { dash: DASH });
+bar(444, 556, L.art, 'green', 'prototype file', { dash: DASH });
+bar(564, 696, L.art, 'green', 'plan · one screen');
+bar(704, 1316, L.art, 'green', 'the plan’s branch · a commit per step · statuses in the plan');
+bar(1324, 1556, L.art, 'green', 'the gate page · notes');
+bar(1564, 1796, L.art, 'green', 'one or a few commits · backup');
+bar(1804, 1956, L.art, 'green', 'MR · --no-ff · --ff-only');
 
 line([[230, L.art + 44], [1975, L.art + 44]], '#dee2e6', { sw: 2.2, head: true });
 text(232, L.art + 54, 'a small task: the session that discussed it orchestrates; bigger: a new session from the plan file · an epic is several plans, only on your word · no tracker unless you ask', 'note', 1740);
@@ -205,19 +208,17 @@ text(702, cy + 14, `<div class="card"><h3 class="teal">Three levels of checks</h
   <ul><li>TDD, linters, typechecks, the project’s own scripts, as the plan’s Checks says</li><li>while a wave runs: only its own territory</li><li>its own findings: it fixes them itself</li><li>a plan-vs-code conflict: it rules, carries on, records the ruling</li></ul>
   <div class="k">2 · THE E2E GATE (5) — the main one</div>
   <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases</li><li>one list → one new implementer → re-check only what it touched</li><li>at the plan’s level — small, normal, wide; two fixes at most</li></ul>
-  <div class="k">3 · THE HUMAN GATE (6) — you try it</div>
+  <div class="k">3 · THE HUMAN GATE (6, 7) — you try it, then read it</div>
   <ul><li>only checked and tested work reaches it</li><li>what you find goes to the notes file; nothing starts until you say so</li></ul></div>`, '', 600);
 
 rect(1346, cy, 640, 540, 'pink', { fill: '#231a20', sw: 1.8, r: 16 });
-text(1368, cy + 14, `<div class="card"><h3 class="pink">The human gate — one page</h3>
-  <div class="k">CODE · approval 1</div>
-  <ul><li>the plan’s branch against its base, in git or the editor; no generated file</li><li>a walkthrough, 5–10 lines: what changed, where, why</li><li>decided without you: the rulings and the product calls, with their cost if wrong — read first</li></ul>
-  <div class="k">E2E · approval 2</div>
-  <ul><li>the Done use cases: do this → see that</li><li>beside each, the machine’s result: passed, a screenshot, the command output</li></ul>
-  <div class="k">THEN</div>
-  <ul><li>your word → a round over every open note: implementer, review, e2e where the diff reaches further, back here</li><li>approved → marked passed, waiting for finish</li></ul>
-  <div class="k">7 · FINISH — you type it</div>
-  <ul><li>it asks: MR or local? squash or --no-ff?</li><li>the message comes from Result; no push without your word; a retro in one line</li></ul></div>`, '', 600);
+text(1368, cy + 14, `<div class="card"><h3 class="pink">The human gate — the product, then the code</h3>
+  <div class="k">6 · THE PRODUCT — the gate page</div>
+  <ul><li>the product calls made without you, with their cost if wrong</li><li>the Done use cases: do this → see that; beside each, the machine’s result</li><li>your word → a round over every open note: implementer, review, e2e where the diff reaches further, back here</li></ul>
+  <div class="k">7 · LAND, THEN THE CODE — you type land</div>
+  <ul><li>the working commits become one, or a few by meaning; the same tree; a backup branch keeps the old ones</li><li>the review page: each commit with a walkthrough, the rulings, the Conventions folded</li><li>notes on the code → a round, then it lands again; approved → passed</li></ul>
+  <div class="k">8 · FINISH — you type it</div>
+  <ul><li>it asks: MR, or local --no-ff or --ff-only?</li><li>the message comes from Result; no push without your word; a retro in one line</li></ul></div>`, '', 600);
 
 /* ---------- the registry ---------- */
 const gy = 1270;

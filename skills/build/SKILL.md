@@ -14,8 +14,8 @@ Sonnet workers check it.
 ## 1. The branch
 
 Read the plan, its epic, and the project's `AGENTS.md` or `CLAUDE.md`, and the
-other plans at `building` or `at the human gate`: a territory this plan shares
-with one is named to the user in a line.
+other plans from `building` to `passed`: a territory this plan shares with one
+is named to the user in a line.
 
 Cut the branch named on the plan's Status line from the default branch with
 plain git: here on a clean tree; when another plan's branch is checked out
@@ -46,10 +46,10 @@ start what it unblocks.
   goes on in their words. Answer with `SendMessage`. No git running: clear a
   stuck `index.lock`.
 - **A changed interface** a later phase uses goes into that phase's hand-off.
-- **Decided without you**, kept for the human gate: the rulings, what an
-  implementer decided alone where the plan and the code disagreed, and the
-  product calls you answered; each with the question as asked and where it
-  came from, the answer, why, and the cost if wrong.
+- **Decided without you**, kept: the product calls you answered, for the
+  human gate, and the rulings, what an implementer decided alone where the
+  plan and the code disagreed, for the code review; each with the question as
+  asked and where it came from, the answer, why, and the cost if wrong.
 
 ## 3. The E2E gate
 
@@ -61,27 +61,24 @@ before.
 ## 4. The human gate
 
 Set Status to `at the human gate`, write one page under the plan's
-`## Human gate`, and put it in front of the user, who tries the running app;
-from a worktree, say how to run it there. The page, in this order:
+`## Human gate`, above any `### Code review`, and put it in front of the user,
+who tries the running app; from a worktree, say how to run it there. The page
+is the product's; the code comes after `land`. In this order:
 
-1. **Decided without you**, each with its cost if wrong.
+1. **Decided without you**: the product calls, each with its cost if wrong.
 2. **Open**: findings that survived their fix, use cases not reached and what
    they need, a round's open notes.
-3. **Code, approval 1.** The level, and why if raised. A walkthrough in 5–10
-   lines: what changed, where, why; Fix 1 and Fix 2 with their commits. The
-   change itself is `git diff <base>..<branch>`.
-4. **E2E, approval 2.** Each Done use case as "do this → see that", with its
-   last result and the commit it ran on; mark one touched since. The
-   `you check` ones last, with any capture e2e took.
-5. **Folded**: the Conventions and Observations.
+3. **E2E.** The level, and why if raised. Each Done use case as "do this → see
+   that", with its last result and the commit it ran on; mark one touched
+   since. The `you check` ones last, with any capture e2e took.
 
-Both approvals: set Status to `passed` and show the notes left for later. The
-plan waits for the user's `finish`.
+Show the notes left for later. The user's `land` approves the page:
+`dev-skills:land`.
 
 ## 5. Notes and rounds
 
-From the first phase on, the user's notes about the product go into
-`.ai-workflow/plans/<slug>.notes.md`. Nothing starts on one; no running agent
-hears of it. A round, on the user's word, builds every open note or a
+From the first phase on, the user's notes about the product, and at the
+code review about the code, go into `.ai-workflow/plans/<slug>.notes.md`.
+Nothing starts on one; no running agent hears of it. A round, on the user's word, builds every open note or a
 conflict at `finish` like a phase (reviewer on Sonnet):
 [rounds.md](references/rounds.md).

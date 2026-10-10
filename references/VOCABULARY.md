@@ -37,8 +37,7 @@ carries its status, `waiting`, `in progress` or `done`, kept by the
 orchestrator.
 
 **Ruling.** What an implementer decided alone where the plan and the code
-disagreed: what, why, the cost if wrong. The human gate reads them first,
-under Decided without you, with the product calls the orchestrator answered.
+disagreed: what, why, the cost if wrong. The code review reads them.
 
 **Checks.** The plan's section naming the project's commands for every phase,
 the full commands after all phases, and how e2e drives the system.
@@ -60,11 +59,12 @@ normal or wide: the full checks, then a review and e2e over Done at once. Their
 findings make one list for one new implementer, then a targeted re-check; two
 fixes at most.
 
-**The human gate.** One page, two approvals: the code (the branch against its
-base, a walkthrough, the rulings) and the e2e (the use cases with the machine's
-results). The user tries the app; a **round**, on their word, builds the open
-**notes** in the plan's notes file. Approved, the plan is `passed` and waits for
-`finish`.
+**The human gate.** The user's, in two passes. The use cases with the
+machine's results: the user tries the app, and a **round**, on their word,
+builds the open **notes** in the plan's notes file. Then `land` rewrites the
+branch into the commits a reviewer reads, on the same tree, for the **code
+review**: those commits and the rulings. Approved, the plan is `passed` and
+waits for `finish`.
 
 ## Review
 

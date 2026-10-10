@@ -7,7 +7,7 @@ the work and does not edit code.
 
 ## The pipeline
 
-Every change goes through the same seven stages. For a small task each stage
+Every change goes through the same eight stages. For a small task each stage
 is shorter; none is skipped, and every plan ends in a human gate.
 
 1. **Entry.** A grill when it is unclear what is being built, a discussion when
@@ -18,9 +18,9 @@ is shorter; none is skipped, and every plan ends in a human gate.
 3. **Plan.** Always a file, one screen: Result, Approach, Out of scope, Phases,
    Checks, Done, and the prototype's link. Each phase names its territory and
    what it waits for; together they form the graph. Status runs `draft` →
-   `approved` → `building` → `at the human gate` → `passed` → `landed`, via
-   `a merge-request link` when finish opens one; your "go" takes it from
-   draft to approved.
+   `approved` → `building` → `at the human gate` → `at code review` →
+   `passed` → `merged`, via `a merge-request link` when finish opens one;
+   your "go" takes it from draft to approved.
 4. **Build.** One branch and one working tree per plan: this one, or a
    worktree when another plan is building here. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
@@ -30,17 +30,21 @@ is shorter; none is skipped, and every plan ends in a human gate.
    e2e over what you would not see by trying the app. Defects and failures make
    one list for one new implementer, then a targeted re-check; two fixes at
    most.
-6. **The human gate.** One page, written into the plan: what was decided
-   without you (the rulings the implementers made alone, the product questions
-   the orchestrator answered), the code (the branch against its base, a
-   walkthrough) and the e2e (the use cases, each with its last result and the
-   commit it ran on; the ones marked "you check" are yours). You try the
-   running app. What you say about the product goes into a
-   notes file beside the plan, and nothing starts on it until you say so; then
-   a round builds every open note like a phase: an implementer, its checks, a
-   review, and e2e where the diff reaches past what the notes name.
-7. **Finish.** You type it. It asks: a merge request or local, squash or
-   `--no-ff`.
+6. **The human gate.** The product, one page written into the plan: the
+   product questions the orchestrator answered without you, and the e2e (the
+   use cases, each with its last result and the commit it ran on; the ones
+   marked "you check" are yours). You try the running app. What you say about
+   the product goes into a notes file beside the plan, and nothing starts on
+   it until you say so; then a round builds every open note like a phase: an
+   implementer, its checks, a review, and e2e where the diff reaches past what
+   the notes name.
+7. **Land and the code review.** You type `land`. The working commits become
+   the ones a reviewer reads, one or a few by meaning, on the same tree; a
+   backup branch keeps the old ones. Then the code review page: the commits
+   with a walkthrough, and the rulings the implementers made alone. Notes about
+   the code go to a round, and it lands again.
+8. **Finish.** You type it. It asks: a merge request, or local with `--no-ff`
+   or `--ff-only`.
 
 The drawing: [docs/pipeline.html](docs/pipeline.html).
 
@@ -54,15 +58,16 @@ The drawing: [docs/pipeline.html](docs/pipeline.html).
 | [`epic`](skills/epic/SKILL.md) | several plans in order, only when you say so |
 | [`plan`](skills/plan/SKILL.md) | the one-screen plan and its graph |
 | [`build <plan>`](skills/build/SKILL.md) | the branch, the implementers, the E2E gate, the human gate |
-| [`finish`](skills/finish/SKILL.md) | land it: a merge request or local, squash or `--no-ff` |
+| [`land`](skills/land/SKILL.md) | the commits a reviewer reads, then the code review |
+| [`finish`](skills/finish/SKILL.md) | merge it: a merge request, or local with `--no-ff` or `--ff-only` |
 
 A small task is built by the session that discussed it; anything bigger by a
-new session started from the plan file. `finish` is the only skill the model
-cannot start.
+new session started from the plan file. `land` and `finish` are the only
+skills the model cannot start.
 
 ## Who does what
 
-- **You** decide, approve, and type `finish`. A prototype, an epic, where to
+- **You** decide, approve, and type `land` and `finish`. A prototype, an epic, where to
   build, how to finish and a retro are your call.
 - **The orchestrator** is the model you started with, from the first pipeline
   skill you enter. It talks, writes the plan, runs the graph, relays messages
@@ -128,7 +133,7 @@ codex plugin add dev-skills@dev-skills
 ```
 
 Then start a new session, and name a skill with `$`: `$dev-skills:grill`,
-`$dev-skills:build <plan>`, `$dev-skills:finish`. Codex's own `/plan` is not
+`$dev-skills:build <plan>`, `$dev-skills:land`, `$dev-skills:finish`. Codex's own `/plan` is not
 this plugin's. To update, `codex plugin marketplace upgrade dev-skills`, then
 `codex plugin add dev-skills@dev-skills` again. In the default
 `workspace-write` sandbox `.git` is read-only, so the first `git add` and
@@ -150,9 +155,10 @@ install the same skills.
 | [`commit-work`](skills/commit-work/SKILL.md) | stage by path, split into logical commits, write the message |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | the glossary in `CONTEXT.md`, and an ADR for a decision that needs one |
 | [`epic`](skills/epic/SKILL.md) | shared decisions and the ordered list of plans |
-| [`finish`](skills/finish/SKILL.md) | land a passed plan, typed by the user |
+| [`finish`](skills/finish/SKILL.md) | merge a passed plan, typed by the user |
 | [`grill`](skills/grill/SKILL.md) | talk an idea into a shared understanding |
 | [`handoff`](skills/handoff/SKILL.md) | pack this session for a fresh context |
+| [`land`](skills/land/SKILL.md) | rewrite a plan's branch into reviewable commits, typed by the user |
 | [`plan`](skills/plan/SKILL.md) | write the one-screen plan |
 | [`prototype`](skills/prototype/SKILL.md) | answer a design question with throwaway code |
 | [`retro`](skills/retro/SKILL.md) | propose environment changes after a plan, each with what it removes |
@@ -180,13 +186,13 @@ share.
 within its budget in [`scripts/word-budgets.txt`](scripts/word-budgets.txt),
 and the manifests and every frontmatter parse (`claude plugin validate`).
 It also installs the plugin into a throwaway Codex home and reads back the
-skills Codex shows its model: all of them but `finish`
+skills Codex shows its model: all of them but `land` and `finish`
 ([`scripts/check-codex.py`](scripts/check-codex.py)).
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
 plugin's shape — TC-13 pins the shape itself (no hooks, no skill scripts,
 Sonnet implementers, an Opus reviewer, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
-`finish`, `epic` and the implementer; one file is `scripts/test <path>`.
+`land`, `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 
 `scripts/usage` measures sessions from Claude Code's transcripts: wall and
 active hours, human messages, tokens, subagents, per project or per session

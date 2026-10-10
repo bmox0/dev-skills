@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Propose environment changes after a landed plan — a check, a standards line, a pointer — each paired with what it removes. Offered once by finish, or on demand; applies nothing.
+description: Propose environment changes after a merged plan — a check, a standards line, a pointer — each paired with what it removes. Offered once by finish, or on demand; applies nothing.
 ---
 
 # Retro

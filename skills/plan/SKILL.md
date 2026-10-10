@@ -42,7 +42,7 @@ with Status `draft`. A worked example: [example.md](references/example.md).
 ```markdown
 # Plan: <what the user gets, in a few words>
 
-Status: <draft | approved | building | at the human gate | passed | a merge-request link | landed> · branch `<branch>` · base `<sha>`
+Status: <draft | approved | building | at the human gate | at code review | passed | a merge-request link | merged> · branch `<branch>` · base `<sha>`
 Prototype: <path, the chosen variant> | none
 
 ## Result
@@ -101,8 +101,8 @@ Before showing it:
   What e2e needs from the user is asked now, with the go.
 - **The gate level** goes into Checks, from the table in
   [gate.md](../build/references/gate.md).
-- **Other plans** at `building` or `at the human gate` whose territories
-  overlap this one's are named in a line.
+- **Other plans** from `building` to `passed` whose territories overlap
+  this one's are named in a line.
 
 Show the user the path, the Result, and in one line the graph, the level and
 the plan's word count (`1 → 2 ∥ 3 · normal · 1100 words`). The user's "go"
