@@ -49,5 +49,7 @@ A commit the user declines is not made; the report says so.
 - `dev-skills:<name>` is that skill in Codex's skill list: read its
   `SKILL.md` and follow it. The user names one with `$`, as
   `$dev-skills:plan`; Codex's own `/plan` is not it.
-- `/finish` is `$dev-skills:finish`. Codex never offers it to the model:
+- `/land` and `/finish` are `$dev-skills:land` and `$dev-skills:finish`.
+  Codex never offers them to the model:
+  [policy](../skills/land/agents/openai.yaml),
   [policy](../skills/finish/agents/openai.yaml).

@@ -26,6 +26,7 @@ skills/finish/SKILL.md 375
 skills/grill/SKILL.md 275
 skills/grill/references/INTERVIEW.md 550
 skills/handoff/SKILL.md 450
+skills/land/SKILL.md 520
 skills/plan/SKILL.md 790
 skills/plan/references/environment-contract.md 250
 skills/plan/references/example.md 475
