@@ -41,6 +41,7 @@ Keep the user's overrides with the other settings, lay them over the defaults at
 start, and offer read, change and reset. True when a saved override is active
 after a restart and a reset brings the default back.
 Territory: `src/shared/shortcuts/`, `src/main/settings/`
+Skills: `.agents/skills/writing-types/SKILL.md`
 Waits for: nothing
 
 ### 2. Shortcuts panel — `in progress`
@@ -48,12 +49,15 @@ Waits for: nothing
 The Settings tab from the prototype: the list, recording, the "taken" message,
 reset one and reset all.
 Territory: `src/renderer/settings/shortcuts/`
+Skills: `.agents/skills/structuring-components/SKILL.md`,
+`~/.claude/skills/vue-development/SKILL.md`
 Waits for: 1 — `getBindings()`, `setOverride(action, keys)`, `reset(action?)`
 
 ### 3. Live rebinding — `in progress`
 
 The app listens to the merged map, so a change applies without a restart.
 Territory: `src/renderer/keyboard/`
+Skills: none
 Waits for: 1 — `getBindings()` and its change event. Runs beside 2.
 
 ## Checks

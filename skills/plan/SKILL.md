@@ -27,8 +27,11 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   line: "A prototype? An HTML file, inside the app with real data, or code for
   the logic?" (`dev-skills:prototype`). The user may decline.
 - A worker reads the code the plan touches, a Sonnet subagent that returns
-  paths and seams, so the territories are real. Code outside this repository
-  that a decision points at gets its path.
+  paths and seams, so the territories are real, and for each territory the
+  project's skills (`.agents/skills/`, `.claude/skills/`) whose rules its code
+  follows, matched by description. The global ones come from this session's
+  skill list by the same test: a Vue territory gets no SwiftUI skill. Code
+  outside this repository that a decision points at gets its path.
 - Checks takes the project's commands from its `AGENTS.md` or `CLAUDE.md`:
   [environment-contract.md](references/environment-contract.md).
 
@@ -65,6 +68,7 @@ Prototype: <path, the chosen variant> | none
 
 <What to build and why; what becomes true when it is done.>
 Territory: <the directories or files this phase changes>
+Skills: <each skill whose rules this phase's code follows, by its SKILL.md path> | none
 Waits for: <phases, and the interface it uses from them> | nothing
 
 ## Checks

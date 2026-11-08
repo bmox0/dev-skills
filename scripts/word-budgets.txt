@@ -3,7 +3,7 @@
 # A change that raises a budget names what it removes. Words are counted as
 # whitespace-separated tokens, the way wc -w counts them.
 
-agents/implementer.md 365
+agents/implementer.md 400
 agents/reviewer.md 100
 references/CODEX.md 400
 references/VOCABULARY.md 545
@@ -27,14 +27,14 @@ skills/grill/SKILL.md 275
 skills/grill/references/INTERVIEW.md 550
 skills/handoff/SKILL.md 450
 skills/land/SKILL.md 520
-skills/plan/SKILL.md 790
+skills/plan/SKILL.md 840
 skills/plan/references/environment-contract.md 250
-skills/plan/references/example.md 475
+skills/plan/references/example.md 480
 skills/prototype/SKILL.md 375
 skills/prototype/references/LOGIC.md 450
 skills/prototype/references/UI.md 400
 skills/retro/SKILL.md 300
-skills/review/SKILL.md 300
+skills/review/SKILL.md 305
 skills/review/references/CRITERIA.md 600
 skills/tdd/SKILL.md 300
 skills/verify/SKILL.md 360

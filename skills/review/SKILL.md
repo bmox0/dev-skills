@@ -20,7 +20,8 @@ full checks' result when they have just run.
    `git diff --stat BASE..HEAD`. A range that does not resolve, or is empty,
    stops here.
 2. **Read the intent first:** the plan's Result, Approach, Out of scope and
-   Done, and the project's rules. Without a plan, ask what the change is for;
+   Done, and the project's rules, the skills its phases name among them.
+   Without a plan, ask what the change is for;
    without an answer, say the report judges the code and not whether it is the
    right code.
 3. **The full checks**, as the plan's Checks or the project's `AGENTS.md` or

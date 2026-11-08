@@ -16,8 +16,9 @@ is shorter; none is skipped, and every plan ends in a human gate.
 2. **Prototype.** Offered after the entry; you pick the shape or decline: an
    HTML file, inside the app with real data, or code. A worker draws it.
 3. **Plan.** Always a file, one screen: Result, Approach, Out of scope, Phases,
-   Checks, Done, and the prototype's link. Each phase names its territory and
-   what it waits for; together they form the graph. Status runs `draft` →
+   Checks, Done, and the prototype's link. Each phase names its territory, the
+   skills its code follows, and what it waits for; territories and waits form
+   the graph. Status runs `draft` →
    `approved` → `building` → `at the human gate` → `at code review` →
    `passed` → `merged`, via `a merge-request link` when finish opens one;
    your "go" takes it from draft to approved.
@@ -95,8 +96,9 @@ text; the level-1 checks are the project's own tests, linters and typechecks.
 ## The project's side
 
 The plugin reads the project's `AGENTS.md` or `CLAUDE.md` and its style skills
-as the bar for review, and one block in that file for the commands a plan's
-Checks names:
+as the bar for the build and the review: the plan names the skills each
+phase's code follows, the project's and the global ones that fit the work.
+It reads one block in that file for the commands a plan's Checks names:
 
 ```markdown
 ## Environment
