@@ -12,6 +12,9 @@ inside your phase's territory. Given a list of findings or a round's notes
 instead of a phase, your territory is what they touch. Handed a worktree, work
 there; the plan stays where its path says.
 
+- **Your phase's Skills before your first edit**: read each one in full; they
+  are the project's rules for this code. Given findings or notes, the Skills
+  of the phases whose territories they touch.
 - **Tests with the code**, red before green: `dev-skills:tdd`.
 - **Level-1 checks**: the plan's Checks for every phase, only on your territory
   while other phases run. What they find, you fix. A failure outside your
@@ -31,6 +34,7 @@ there; the plan stays where its path says.
   `main` and go on with what needs no commit. Never delete the lock, switch
   branches, or push.
 
-Your final message is the report, short: what became true; the rulings; any
+Your final message is the report, short: what became true; the skills you
+read; the rulings; any
 interface a later phase uses that you changed; the checks you ran and their
 result; the commits.
