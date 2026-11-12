@@ -31,5 +31,5 @@ Then:
 1. Offer a prototype in one line, the shape for the user to pick: "A
    prototype? An HTML file, inside the app with real data, or code for the
    logic?" (`dev-skills:prototype`). The user may decline.
-2. Write the plan: `dev-skills:plan`. The work is one plan; an epic only on the
-   user's word.
+2. Write the plan: `dev-skills:plan`, which ends by starting the build. The
+   work is one plan; an epic only on the user's word.

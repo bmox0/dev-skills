@@ -22,7 +22,7 @@ plain git: here on a clean tree; when another plan's branch is checked out
 here, in a worktree of its own (`git worktree add ../<repo>-<slug> -b <branch>
 <default>`). Write the base SHA and `building` on the Status line; under an
 epic, its row gets `building` too. Every phase commits to this branch, in that
-one tree. From a worktree, hand every implementer and worker its path; the
+one tree. From a worktree, hand every implementer, worker and judge its path; the
 plan, its notes and the rest of `.ai-workflow/` stay in the main tree, and the
 app runs from the worktree on a port of its own.
 
@@ -46,39 +46,56 @@ start what it unblocks.
   goes on in their words. Answer with `SendMessage`. No git running: clear a
   stuck `index.lock`.
 - **A changed interface** a later phase uses goes into that phase's hand-off.
-- **Decided without you**, kept: the product calls you answered, for the
-  human gate, and the rulings, what an implementer decided alone where the
-  plan and the code disagreed, for the code review; each with the question as
-  asked and where it came from, the answer, why, and the cost if wrong.
+- **Decided without you**, kept for the human gate page: the product calls you
+  answered and the rulings; each with the question as asked and where it came
+  from, the answer, why, and the cost if wrong.
 
 ## 3. The E2E gate
 
-When every phase is done, run the gate at the level the plan's Checks names:
-the full checks, then at once the reviewer and e2e, one list for one new
-implementer, a targeted re-check. Read [gate.md](references/gate.md) then, not
-before.
+When every phase is done, run the gate at the level the plan's Checks names, by
+[gate.md](references/gate.md); read it then, not before.
+
+Then a fresh `dev-skills:judge` ([judge.md](references/judge.md)), handed what
+it lists, and whether a judge round ran. It returns:
+
+- `pass: <path>` and its report: the branch is landed. Go to 4.
+- `round: <note — cause>`: each an open note; run the round
+  ([rounds.md](references/rounds.md)), the targeted re-check, a fresh judge.
+  A second `round:` goes under Open.
+- `question: <…>`, even after `round:` lines: run the round, ask the user, a
+  fresh judge with the answer.
+- `evidence owed: <verify|reviewer> — <what>`: a worker on `dev-skills:verify`
+  or the reviewer supplies it, then the judge again.
+- `land stopped: <…>`: the judge again, once; a second goes to the user
+  as a question with land's message; nothing runs until they answer.
 
 ## 4. The human gate
 
 Set Status to `at the human gate`, write one page under the plan's
-`## Human gate`, above any `### Code review`, and put it in front of the user,
-who tries the running app; from a worktree, say how to run it there. The page
-is the product's; the code comes after `land`. In this order:
+`## Human gate` above `land`'s `### The commits`, and put it in front of the
+user, who tries the running app and reads the commits; from a worktree, say
+how to run it there. In this order:
 
-1. **Decided without you**: the product calls, each with its cost if wrong.
-2. **Open**: findings that survived their fix, use cases not reached and what
-   they need, a round's open notes.
+1. **Decided without you**: the product calls and the rulings, each with its cost if wrong.
+2. **Open**: the judge's report, without the Prediction; findings that
+   survived their fix, use cases not reached and what they need; the
+   reviewer's Observations, folded.
 3. **E2E.** The level, and why if raised. Each Done use case as "do this → see
    that", with its last result and the commit it ran on; mark one touched
    since. The `you check` ones last, with any capture e2e took.
+4. **The commits**, which `land` wrote.
 
-Show the notes left for later. The user's `land` approves the page:
-`dev-skills:land`.
+The user's word of approval sets Status to `passed`; `dev-skills:finish` runs
+on that word, or on the next.
 
 ## 5. Notes and rounds
 
-From the first phase on, the user's notes about the product, and at the
-code review about the code, go into `.ai-workflow/plans/<slug>.notes.md`.
-Nothing starts on one; no running agent hears of it. A round, on the user's word, builds every open note or a
-conflict at `finish` like a phase (reviewer on Sonnet):
-[rounds.md](references/rounds.md).
+From the first phase on, the user's notes go into
+`.ai-workflow/plans/<slug>.notes.md`. Nothing starts on one; no running agent
+hears of it. At the gate, give each note a cause from the seven in
+[rounds.md](references/rounds.md), propose it, let the user correct it, and
+write its source against `<slug>.judge.md`'s Prediction when its line is built. A note that changes
+the approach or leaves the plan's territories is proposed as `task`; once the
+user confirms, it is listed, not built. A round, on the user's word, builds
+every open note or a conflict at `finish` like a phase (reviewer on Sonnet),
+then the judge on the round's commits, which lands, and back to the gate.

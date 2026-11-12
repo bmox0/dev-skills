@@ -1,13 +1,13 @@
 # dev-skills
 
-A plugin for Claude Code and Codex: skills and two agents for building a
+A plugin for Claude Code and Codex: skills and three agents for building a
 change — discussion, a plan file, implementation by subagents, a review and an
 e2e check, and your approval before merge. The session you start coordinates
 the work and does not edit code.
 
 ## The pipeline
 
-Every change goes through the same eight stages. For a small task each stage
+Every change goes through the same seven stages. For a small task each stage
 is shorter; none is skipped, and every plan ends in a human gate.
 
 1. **Entry.** A grill when it is unclear what is being built, a discussion when
@@ -19,33 +19,35 @@ is shorter; none is skipped, and every plan ends in a human gate.
    Checks, Done, and the prototype's link. Each phase names its territory, the
    skills its code follows, and what it waits for; territories and waits form
    the graph. Status runs `draft` →
-   `approved` → `building` → `at the human gate` → `at code review` →
-   `passed` → `merged`, via `a merge-request link` when finish opens one;
-   your "go" takes it from draft to approved.
+   `approved` → `building` → `at the human gate` → `passed` → `merged`, via
+   `a merge-request link` when finish opens one. The plan session sets
+   `approved` itself and starts the build at once, unless the session's brief
+   names a command to run first.
 4. **Build.** One branch and one working tree per plan: this one, or a
    worktree when another plan is building here. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it.
 5. **The E2E gate.** At the level the plan names, small, normal or wide: the
    full checks, then at once a fresh review against the project's rules and
-   e2e over what you would not see by trying the app. Defects and failures make
-   one list for one new implementer, then a targeted re-check; two fixes at
-   most.
-6. **The human gate.** The product, one page written into the plan: the
-   product questions the orchestrator answered without you, and the e2e (the
-   use cases, each with its last result and the commit it ran on; the ones
-   marked "you check" are yours). You try the running app. What you say about
-   the product goes into a notes file beside the plan, and nothing starts on
-   it until you say so; then a round builds every open note like a phase: an
-   implementer, its checks, a review, and e2e where the diff reaches past what
-   the notes name.
-7. **Land and the code review.** You type `land`. The working commits become
-   the ones a reviewer reads, one or a few by meaning, on the same tree; a
-   backup branch keeps the old ones. Then the code review page: the commits
-   with a walkthrough, and the rulings the implementers made alone. Notes about
-   the code go to a round, and it lands again.
-8. **Finish.** You type it. It asks: a merge request, or local with `--no-ff`
-   or `--ff-only`.
+   e2e over what you would not see by trying the app, at each width the plan
+   names. Defects and failures make one list for one new implementer, then a
+   targeted re-check; two fixes at most. Then a judge, a fresh Opus context: it
+   re-runs nothing, decides every open entry and every Convention (let
+   through, one round with a cause, or a question to you), writes its
+   prediction of your verdict, and lands the branch: the working commits
+   become the ones a reviewer reads, one or a few by meaning, on the same tree;
+   a backup branch keeps the old ones.
+6. **The human gate.** One page: what was decided without you, what is still
+   open with the judge's report, the e2e (the use cases, each with its last
+   result and the commit it ran on; the ones marked "you check" are yours),
+   and the landed commits, each with a walkthrough. You try the running app
+   and read the commits in one sitting. Each note you make gets a cause from
+   seven and is matched against the judge's prediction; a note that changes
+   the approach is listed as a task, not built. A round runs on your word,
+   then the judge again (it lands) and back to the gate.
+7. **Finish.** On your word at the gate ("ок, в МР"), typed or plain. It asks
+   for what you did not say: a merge request, or local with `--no-ff` or
+   `--ff-only`, and the message.
 
 The drawing: [docs/pipeline.html](docs/pipeline.html).
 
@@ -58,18 +60,18 @@ The drawing: [docs/pipeline.html](docs/pipeline.html).
 | [`prototype`](skills/prototype/SKILL.md) | a throwaway answer to a design question, drawn by a worker |
 | [`epic`](skills/epic/SKILL.md) | several plans in order, only when you say so |
 | [`plan`](skills/plan/SKILL.md) | the one-screen plan and its graph |
-| [`build <plan>`](skills/build/SKILL.md) | the branch, the implementers, the E2E gate, the human gate |
-| [`land`](skills/land/SKILL.md) | the commits a reviewer reads, then the code review |
-| [`finish`](skills/finish/SKILL.md) | merge it: a merge request, or local with `--no-ff` or `--ff-only` |
+| [`build <plan>`](skills/build/SKILL.md) | the branch, the implementers, the E2E gate, the judge, the human gate |
+| [`land`](skills/land/SKILL.md) | the commits a reviewer reads; the judge runs it |
+| [`finish`](skills/finish/SKILL.md) | on your word at the gate, merge it: a merge request, or local with `--no-ff` or `--ff-only` |
 
 A small task is built by the session that discussed it; anything bigger by a
-new session started from the plan file. `land` and `finish` are the only
-skills the model cannot start.
+new session started from the plan file. The build starts when the plan is
+written, with no "go".
 
 ## Who does what
 
-- **You** decide, approve, and type `land` and `finish`. A prototype, an epic, where to
-  build, how to finish and a retro are your call.
+- **You** decide, and say at the gate whether it passes. A prototype, an epic, how to
+  finish and a retro are your call.
 - **The orchestrator** is the model you started with, from the first pipeline
   skill you enter. It talks, writes the plan, runs the graph, relays messages
   and sorts findings. During a build it answers product questions itself,
@@ -84,10 +86,13 @@ skills the model cannot start.
 - **The reviewer** is the [`reviewer`](agents/reviewer.md) agent: Opus for the
   first review of a plan's branch and for a range you name, Sonnet for the
   re-check and every later round.
+- **The judge** is the [`judge`](agents/judge.md) agent: Opus, a fresh context
+  after the E2E gate. It decides what the results mean for you, writes its
+  prediction of your verdict, and runs `land`.
 
 In Codex the same roles are Codex subagents on the session's model, at
 reasoning effort `high` where Claude Code uses Sonnet and `xhigh` for the first
-review. The skills name Claude Code's tools;
+review and the judge. The skills name Claude Code's tools;
 [`references/CODEX.md`](references/CODEX.md) says what each one is in Codex.
 
 The plugin ships no hooks and no scripts. The pipeline lives in the skills'
@@ -153,14 +158,14 @@ install the same skills.
 |---|---|
 | [`browser-test`](skills/browser-test/SKILL.md) | the web e2e tool: the use cases as one Playwright scenario in a visible tab you can watch, single commands to dig in; a web app or an Electron build over CDP |
 | [`bug`](skills/bug/SKILL.md) | reproduce a bug and pin down its cause before the plan |
-| [`build`](skills/build/SKILL.md) | run a plan: the graph, the E2E gate, the human gate |
+| [`build`](skills/build/SKILL.md) | run a plan: the graph, the E2E gate, the judge, the human gate |
 | [`commit-work`](skills/commit-work/SKILL.md) | stage by path, split into logical commits, write the message |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | the glossary in `CONTEXT.md`, and an ADR for a decision that needs one |
 | [`epic`](skills/epic/SKILL.md) | shared decisions and the ordered list of plans |
-| [`finish`](skills/finish/SKILL.md) | merge a passed plan, typed by the user |
+| [`finish`](skills/finish/SKILL.md) | merge a passed plan, on the user's word |
 | [`grill`](skills/grill/SKILL.md) | talk an idea into a shared understanding |
 | [`handoff`](skills/handoff/SKILL.md) | pack this session for a fresh context |
-| [`land`](skills/land/SKILL.md) | rewrite a plan's branch into reviewable commits, typed by the user |
+| [`land`](skills/land/SKILL.md) | rewrite a plan's branch into reviewable commits, run by the judge |
 | [`plan`](skills/plan/SKILL.md) | write the one-screen plan |
 | [`prototype`](skills/prototype/SKILL.md) | answer a design question with throwaway code |
 | [`retro`](skills/retro/SKILL.md) | propose environment changes after a plan, each with what it removes |
@@ -188,13 +193,13 @@ share.
 within its budget in [`scripts/word-budgets.txt`](scripts/word-budgets.txt),
 and the manifests and every frontmatter parse (`claude plugin validate`).
 It also installs the plugin into a throwaway Codex home and reads back the
-skills Codex shows its model: all of them but `land` and `finish`
+skills Codex shows its model: all of them
 ([`scripts/check-codex.py`](scripts/check-codex.py)).
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
 plugin's shape — TC-13 pins the shape itself (no hooks, no skill scripts,
-Sonnet implementers, an Opus reviewer, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
-`land`, `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
+Sonnet implementers, an Opus reviewer and judge, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
+`finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 
 `scripts/usage` measures sessions from Claude Code's transcripts: wall and
 active hours, human messages, tokens, subagents, per project or per session

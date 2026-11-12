@@ -1,7 +1,6 @@
 ---
 name: finish
-description: Merge a plan's branch at `passed` — a merge request, or local with --no-ff or --ff-only, the message drafted from the plan's Result. Typed by the user.
-disable-model-invocation: true
+description: Merge a plan's branch — a merge request, or local with --no-ff or --ff-only. Use only on the user's word at the human gate, typed or plain ("ок, в МР", "ок, локально"); never on its own.
 ---
 
 # Finish
@@ -20,7 +19,7 @@ Still open: say so and stop.
 
 One message: **a merge request, `--no-ff`, or `--ff-only`?** and the message
 for the merge commit or the request's title, drafted from the plan's Result
-by `dev-skills:commit-work`. The user's answer approves the message too.
+by `dev-skills:commit-work`. Ask only for what the user did not already say. The user's answer approves the message too.
 
 ## 3. Merge it
 
@@ -37,8 +36,8 @@ Locally, in the clean tree that has `<default>` checked out
   the button is the approval.
 
 A conflict: abort the merge. It is a new round in `dev-skills:build`: an
-implementer rebases the plan's branch onto the default branch, then the E2E
-gate and the human gate see what changed, then `land` and `finish` again.
+implementer rebases the plan's branch onto the default branch, then the judge
+(it lands) and the gate page again, and `finish` again on the user's word.
 
 No push without the user's word; choosing a merge request is that word for
 pushing the plan's branch, nothing else. Leave the plan's branch and its

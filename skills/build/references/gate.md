@@ -6,7 +6,7 @@ the code. Looks and feel are the user's, at the human gate.
 
 ## The level
 
-The plan's Checks names it; the user's "go" approved it.
+The plan's Checks names it; the approved plan fixed it.
 
 | Level | When | The gate |
 |---|---|---|
@@ -27,9 +27,8 @@ reaches; say so in a line on the gate page. The level never goes down.
    `dev-skills:verify` the Done use cases not marked `you check`.
 3. One list: red checks, Defects, use cases failed, or not reached because of
    the code. One new implementer fixes all of it. A use case not reached for the
-   environment goes on the gate page with what it needs; Conventions and
-   Observations go folded to the code review, and only the user moves one into
-   the notes.
+   environment goes on the gate page with what it needs; Conventions go to the
+   judge (`judge.md`), Observations folded to the gate page.
 4. A targeted re-check: a worker's full checks, then at once the reviewer on
    Sonnet over the fix's commits only and a fresh worker on the use cases that
    failed or the fix touched.
@@ -42,3 +41,4 @@ reaches; say so in a line on the gate page. The level never goes down.
   gate page.
 - What the re-check finds new, a regression of the fix, gets a second fix and
   its re-check. Two fixes at most: Fix 1 and Fix 2, none for a third.
+- After the re-check, the judge reads the results (`judge.md`).

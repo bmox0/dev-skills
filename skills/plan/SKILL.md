@@ -45,7 +45,7 @@ with Status `draft`. A worked example: [example.md](references/example.md).
 ```markdown
 # Plan: <what the user gets, in a few words>
 
-Status: <draft | approved | building | at the human gate | at code review | passed | a merge-request link | merged> · branch `<branch>` · base `<sha>`
+Status: <draft | approved | building | at the human gate | passed | a merge-request link | merged> · branch `<branch>` · base `<sha>`
 Prototype: <path, the chosen variant> | none
 
 ## Result
@@ -75,7 +75,8 @@ Waits for: <phases, and the interface it uses from them> | nothing
 
 - Every phase: <the project's commands>, on its own territory while other phases run.
 - After all phases: <the full commands>; a review against the project's rules;
-  e2e through <browser | simulator | curl | CLI>, <where the system runs>.
+  e2e through <browser | simulator | curl | CLI>, <where it runs>, at <each
+  width: the prototype's and the user's real screen>.
 - Gate: <small | normal | wide> — <why, in one line>
 
 ## Done
@@ -102,17 +103,15 @@ Before showing it:
 - **What e2e cannot do.** A Done use case e2e cannot reach with the project's
   Environment block, its Access and Devices lines included, or one judged by
   its look alone, is marked `you check`: the user checks it at the human gate.
-  What e2e needs from the user is asked now, with the go.
+  What e2e needs from the user goes in the message that starts the build, which does not wait.
 - **The gate level** goes into Checks, from the table in
   [gate.md](../build/references/gate.md).
 - **Other plans** from `building` to `passed` whose territories overlap
-  this one's are named in a line.
+  this one's are named.
 
-Show the user the path, the Result, and in one line the graph, the level and
-the plan's word count (`1 → 2 ∥ 3 · normal · 1100 words`). The user's "go"
-approves the plan and its graph: set Status to `approved`, with the branch
-named; build writes the base when it cuts it.
-
-Then offer, in one line, where to build it: here for a small task, or a new
-session started from the plan file for anything bigger. The user picks; the
-build is `dev-skills:build <plan>`.
+Show the path, the Result, and in one line the graph, the level and the word
+count (`1 → 2 ∥ 3 · normal · 1100 words`). Set Status to `approved`, with the branch
+named; build writes the base when it cuts it. Then start `dev-skills:build
+<plan>` at once: here for a small task, a new session for anything bigger, as the
+user chooses. A brief that names a command to
+run first: run it, build on the message it brings.

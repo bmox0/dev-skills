@@ -5,35 +5,48 @@ How `dev-skills:build` keeps what the user says, and builds it in rounds.
 ## The notes file
 
 `.ai-workflow/plans/<slug>.notes.md`, beside the plan. Each note numbered, in
-the user's words, with its kind: bug, polish, text, new, or code.
+the user's words, with its cause. The session proposes the cause; the user
+corrects it.
 
-- **New** is what the plan's Result does not hold. Say so and ask: in a round,
-  or after the gate. Often it belongs to the feature and was missed in the
-  grill.
+Causes: `bug` (the code misses the plan), `off-plan` (it departs from the
+plan or a written rule), `proto-mismatch` (it departs from the chosen
+prototype), `grill-miss`, `proto-miss` (the grill or the prototype missed what
+the user wanted), `feel-ui` (it works as planned but feels or looks wrong),
+`code-taste` (the code reads wrong to the user).
+
+- **`task`** is not a cause but a verdict: the note changes the approach or
+  leaves the plan's territories. The session proposes it, the user confirms,
+  it is listed and never built: its own task. Anything inside the plan's
+  intent is a round now.
 - An answer to an implementer's question is not a note: relay it.
-- Until a round starts, the user edits or drops notes, in the chat or in the
-  file. The file is the truth: re-read it before a round.
+- Until a round starts, the user edits or drops notes; re-read the file before
+  a round.
+- `<source>` of a note done: `P<n>`, a note the judge predicted
+  (`<slug>.judge.md`, read only to mark notes); `missed`, one it did not;
+  `judge`, a round the judge ordered. Written when the note's line is
+  completed; an open note has none.
 
 ```markdown
 # Notes: <the plan's title>
 
 ## Open
-6. <the note> — polish
+6. <the note> — feel-ui
 
 ## Round 1 · `<first sha>..<last sha>`
-1. <the note> — bug — `<sha>` — e2e: Done 2, 5 passed
-2. <the note> — text — `<sha>` — the user looked
-3. <the note> — new — `<sha>` — e2e: Done 8, added, passed
+1. <the note> — bug — P1 — `<sha>` — e2e: Done 2, 5 passed
+2. <the note> — feel-ui — missed — `<sha>` — the user looked
+3. <the note> — off-plan — judge — `<sha>` — e2e: Done 8, added, passed
 
-## After the gate
-4. <the note> — new
+## Tasks
+4. <the note> — task
 ```
 
 ## A round
 
 The user's word is a request to build the notes; a note given while they are
-still trying the app is not one. Name in a line what the round takes, any new
-first; the user can overrule. Then take every open note:
+still trying the app is not one. Name what the round takes; the user can
+overrule. Then take every open note; a round the judge ordered takes
+only the judge's notes:
 
 1. A new `dev-skills:implementer` with the notes file's path and the numbers
    it takes: it reads the user's words there. Its territory is what they
@@ -45,14 +58,16 @@ first; the user can overrule. Then take every open note:
    through `dev-skills:verify`, since nobody asked to look there. Say which,
    and why, in one line; the user can overrule.
 3. Defects and failed use cases become open notes, under Open on the gate
-   page; Conventions and Observations go to the code review.
+   page; Conventions go to the judge.
 4. Each note moves under its round with its commit and its check; a new one
-   taken adds its use case to Done. Then the gate page again, or for `code`
-   notes alone, land again ([land](../../land/SKILL.md)).
+   taken adds its use case to Done. After a round at the human gate: the judge
+   on the round's commits ([judge.md](judge.md)), which lands, and the gate page
+   again.
 
-Notes given while a round runs wait under Open for the next one. What is left
-under After the gate is not built in this plan: the next grill or plan starts
-from it.
+A round the judge ordered ends with gate.md's targeted re-check instead of
+step 2, then the judge again.
+
+Notes given during a round wait under Open.
 
 ## A conflict at finish
 

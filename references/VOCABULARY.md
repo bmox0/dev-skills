@@ -37,7 +37,7 @@ carries its status, `waiting`, `in progress` or `done`, kept by the
 orchestrator.
 
 **Ruling.** What an implementer decided alone where the plan and the code
-disagreed: what, why, the cost if wrong. The code review reads them.
+disagreed: what, why, the cost if wrong. The human gate page shows them.
 
 **Checks.** The plan's section naming the project's commands for every phase,
 the full commands after all phases, and how e2e drives the system.
@@ -59,19 +59,24 @@ normal or wide: the full checks, then a review and e2e over Done at once. Their
 findings make one list for one new implementer, then a targeted re-check; two
 fixes at most.
 
-**The human gate.** The user's, in two passes. The use cases with the
-machine's results: the user tries the app, and a **round**, on their word,
-builds the open **notes** in the plan's notes file. Then `land` rewrites the
-branch into the commits a reviewer reads, on the same tree, for the **code
-review**: those commits and the rulings. Approved, the plan is `passed` and
-waits for `finish`.
+**The judge.** The `judge` agent, Opus, after the E2E gate. It finds nothing
+itself: it reads the gate's results and decides each Open entry and Convention
+(let through, a round with a cause, or a question), writes its prediction of
+the user's notes, and runs `land`.
+
+**The human gate.** The user's one gate, after the judge. The decisions made
+without them, the judge's report, the use cases with the machine's results and
+the landed commits: the user tries the app and reads the commits, and a
+**round**, on their word, builds the open **notes** in the plan's notes file.
+Each note carries a **cause** and, once done, its source against the judge's
+prediction. Approved, the plan is `passed`, and `finish` runs on the user's word.
 
 ## Review
 
 **Defect.** A finding about correctness, behaviour, security, data, an
 unreachable use case, or a test that cannot fail. _Avoid:_ blocker.
 
-**Convention.** A departure from a written project rule, cited. Folded on the
-gate page; fixed once the user makes it a note. _Avoid:_ advisory, nit.
+**Convention.** A departure from a written project rule, cited. Decided by the
+judge. _Avoid:_ advisory, nit.
 
 **Observation.** True and worth knowing, but not a finding. Never blocks.

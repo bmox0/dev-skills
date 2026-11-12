@@ -1,13 +1,14 @@
-The skills and the two role files are written for Claude Code and name its
+The skills and the three role files are written for Claude Code and name its
 tools. In Codex they hold as written, read through this page.
 
 ## Subagents
 
-A subagent, worker, implementer or reviewer is `spawn_agent` with
+A subagent, worker, implementer, reviewer or judge is `spawn_agent` with
 `fork_turns: "none"`: a clean context that starts from its task alone. Hand it
-what the skill says to hand over; an implementer or a reviewer also gets its
+what the skill says to hand over; an implementer, a reviewer or the judge also gets its
 role file by absolute path, to read first:
-[implementer](../agents/implementer.md), [reviewer](../agents/reviewer.md). A
+[implementer](../agents/implementer.md), [reviewer](../agents/reviewer.md),
+[judge](../agents/judge.md). A
 worker given a skill's steps, as `dev-skills:verify` gives them, gets that
 `SKILL.md` by absolute path.
 
@@ -17,7 +18,7 @@ Leave `model` unset; the child keeps the session's model. The role files'
 | The skills say | `reasoning_effort` |
 |---|---|
 | an implementer, a worker, the reviewer on Sonnet | `high` |
-| `dev-skills:reviewer`, the first review of a range | `xhigh` |
+| `dev-skills:reviewer`, the first review of a range; the judge | `xhigh` |
 
 All at once, in the background: spawn every ready one, up to the session's
 concurrency slots; the rest start as slots free. Close a child with
@@ -41,7 +42,8 @@ end with the question in your report.
 
 Under `workspace-write`, `.git` is read-only: `git add`, `git commit` and
 cutting a branch need escalation. Request it with the prefix rule
-`["git", "add"]` or `["git", "commit"]`, so the user approves each kind once.
+`["git", "add"]`, `["git", "commit"]`, `["git", "branch"]`, `["git", "reset"]` or
+`["git", "restore"]`, so the user approves each kind once.
 A commit the user declines is not made; the report says so.
 
 ## Names
@@ -49,7 +51,3 @@ A commit the user declines is not made; the report says so.
 - `dev-skills:<name>` is that skill in Codex's skill list: read its
   `SKILL.md` and follow it. The user names one with `$`, as
   `$dev-skills:plan`; Codex's own `/plan` is not it.
-- `/land` and `/finish` are `$dev-skills:land` and `$dev-skills:finish`.
-  Codex never offers them to the model:
-  [policy](../skills/land/agents/openai.yaml),
-  [policy](../skills/finish/agents/openai.yaml).

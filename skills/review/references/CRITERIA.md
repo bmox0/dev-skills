@@ -36,7 +36,7 @@ declared with no test and no path to it is a Defect too.
 ## Conventions
 
 A departure from a written project rule, with the rule cited. Conventions go
-on the gate page, folded; the user decides which are fixed.
+to the judge, who lets one through or orders a round.
 
 ## Observations
 

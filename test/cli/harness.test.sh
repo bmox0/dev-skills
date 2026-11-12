@@ -109,27 +109,18 @@ frontmatter() {
   awk 'NR==1 && $0=="---" {p=1; next} p && $0=="---" {exit} p' "$1"
 }
 
-# --- TC-9: scripts/check passes; disable-model-invocation on land and finish alone
+# --- TC-9: scripts/check passes; no skill carries disable-model-invocation
 
 check_out=$("$repo_root/scripts/check" 2>&1)
 check_rc=$?
 [ "$check_rc" -eq 0 ] || fail "TC-9: scripts/check should pass, got exit $check_rc: $check_out"
 
-explicit_seen=""
 for f in "$repo_root"/skills/*/SKILL.md; do
   skill=$(basename "$(dirname "$f")")
   fm=$(frontmatter "$f")
-  case "$skill" in
-    land|finish)
-      explicit_seen="$explicit_seen $skill"
-      printf '%s' "$fm" | grep -qi 'disable-model-invocation' \
-        || fail "TC-9: skills/$skill/SKILL.md should carry disable-model-invocation" ;;
-    *)
-      ! printf '%s' "$fm" | grep -qi 'disable-model-invocation' \
-        || fail "TC-9: skills/$skill/SKILL.md should carry no disable-model-invocation" ;;
-  esac
+  ! printf '%s' "$fm" | grep -qi 'disable-model-invocation' \
+    || fail "TC-9: skills/$skill/SKILL.md should carry no disable-model-invocation"
 done
-assert_eq " finish land" "$explicit_seen" "TC-9: skills/land and skills/finish both exist" || fail "TC-9"
 
 # --- TC-10: no mention of Haiku anywhere the model is documented -----------
 
@@ -156,6 +147,8 @@ frontmatter "$repo_root/agents/implementer.md" | grep -qx 'model: sonnet' \
   || fail "TC-13: the implementer should run on sonnet"
 frontmatter "$repo_root/agents/reviewer.md" | grep -qx 'model: opus' \
   || fail "TC-13: the reviewer should run on opus"
+frontmatter "$repo_root/agents/judge.md" | grep -qx 'model: opus' \
+  || fail "TC-13: the judge should run on opus"
 grep -q '(reviewer on Sonnet)' "$repo_root/skills/build/SKILL.md" \
   || fail "TC-13: build should send its later reviews on sonnet"
 plugin_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.claude-plugin/plugin.json")
@@ -182,7 +175,7 @@ done < <(
 # --- TC-14: the plan's statuses hand off cleanly across the skills that use them
 #
 # The plan file is the registry: its Status line and each phase's status are
-# set and read by skills/plan, skills/build, skills/land, skills/finish,
+# set and read by skills/plan, skills/build, skills/finish,
 # skills/epic and agents/implementer.md. This pins the hand-off both ways: no skill sets or
 # reads a status missing from skills/plan/SKILL.md's own Status list, no
 # status in that list goes unset by every skill, and the phase status
@@ -190,7 +183,6 @@ done < <(
 
 plan_skill="$repo_root/skills/plan/SKILL.md"
 build_skill="$repo_root/skills/build/SKILL.md"
-land_skill="$repo_root/skills/land/SKILL.md"
 finish_skill="$repo_root/skills/finish/SKILL.md"
 epic_skill="$repo_root/skills/epic/SKILL.md"
 implementer_agent="$repo_root/agents/implementer.md"
@@ -205,7 +197,7 @@ has_plan_status() {
 
 # every status a skill sets or reads on the plan's Status line, as it is
 # phrased there, should be one skills/plan/SKILL.md names
-for v in draft approved building "at the human gate" "at code review" passed merged "a merge-request link"; do
+for v in draft approved building "at the human gate" passed merged "a merge-request link"; do
   has_plan_status "$v" \
     || fail "TC-14: a skill sets/reads Status \`$v\`, missing from skills/plan/SKILL.md's Status list"
 done
@@ -229,8 +221,7 @@ while IFS= read -r v; do
     approved)               grep -q 'Status to `approved`' "$plan_skill" ;;
     building)               grep -q '`building`' "$build_skill" ;;
     "at the human gate")    grep -q 'Status to `at the human gate`' "$build_skill" ;;
-    "at code review")       grep -q 'Status to `at code review`' "$land_skill" ;;
-    passed)                 grep -q 'Status to `passed`' "$land_skill" ;;
+    passed)                 grep -q 'Status to `passed`' "$build_skill" ;;
     "a merge-request link") grep -q 'a merge-request link' "$finish_skill" ;;
     merged)                 grep -q 'Status to `merged`' "$finish_skill" ;;
     *) false ;;

@@ -64,8 +64,8 @@ Waits for: 1 — `getBindings()` and its change event. Runs beside 2.
 
 - Every phase: `pnpm test`, `pnpm lint`, `pnpm typecheck`, on its own territory
   while other phases run.
-- After all phases: the same commands on the whole project; a review against
-  the project's rules; e2e in the running Electron app through browser-test.
+- After all phases: the same commands on the whole project; a review; e2e in the running Electron app through browser-test
+  at 1280 and 1920 px.
 - Gate: wide — the bindings are stored user data that every window reads.
 
 ## Done
