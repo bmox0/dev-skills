@@ -64,27 +64,48 @@ assert_eq '# Card editor
 The form where a card'"'"'s text and fields are edited.
 
 ### save-closes — Saving closes the editor
+
 Why: the result shows in the list; the editor is a visit — not a place to stay.
+
 - Change a card, press "Save" → the editor is closed.
 
 ### keeps-draft — A draft is kept
+
 Why: no work is lost
+
 - Edit a card in two tabs → the later save wins.
 - Open the log → it shows "All time".' "$area" "TC-1: the area file" || fail "TC-1 area"
 arch=$(cat docs/spec/archive/2026-11-13-card-editor.md)
 assert_contains "$arch" "This is history; the rules that hold now are in \`docs/spec/\`." "TC-1: history line" || fail "TC-1"
 assert_eq "This is history; the rules that hold now are in \`docs/spec/\`." "$(head -1 docs/spec/archive/2026-11-13-card-editor.md)" "TC-1: first line" || fail "TC-1 first"
-for h in "# Plan: card editor" "## Result" "## Approach" "## Out of scope" "## Spec" "+ card-editor#keeps-draft"; do
+for h in "# Plan: card editor" "## Result" "## Approach" "## Out of scope" "## Done and Spec" "+ card-editor#keeps-draft"; do
   assert_contains "$arch" "$h" "TC-1: archive holds $h" || fail "TC-1 $h"
 done
 case "$arch" in *"Status:"*) fail "TC-1: archive copies only the named sections";; esac
-assert_contains "$arch" '## Done
+assert_contains "$arch" '## Out of scope
+
+- Drafts.
+
+## Done and Spec
+
+```text
+## Done
 
 1. Change a card, press "Save" → the editor is closed. — you check
 2. Edit a card in two tabs → the later save wins.
 3. Open the log → it shows "All time".
 
-## Spec' "TC-1: the Done section sits before Spec, as it is" || fail "TC-1 done"
+## Spec
+
++ card-editor — Card editor
+  About: The form where a card'"'"'s text and fields are edited.
++ card-editor#save-closes — Saving closes the editor
+  Why: the result shows in the list; the editor is a visit — not a place to stay.
+  Done: 1
++ card-editor#keeps-draft — A draft is kept
+  Why: no work is lost
+  Done: 2, 3
+```' "TC-1: Done and Spec sit in one text block after Out of scope, as they are" || fail "TC-1 done"
 [ -f docs/spec/README.md ] || fail "TC-1: README.md written"
 
 # 2: change one rule, remove the other
@@ -120,6 +141,7 @@ case "$area" in *keeps-draft*|*"Press"*) fail "TC-2: removed rule or old scenari
 # 5: list and show
 out=$(python3 "$spec" list)
 assert_eq 'card-editor — Card editor
+  The form where a card'\''s text and fields are edited.
   card-editor#save-closes — An explicit "Save" closes the editor, autosave does not' "$out" "TC-5: list" || fail "TC-5 list: $out"
 out=$(python3 "$spec" show card-editor#save-closes)
 assert_exit 0 "TC-5: show exits 0" || fail "TC-5"
@@ -240,7 +262,8 @@ case "$out" in *"save-closes already exists"*) ;; *) fail "TC-1b: check from a s
 older=$(git rev-parse HEAD~2)
 baseplan=.ai-workflow/plans/older.md
 printf '# B\n\nStatus: building · base `%s`\n\n## Done\n\n1. x\n\n## Spec\n\n+ card-editor — Card editor\n  About: the form\n' "$older" > "$baseplan"
-python3 "$spec" check "$baseplan"; assert_exit 0 "TC-6: the older base has no card-editor" || fail "TC-6"
+out=$(python3 "$spec" check "$baseplan"); assert_exit 1 "TC-6: the Status base is read, and it is stale" || fail "TC-6"
+assert_contains "$out" "after the base $older" "TC-6: names the Status base" || fail "TC-6: $out"
 sed -i.bak 's/base `[^`]*`/base `HEAD`/' "$baseplan"; rm -f "$baseplan.bak"
 python3 "$spec" check "$baseplan" >/dev/null; assert_exit 1 "TC-6: HEAD has card-editor" || fail "TC-6 head"
 
@@ -416,11 +439,14 @@ assert_contains "$rec" '## Out of scope
 
 - Nothing.
 
+## Done and Spec
+
+```text
 ## Done
 
 1. Press "Save" → the editor is gone.
 
-## Spec' "TC-14: Done between Out of scope and Spec" || fail "TC-14 record: $rec"
+## Spec' "TC-14: Done and Spec in one block after Out of scope" || fail "TC-14 record: $rec"
 echo "a hand edit" >> docs/spec/ed.md
 python3 "$spec" write p.md >/dev/null; assert_exit 1 "TC-14: a hand edit is still refused" || fail "TC-14 edit"
 git checkout -q -- . 2>/dev/null; python3 - <<'Q'
@@ -488,3 +514,98 @@ python3 "$spec" check "$repo/missing.md" >/dev/null 2>&1; assert_exit 2 "missing
 python3 "$spec" check --base nosuchrev "$none" >/dev/null; assert_exit 1 "unknown base exits 1" || fail "base"
 cd "$(mktemp_dir)" || exit 1
 python3 "$spec" check "$repo/$none" >/dev/null 2>&1; assert_exit 1 "outside a repo exits 1" || fail "outside"
+
+# 17: the plan template's example carries a Spec section and passes check
+cd "$repo_root" || exit 1
+python3 "$spec" check --base HEAD skills/plan/references/example.md
+assert_exit 0 "TC-17: the example plan passes check" || fail "TC-17"
+
+# 18: a base older than a commit that changed docs/spec/ is a stale base, named as such
+st=$(mktemp_dir); cd "$st" || exit 1
+git init -q; git commit -q --allow-empty -m base
+old=$(git rev-parse HEAD)
+printf '# Plan: a\n\n## Done\n\n1. x\n\n## Spec\n\n+ log — Log\n  About: a\n+ log#r — R\n  Why: y\n  Done: 1\n' > a.md
+python3 "$spec" write a.md || fail "TC-18: write a"
+git add docs; git commit -q -m "spec a"
+printf '# Plan: b\n\nStatus: building · branch `x` · base `%s`\n\n## Spec\n\nnone\n' "$old" > b.md
+out=$(python3 "$spec" check b.md); assert_exit 1 "TC-18: stale base refused" || fail "TC-18"
+assert_contains "$out" "after the base $old" "TC-18: names the base" || fail "TC-18: $out"
+assert_contains "$out" "--base" "TC-18: names --base" || fail "TC-18: $out"
+python3 "$spec" check --base HEAD b.md; assert_exit 0 "TC-18: a fresh --base passes" || fail "TC-18 fresh"
+
+# 19: a base that moved after this plan's own committed write is a stale base, not "commit or discard"
+mv=$(mktemp_dir); cd "$mv" || exit 1
+git init -q -b main; git commit -q --allow-empty -m base
+old=$(git rev-parse HEAD)
+git checkout -q -b feat
+printf '# Plan: a\n\nStatus: building · branch `feat` · base `%s`\n\n## Done\n\n1. x\n\n## Spec\n\n+ one — One\n  About: a\n+ one#r — R\n  Why: y\n  Done: 1\n' "$old" > a.md
+printf '# Plan: b\n\n## Done\n\n1. x\n\n## Spec\n\n+ two — Two\n  About: b\n+ two#r — R\n  Why: y\n  Done: 1\n' > b.md
+python3 "$spec" write a.md || fail "TC-19: write a"
+git add docs; git commit -q -m "spec a"
+git checkout -q main; python3 "$spec" write b.md || fail "TC-19: write b"
+git add docs; git commit -q -m "spec b"
+git checkout -q feat; git rebase -q main || fail "TC-19: rebase"
+out=$(python3 "$spec" write a.md); assert_exit 1 "TC-19: moved base refused" || fail "TC-19"
+assert_contains "$out" "--base" "TC-19: names --base" || fail "TC-19: $out"
+case "$out" in *"commit or discard"*) fail "TC-19: committed files, no discard: $out";; esac
+
+# 20: a hand edit committed on the branch names both causes
+sed -i.bak 's/^Why: y$/Why: z/;s/  Why: y/  Why: z/' docs/spec/two.md; rm -f docs/spec/two.md.bak
+git commit -q -am "hand edit"
+out=$(python3 "$spec" write a.md --base "$(git merge-base main HEAD)"); assert_exit 1 "TC-20: committed hand edit refused" || fail "TC-20"
+assert_contains "$out" "edited it by hand" "TC-20: names the hand edit" || fail "TC-20: $out"
+
+# 21: a stale base does not hide the plan's other problems
+printf 'Status: building · base `%s`\n\n## Spec\n\n~ one#nope — N\n  Why: y\n' "$old" > c.md
+out=$(python3 "$spec" check c.md); assert_exit 1 "TC-21: problems" || fail "TC-21"
+assert_contains "$out" "after the base" "TC-21: stale line" || fail "TC-21: $out"
+assert_contains "$out" "no \`# \` title" "TC-21: title line" || fail "TC-21: $out"
+assert_contains "$out" "nope" "TC-21: unknown rule" || fail "TC-21: $out"
+
+# 22: a formatter-shaped area file, another list marker and added or removed blank lines are still our write
+fm=$(mktemp_dir); cd "$fm" || exit 1
+git init -q; git commit -q --allow-empty -m base
+printf '# Plan: fm\n\n## Done\n\n1. Open a menu → a grey tick.\n2. Open another → the same.\n\n## Spec\n\n+ menus — Menus\n  About: Lists that pick one value.\n+ menus#same — Menus look alike\n  Why: they read at once\n  Done: 1, 2\n' > f.md
+python3 "$spec" write f.md || fail "TC-22: write"
+assert_eq '# Menus
+
+Lists that pick one value.
+
+### same — Menus look alike
+
+Why: they read at once
+
+- Open a menu → a grey tick.
+- Open another → the same.' "$(cat docs/spec/menus.md)" "TC-22: the area file" || fail "TC-22 area"
+python3 - <<'Q'
+t=open("docs/spec/menus.md").read().replace("- Open","* Open").replace("\nWhy:","\n\n\nWhy:").replace("\n\n* Open a","\n* Open a")
+open("docs/spec/menus.md","w").write(t)
+Q
+python3 "$spec" write f.md || fail "TC-22: a reformatted area file is our write"
+python3 - <<'Q'
+t=open("docs/spec/menus.md").read().replace("\n\n","\n")
+open("docs/spec/menus.md","w").write(t)
+Q
+python3 "$spec" write f.md || fail "TC-22: an area file without blank lines is our write"
+assert_contains "$(cat docs/spec/menus.md)" "### same — Menus look alike
+
+Why: they read at once
+
+- Open a menu" "TC-22: write puts the blank lines back" || fail "TC-22 back"
+assert_contains "$(python3 "$spec" show menus#same)" "## archive/f.md — Plan: fm
++ menus#same — Menus look alike" "TC-22: show reads the block" || fail "TC-22 show"
+sed -i.bak 's/grey tick/grey tick, edited/' docs/spec/menus.md; rm docs/spec/menus.md.bak
+python3 "$spec" write f.md >/dev/null; assert_exit 1 "TC-22: a changed scenario is a hand edit" || fail "TC-22 edit"
+
+# 23: records in the old shape (Done and Spec as sections of their own, with or without Done) are listed by show
+od=$(mktemp_dir); cd "$od" || exit 1
+git init -q; git commit -q --allow-empty -m base
+printf '# Plan: seed\n\n## Done\n\n1. x\n\n## Spec\n\n+ ed — Editor\n  About: the form\n+ ed#save — Saving closes\n  Why: a visit\n  Done: 1\n' > s.md
+python3 "$spec" write s.md || fail "TC-23: write"
+rm docs/spec/archive/s.md
+printf '# Plan: with done\n\n## Done\n\n1. x\n\n## Spec\n\n+ ed#save — Saving closes\n  Why: a visit\n  Done: 1\n' > docs/spec/archive/a-with-done.md
+printf '# Plan: no done\n\n## Spec\n\n+ ed#save — Saving closes\n  Why: a visit\n  Done: 1\n' > docs/spec/archive/b-no-done.md
+git add -A && git commit -q -m old
+out=$(python3 "$spec" show ed#save)
+assert_contains "$out" "## archive/a-with-done.md — Plan: with done" "TC-23: an old record with Done is listed" || fail "TC-23 with Done: $out"
+assert_contains "$out" "## archive/b-no-done.md — Plan: no done" "TC-23: an old record without Done is listed" || fail "TC-23 no Done: $out"

@@ -13,10 +13,11 @@ would drop or alter in a base area file (`docs/spec/<area>.md:<line>`) and an
 archive record of the plan's file name already at the base, and a plan without
 a `# ` title. write runs check, refuses when the working tree's docs/spec/ is
 not the base plus what this plan's earlier archive record (its Done and Spec)
-produces, makes docs/spec/ equal to the base plus the section, and
+produces (compared as parsed, so blank lines and the `-`/`*` scenario marker do
+not matter), makes docs/spec/ equal to the base plus the section, and
 writes the archive record. A bad argument is exit 2.
 
-list prints every area (`<area> — <title>`) and under it its rules, indented
+list prints every area (`<area> — <title>`), its description indented under it, and its rules, indented
 (`  <area>#<rule> — <statement>`), from the working tree. show prints the rule
 `<area>#<rule>` (heading, Why, scenarios), then each archive record whose Spec
 section names it, newest file name first: `## archive/<file> — <plan title>`
@@ -76,7 +77,7 @@ def parse_area(text, problems=None):
             if rule["has_why"]:
                 problems.append((n, f"rule {rule['id']}: a second Why: line, write keeps one"))
             rule["why"], rule["has_why"] = line[4:].strip(), True
-        elif line.startswith("- "):
+        elif line.startswith(("- ", "* ")):
             rule["scenarios"].append(line[2:].strip())
         elif line.strip():
             problems.append((n, f"write would drop this line: {line.strip()}"))
@@ -96,10 +97,21 @@ def render_area(area):
     if area["about"]:
         out += [area["about"], ""]
     for r in area["rules"]:
-        out += [f"### {r['id']} — {r['statement']}", f"Why: {r['why']}"]
-        out += [f"- {s}" for s in r["scenarios"]]
-        out.append("")
+        out += [f"### {r['id']} — {r['statement']}", "", f"Why: {r['why']}", ""]
+        if r["scenarios"]:
+            out += [f"- {s}" for s in r["scenarios"]] + [""]
     return "\n".join(out).rstrip("\n") + "\n"
+
+
+def normalised(path, text):
+    """What a file means: an area file as parsed, anything else as written."""
+    if text is None or not is_area_path(path):
+        return text
+    probs = []
+    area = parse_area(text, probs)
+    # what parsing drops counts too: a stray line is an edit
+    return {**area, "rules": [{k: v for k, v in r.items() if k != "line"} for r in area["rules"]],
+            "dropped": [m for _, m in probs]}
 
 
 def is_area_path(rel):
@@ -293,13 +305,34 @@ def archive_record(plan_lines):
     out = [HISTORY, ""]
     if title:
         out += [title, ""]
-    for name in ("Result", "Approach", "Out of scope", "Done", "Spec"):
+    def add(name):
+        out.extend([f"## {name}", *secs[name][1]])
+        while not out[-1].strip():
+            out.pop()
+        out.append("")
+
+    for name in ("Result", "Approach", "Out of scope"):
         if name in secs:
-            out += [f"## {name}", *secs[name][1]]
-            while out and not out[-1].strip():
-                out.pop()
-            out.append("")
+            add(name)
+    # one code block: a formatter reads `+` and `-` at a line start as list markers
+    out += ["## Done and Spec", "", "```text"]
+    for name in ("Done", "Spec"):
+        if name in secs:
+            add(name)
+    out[-1:] = ["```", ""]
     return "\n".join(out).rstrip("\n") + "\n"
+
+
+def record_parts(lines):
+    """An archive record's (Done body or None, Spec body), from its `Done and Spec` block or, in an older record, its sections."""
+    secs = sections(lines)
+    if "Done and Spec" in secs:
+        body = secs["Done and Spec"][1]
+        fences = [i for i, l in enumerate(body) if l.lstrip().startswith("```")]
+        inner = sections(body[fences[0] + 1:fences[-1]] if len(fences) > 1 else [])
+    else:
+        inner = secs
+    return inner["Done"][1] if "Done" in inner else None, inner.get("Spec", (0, []))[1]
 
 
 def base_of(plan_lines, given):
@@ -325,15 +358,24 @@ def run(command, plan, given_base):
         print(f"spec.py: {e}", file=sys.stderr)
         return 2
     name = os.path.basename(plan)
+    base_rev = base_of(plan_lines, given_base)
     try:
-        tree = tree_at(base_of(plan_lines, given_base))
+        tree = tree_at(base_rev)
+        head = tree_at("HEAD")
     except Fail as e:
         print(f"{plan}:1: {e}")
         return 1
+    # this plan's own committed write also moves docs/spec/; the checks below judge that one
+    moved = sorted(p for p in tree.keys() | head.keys() if tree.get(p) != head.get(p))
+    def stale(paths):
+        return (f"{plan}:1: docs/spec/ changed in commits after the base {base_rev} ({', '.join(paths)}): "
+                "if the default branch moved, pass --base $(git merge-base <default branch> HEAD) "
+                "or put it on the Status line; if a commit on this branch edited it by hand, revert that commit")
+
+    out = [stale(moved)] if moved and "archive/" + name not in head else []
     base_problems = []
     base = areas_of(tree, base_problems)
     spec, problems = apply(plan_lines, base)
-    out = []
     if spec is not None:
         out += [f"{p}:{n}: {m}" for p, n, m in base_problems]
         if "archive/" + name in tree:
@@ -354,14 +396,19 @@ def run(command, plan, given_base):
     # a record with another title belongs to another plan
     mine = record is not None and next((l for l in record.splitlines() if l.startswith("# ")), None) == title
     if mine:
-        rsecs = sections(record.splitlines())
+        rdone, rspec = record_parts(record.splitlines())
         # a record without Done is an old format: the plan's own Done stands in
-        done = (rsecs.get("Done") or sections(plan_lines).get("Done", (0, [])))[1]
-        old, probs = apply(["## Done", *done, "## Spec", *rsecs.get("Spec", (0, []))[1]], base)
+        done = sections(plan_lines).get("Done", (0, []))[1] if rdone is None else rdone
+        old, probs = apply(["## Done", *done, "## Spec", *rspec], base)
         if old is not None and not probs:
             expected = {**render_tree(tree, old), "archive/" + name: record}
-    differ = sorted(p for p in work.keys() | expected.keys() if work.get(p) != expected.get(p))
+    differ = sorted(p for p in work.keys() | expected.keys()
+                    if normalised(p, work.get(p)) != normalised(p, expected.get(p)))
     if differ:
+        if all(work.get(p) == head.get(p) for p in differ):
+            # committed, so there is nothing to commit or discard
+            print(stale(differ))
+            return 1
         if mine:
             why = "it is not what this plan's earlier write left (a hand edit, or the base moved); commit or discard it first"
         else:
@@ -404,6 +451,8 @@ def read_spec(command, rule_id):
     if command == "list":
         for name, area in spec.items():
             print(f"{name} — {area['title']}")
+            for l in area["about"].splitlines():
+                print(f"  {l}")
             for r in area["rules"]:
                 print(f"  {name}#{r['id']} — {r['statement']}")
         return 0
@@ -419,7 +468,7 @@ def read_spec(command, rule_id):
     adir = os.path.join(root, "docs", "spec", "archive")
     for fn in sorted(os.listdir(adir), reverse=True) if os.path.isdir(adir) else []:
         lines = open(os.path.join(adir, fn), encoding="utf-8").read().splitlines()
-        body = sections(lines).get("Spec", (0, []))[1]
+        body = record_parts(lines)[1]
         entry, hit = [], False
         for l in body:
             m = ENTRY.match(l)

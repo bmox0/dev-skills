@@ -12,11 +12,13 @@ What must stay true about a product, and why, lives in `docs/spec/`, written by 
 The form where a card's text and fields are edited.
 
 ### save-closes — Saving closes the editor
+
 Why: the result shows in the list; the editor is a visit, not a place to stay.
+
 - Change a card, press "Save" → the editor is closed, the list shows the new text.
 ```
 
-A rule is what must stay true, whoever checks it: observable behaviour, an external constraint, or a look decided with a reason. Code structure goes to an ADR, words to `CONTEXT.md`, one-off checks nowhere. A rule has an ID, one statement, a one-line reason and at least one scenario; it may link to an ADR, as a Markdown link in `Why:`. A rule is addressed as `area#rule`; an ID is lowercase letters, digits and `-`.
+A rule is what must stay true, whoever checks it: observable behaviour, an external constraint, or a look decided with a reason. Code structure goes to an ADR, words to `CONTEXT.md`, one-off checks nowhere. A rule has an ID, one statement, a one-line reason and at least one scenario; it may link to an ADR, as a Markdown link in `Why:`. A rule is addressed as `area#rule`; an ID is lowercase letters, digits and `-`, and names the behaviour, not the place it first appeared: `no-project-row`, not `card-no-project-row`, so widening the rule needs no new ID.
 
 ## The plan's `## Spec` section
 
@@ -62,15 +64,32 @@ python3 "<this skill's directory>/spec.py" show ID
 |---|---|
 | `check` | checks the section against `docs/spec/` at the base; writes nothing |
 | `write` | runs `check`, makes `docs/spec/` equal to the base plus the section, writes the archive record; `none` writes nothing, or restores the base after this plan's earlier write |
-| `list` | the working tree's areas, `<area> — <title>`, each followed by its rules indented, `  <area>#<rule> — <statement>`; an empty spec prints nothing |
-| `show ID` | the rule block (`<id> — <statement>`, `Why:`, the `- ` scenarios), then each archive record whose `Spec` section names it, newest first by file name, under a header `## archive/<file> — <title>` with that rule's entry lines as written |
+| `list` | the working tree's areas, `<area> — <title>` and the area's description on the next line, indented, each followed by its rules indented, `  <area>#<rule> — <statement>`; an empty spec prints nothing |
+| `show ID` | the rule block (`<id> — <statement>`, `Why:`, the `- ` scenarios), then each archive record whose Spec names it, newest first by file name, under a header `## archive/<file> — <title>` with that rule's entry lines as written |
 
-**The base.** `--base REV`, else the base in the plan's `Status:` line, else `HEAD`. A second `write` for the same plan replaces the first, whatever changed in the plan since, except its `# ` title: that names the plan, so a retitled plan's `write` refuses, and a `write` after the base moved lands on the fresh spec. The earlier write is checked against its archive record alone: `docs/spec/` must equal the base plus the record's `Done` and `Spec`. `write` refuses, naming paths, when it does not (a hand edit on top, another plan's write, a moved base).
+**The base.** `--base REV`, else the base in the plan's `Status:` line, else `HEAD`. A second `write` for the same plan replaces the first, whatever changed in the plan since, except its `# ` title: that names the plan, so a retitled plan's `write` refuses, and a `write` after the base moved lands on the fresh spec. The earlier write is checked against its archive record alone: `docs/spec/` must equal the base plus the record's `Done` and `Spec`, compared as parsed content, so blank lines and the scenario marker (`-` or `*`) do not count. `write` refuses, naming paths, when it does not (a hand edit on top, another plan's write, a moved base).
 
 **Exit codes.** 0 success. 1: problems, one per line as `<plan>:<line>: <message>`, all in one run sorted by line; also outside a git repository, an unknown base, or `show` of a non-rule (`spec.py: no rule <id>` on stderr). 2: a bad argument, `show` without an ID included.
 
-**What `check` reports.** No `## Spec` section. A line that is not an entry or a `Why:`/`About:`/`Done:` line. A sign with an ID of the wrong kind. A missing statement; a missing or empty `Why:`; a new area without `About:`. An area or rule that exists when added, or does not exist when changed or removed, or whose area is neither there nor added. An added rule without `Done:`. A `Done:` item the plan does not have. An empty or a second `## Spec` section (`## ` inside a code fence is not a heading). An archive record of the plan's file name at the base. A plan file without a `# ` title line. In a base area file (`docs/spec/<area>.md:<line>`), what `write` would drop or alter: a stray line under a rule, a second `Why:`, a rule without `Why:` or with an empty one, no title.
+**What `check` reports.** No `## Spec` section. A line that is not an entry or a `Why:`/`About:`/`Done:` line. A sign with an ID of the wrong kind. A missing statement; a missing or empty `Why:`; a new area without `About:`. An area or rule that exists when added, or does not exist when changed or removed, or whose area is neither there nor added. An added rule without `Done:`. A `Done:` item the plan does not have. An empty or a second `## Spec` section (`## ` inside a code fence is not a heading). An archive record of the plan's file name at the base. A plan file without a `# ` title line. A base older than a commit that changed `docs/spec/`, or `docs/spec/` committed differing from the base plus this plan's record: the message names the base, `--base`, and a hand edit committed on the branch; the plan's other problems follow. In a base area file (`docs/spec/<area>.md:<line>`), what `write` would drop or alter: a stray line under a rule, a second `Why:`, a rule without `Why:` or with an empty one, no title.
 
-**What `write` touches.** The area files, rendered in one normalised format; files of areas no longer in the spec are deleted. `docs/spec/README.md` is created with the folder; `README.md` and `archive/` are never rewritten otherwise, and `list` and `show` skip them.
+**What `write` touches.** The area files, rendered in one normalised format: a blank line after a rule's heading, after `Why:` and between rules, which a Markdown formatter leaves alone; reading accepts blank lines anywhere and `-` or `*` before a scenario; files of areas no longer in the spec are deleted. `docs/spec/README.md` is created with the folder; `README.md` and `archive/` are never rewritten otherwise, and `list` and `show` skip them.
 
-**The archive record.** `docs/spec/archive/<the plan's file name>`: the line `This is history; the rules that hold now are in `docs/spec/`.`, a blank line, then the plan's title, Result, Approach, Out of scope, `Done` and `Spec`, copied as they are; a section the file lacks is skipped. A record without `Done` (older ones) stays valid: `show` lists it, and nothing complains about it at the base.
+**The archive record.** `docs/spec/archive/<the plan's file name>`: the line `This is history; the rules that hold now are in `docs/spec/`.`, a blank line, then the plan's title, Result, Approach and Out of scope, copied as they are (a section the file lacks is skipped), then `## Done and Spec` holding the plan's `## Done` and `## Spec` in one ```text block, so a formatter does not read the `+` and `-` lines as list items:
+
+````markdown
+## Done and Spec
+
+```text
+## Done
+
+1. Press "Save" → closed.
+
+## Spec
+
++ card-editor — Card editor
+  About: The form where a card's text and fields are edited.
+```
+````
+
+`show` and the check on the plan's earlier write read the block. An older record, with `## Done` and `## Spec` as sections of their own, stays valid, and one without `Done` as well: `show` lists it, and nothing complains about it at the base.
