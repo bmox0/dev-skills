@@ -95,8 +95,8 @@ reasoning effort `high` where Claude Code uses Sonnet and `xhigh` for the first
 review and the judge. The skills name Claude Code's tools;
 [`references/CODEX.md`](references/CODEX.md) says what each one is in Codex.
 
-The plugin ships no hooks and no scripts. The pipeline lives in the skills'
-text; the level-1 checks are the project's own tests, linters and typechecks.
+The plugin ships no hooks. The pipeline lives in the skills' text, with
+two tools beside it: `skills/spec/spec.py` and `skills/browser-test/tab.mjs`; the level-1 checks are the project's own tests, linters and typechecks.
 
 ## The project's side
 
@@ -170,6 +170,7 @@ install the same skills.
 | [`prototype`](skills/prototype/SKILL.md) | answer a design question with throwaway code |
 | [`retro`](skills/retro/SKILL.md) | propose environment changes after a plan, each with what it removes |
 | [`review`](skills/review/SKILL.md) | the code half of the E2E gate, or a review of any range |
+| [`spec`](skills/spec/SKILL.md) | the project's rules in `docs/spec/`: write one finished task's rules from a plan-shaped file, list and show them |
 | [`tdd`](skills/tdd/SKILL.md) | red before green, read by the implementer |
 | [`verify`](skills/verify/SKILL.md) | the e2e half of the E2E gate: drive the Done use cases |
 | [`writing-skills`](skills/writing-skills/SKILL.md) | design or audit a skill |
@@ -197,7 +198,7 @@ skills Codex shows its model: all of them
 ([`scripts/check-codex.py`](scripts/check-codex.py)).
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
-plugin's shape — TC-13 pins the shape itself (no hooks, no skill scripts,
+plugin's shape — TC-13 pins the shape itself (no hooks, no `scripts/` under `skills/`,
 Sonnet implementers, an Opus reviewer and judge, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
 `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 

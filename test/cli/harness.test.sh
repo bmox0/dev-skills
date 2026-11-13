@@ -135,11 +135,11 @@ checkpoint_out=$(cd "$repo_root" && grep -rn 'Checkpoint [0-9]' skills/ 2>/dev/n
 segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
 [ -z "$segment_col_out" ] || fail "TC-11: expected no match for '| Segment |', found: $segment_col_out"
 
-# --- TC-13: no hooks, no skill scripts, no tool limits, models, one version --
+# --- TC-13: no hooks, no scripts/ under skills/, no tool limits, models, one version --
 
 [ ! -e "$repo_root/hooks" ] || fail "TC-13: the plugin ships no hooks/"
 skill_scripts=$(cd "$repo_root" && find skills -type d -name scripts 2>/dev/null)
-[ -z "$skill_scripts" ] || fail "TC-13: the plugin ships no skill scripts, found: $skill_scripts"
+[ -z "$skill_scripts" ] || fail "TC-13: no scripts/ directory under skills/, found: $skill_scripts"
 for f in "$repo_root"/agents/*.md; do
   ! frontmatter "$f" | grep -q '^tools:' || fail "TC-13: $(basename "$f") should carry no tools: line"
 done

@@ -12,7 +12,7 @@
     {
       "name": "dev-skills",
       "source": "./",
-      "description": "Seven stages for every change: a grill or a discussion, an optional prototype, a plan file, phases built by implementer subagents, a review and an e2e check, a judge that lands the branch, a human approval, and finish. The session the user started coordinates and does not edit code. Skills and agents only, no hooks or scripts.",
+      "description": "Seven stages for every change: a grill or a discussion, an optional prototype, a plan file, phases built by implementer subagents, a review and an e2e check, a judge that lands the branch, a human approval, and finish. The session the user started coordinates and does not edit code. Skills and agents, one script for the spec, no hooks.",
       "repository": "https://github.com/bmox0/dev-skills",
       "version": "4.7.0",
       "license": "MIT",

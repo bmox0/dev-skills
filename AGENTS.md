@@ -7,7 +7,7 @@
 **Single test file.** `scripts/test <path>`
 **Dev server.** none
 **E2E.** none
-**Runtime.** a CLI invocation — `scripts/check`, `scripts/test`, `scripts/usage`
+**Runtime.** a CLI invocation — `scripts/check`, `scripts/test`, `scripts/usage`, `skills/spec/spec.py`
 and `skills/browser-test/tab.mjs` are run directly from a shell, never through
 a browser or a server
 **Plugin off.** Claude Code: `claude --settings '{"enabledPlugins":{"dev-skills@dev-skills":false}}'`;

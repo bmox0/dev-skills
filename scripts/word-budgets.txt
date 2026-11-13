@@ -38,6 +38,8 @@ skills/prototype/references/UI.md 400
 skills/retro/SKILL.md 300
 skills/review/SKILL.md 305
 skills/review/references/CRITERIA.md 600
+skills/spec/SKILL.md 315
+skills/spec/references/FORMAT.md 1010
 skills/tdd/SKILL.md 300
 skills/verify/SKILL.md 360
 skills/writing-skills/SKILL.md 1700
