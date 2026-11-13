@@ -32,5 +32,8 @@ test.
 - **Name the break it catches.** If the only change that fails it is a
   deliberate one (a constant, exact wording, private structure), it will fire on
   every redesign and sleep through every bug.
+- **Carry the rule's ID.** A test for a Done item that a spec rule cites has the
+  rule's ID (`area#rule`) in its name or title, in the form the project's naming
+  rules allow, such as a suffix in brackets.
 - **A test that can fail only through a crash or a missing selector is not a
   test.** Review counts it as a Defect.

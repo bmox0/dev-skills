@@ -18,6 +18,12 @@ Run the interview in [INTERVIEW.md](references/INTERVIEW.md).
 - **Facts are yours.** Anything that needs reading across the code goes to a
   worker, a Sonnet subagent that returns paths, abstractions and what it found.
   Keep asking the questions that do not wait on it.
+- **The rules come first.** At the start a second worker, a Sonnet subagent,
+  reads `docs/spec/` (`list`, the area files, `show` of a rule, through the
+  `python3 "<this skill's directory>/../spec/spec.py"`, resolved to a path for the
+  worker; grammar in the `spec` skill's `references/FORMAT.md`) and returns
+  the rules the task touches, each with its reason and any contradiction: with
+  the task, between rules, with the code or an ADR. None is a normal answer.
 - **Decisions are the user's,** in prose. Put each one to them and wait.
 - **What outlives the talk.** A term that settles goes into `CONTEXT.md`, and
   an ADR is offered when one is earned, through `dev-skills:domain-modeling`.

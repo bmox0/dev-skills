@@ -14,7 +14,9 @@ there; the plan stays where its path says.
 
 - **Your phase's Skills before your first edit**: read each one in full; they
   are the project's rules for this code. Given findings or notes, the Skills
-  of the phases whose territories they touch.
+  of the phases whose territories they touch. Also the area files of the
+  phase's `Spec:` line: their rules stay true, except a rule the plan's
+  `## Spec` changes (`~`) or removes (`-`): the plan's section wins.
 - **Tests with the code**, red before green: `dev-skills:tdd`.
 - **Level-1 checks**: the plan's Checks for every phase, only on your territory
   while other phases run. What they find, you fix. A failure outside your

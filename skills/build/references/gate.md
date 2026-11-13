@@ -11,12 +11,10 @@ The plan's Checks names it; the approved plan fixed it.
 | Level | When | The gate |
 |---|---|---|
 | small | looks, copy, layout in one place; no logic | the full checks; the reviewer on Sonnet; no e2e: every Done use case is `you check` |
-| normal | logic inside the feature's own code | the full checks; the reviewer; e2e over Done |
-| wide | data, storage, sync, security, concurrency, shared code, migrations | as normal, plus e2e over the Done of the merged plans in `.ai-workflow/plans/` whose territories the diff touches |
+| normal | logic | the full checks; the reviewer; e2e over Done |
 
 Before the gate, read `git diff --stat <base>..HEAD`. Files outside the plan's
-territories, or anything the wide row names, raise the level to what the diff
-reaches; say so in a line on the gate page. The level never goes down.
+territories, `docs/spec/` written by `write` not counted, raise small to normal; say so in a line on the gate page.
 
 ## The pass
 

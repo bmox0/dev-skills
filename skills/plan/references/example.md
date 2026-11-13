@@ -1,16 +1,13 @@
-# A plan: a worked example
-
-Illustrative: the territories and commands are made up. It fits one screen.
-
-```markdown
 # Plan: Rebind keyboard shortcuts in Settings
+
+A worked example: the territories and commands are made up. It passes `spec.py check`.
 
 Status: approved · branch `feat/shortcut-rebinding` · base `a1b2c3d`
 Prototype: `.ai-workflow/prototypes/2026-09-26-settings-shortcuts.html`, variant B
 
 ## Result
 
-In Settings → Shortcuts the user sees every action with its key combination,
+Shortcuts cannot be changed. In Settings → Shortcuts the user sees every action with its key combination,
 records a new combination for any of them, is told when a combination is
 taken, and can reset one or all to the defaults. A new binding works at once
 and survives a restart.
@@ -42,6 +39,7 @@ start, and offer read, change and reset. True when a saved override is active
 after a restart and a reset brings the default back.
 Territory: `src/shared/shortcuts/`, `src/main/settings/`
 Skills: `.agents/skills/writing-types/SKILL.md`
+Spec: none
 Waits for: nothing
 
 ### 2. Shortcuts panel — `in progress`
@@ -51,6 +49,7 @@ reset one and reset all.
 Territory: `src/renderer/settings/shortcuts/`
 Skills: `.agents/skills/structuring-components/SKILL.md`,
 `~/.claude/skills/vue-development/SKILL.md`
+Spec: none
 Waits for: 1 — `getBindings()`, `setOverride(action, keys)`, `reset(action?)`
 
 ### 3. Live rebinding — `in progress`
@@ -58,6 +57,7 @@ Waits for: 1 — `getBindings()`, `setOverride(action, keys)`, `reset(action?)`
 The app listens to the merged map, so a change applies without a restart.
 Territory: `src/renderer/keyboard/`
 Skills: none
+Spec: none
 Waits for: 1 — `getBindings()` and its change event. Runs beside 2.
 
 ## Checks
@@ -66,7 +66,7 @@ Waits for: 1 — `getBindings()` and its change event. Runs beside 2.
   while other phases run.
 - After all phases: the same commands on the whole project; a review; e2e in the running Electron app through browser-test
   at 1280 and 1920 px.
-- Gate: wide — the bindings are stored user data that every window reads.
+- Gate: normal — the bindings are stored user data, but only the shortcuts code reads them.
 
 ## Done
 
@@ -79,4 +79,11 @@ Waits for: 1 — `getBindings()` and its change event. Runs beside 2.
    is back to its default.
 5. Press ⌥ alone while recording → nothing is recorded.
 6. Open Shortcuts → it reads like the rest of Settings — you check
-```
+
+## Spec
+
++ settings — Settings
+  About: The window where the user changes how the app behaves.
++ settings#taken-blocks — A taken combination cannot be saved
+  Why: a silent swap would unbind another action without the user noticing
+  Done: 2

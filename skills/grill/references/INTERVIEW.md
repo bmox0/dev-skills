@@ -58,6 +58,12 @@ instead of skipping it.
 - **Cover** the shape of the thing, how the pieces talk, what happens when it
   fails, and how it will be checked: the use cases someone will drive (do this
   → see that), and what must look right.
+- **Ask about a touched rule only when the task leaves open whether it stays
+  true:** does the behaviour change, and why. Ask it in product words, such as
+  what exactly is the same and in which menus. Never show the user the spec's
+  syntax (IDs, areas, `+`, `~`, `-` lines) and never ask whether to record a
+  rule, in which area, under what name, or whether it replaces an earlier one:
+  the plan's writer decides that.
 - **Stay active.** The failure is passivity: forty recommended answers nodded
   through, and a design the model wrote. Push back on an answer that contradicts
   an earlier one.

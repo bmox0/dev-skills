@@ -52,7 +52,17 @@ start what it unblocks.
 
 ## 3. The E2E gate
 
-When every phase is done, run the gate at the level the plan's Checks names, by
+When every phase is done, before every re-check, and before the review of a
+round, run `python3 "<this skill's directory>/../spec/spec.py" write <plan>` (the grammar
+is in the `spec` skill's `references/FORMAT.md`) in the plan's branch tree, its worktree when
+there is one, never the main tree of another branch, and commit `docs/spec/`
+alone with plain git: a script's output, not code. When
+nothing changed there is nothing to commit; `git commit` exiting 1 is no
+failure. A refusal naming the plan is yours to fix in its `## Spec`; a stale
+base, by the Status line's base or `--base $(git merge-base <default> HEAD)`;
+one naming `docs/spec/` is a finding.
+
+Then run the gate at the level the plan's Checks names, by
 [gate.md](references/gate.md); read it then, not before.
 
 Then a fresh `dev-skills:judge` ([judge.md](references/judge.md)), handed what

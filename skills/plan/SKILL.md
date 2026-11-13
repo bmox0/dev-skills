@@ -31,7 +31,9 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   project's skills (`.agents/skills/`, `.claude/skills/`) whose rules its code
   follows, matched by description. The global ones come from this session's
   skill list by the same test: a Vue territory gets no SwiftUI skill. Code
-  outside this repository that a decision points at gets its path.
+  outside this repository that a decision points at gets its path. The same
+  worker lists the areas in `docs/spec/` (`list`) and matches them to each
+  territory by the area's description, as skills are.
 - Checks takes the project's commands from its `AGENTS.md` or `CLAUDE.md`:
   [environment-contract.md](references/environment-contract.md).
 
@@ -50,7 +52,7 @@ Prototype: <path, the chosen variant> | none
 
 ## Result
 
-<Two or three lines: what the user can do when this plan is done.>
+<One sentence on the problem, then two or three lines: what the user can do when this plan is done.>
 
 ## Approach
 
@@ -69,6 +71,7 @@ Prototype: <path, the chosen variant> | none
 <What to build and why; what becomes true when it is done.>
 Territory: <the directories or files this phase changes>
 Skills: <each skill whose rules this phase's code follows, by its SKILL.md path> | none
+Spec: <the area files that exist before this plan, `docs/spec/<area>.md`, whose rules this phase's code must keep> | none
 Waits for: <phases, and the interface it uses from them> | nothing
 
 ## Checks
@@ -77,13 +80,27 @@ Waits for: <phases, and the interface it uses from them> | nothing
 - After all phases: <the full commands>; a review against the project's rules;
   e2e through <browser | simulator | curl | CLI>, <where it runs>, at <each
   width: the prototype's and the user's real screen>.
-- Gate: <small | normal | wide> — <why, in one line>
+- Gate: <small | normal> — <why, in one line>
 
 ## Done
 
 1. <do this> → <see that>
 2. <do this> → <see that> — you check
+
+## Spec
+
+<`+`, `~` or `-` for every rule this plan adds, changes or removes; else `none`>
 ```
+
+`## Spec` holds the rules, in the sense of
+[FORMAT.md](../spec/references/FORMAT.md): what must stay true beyond this plan,
+whoever checks it. Not each Approach decision: code structure goes to an ADR. It
+holds the product calls made without the user, and a `-` or `~` for each rule
+the grill dropped or changed. Which rule, area and ID, `~` or `-` with `+`, and
+the wording of statement and reason follow from the decisions made: you decide
+them here without asking the user. The grammar is in
+[FORMAT.md](../spec/references/FORMAT.md). Every plan has the section, a bug's
+too, usually `none`.
 
 ## Phases and the graph
 
@@ -100,6 +117,9 @@ Waits for: <phases, and the interface it uses from them> | nothing
 
 Before showing it:
 
+- **The spec.** Run `python3 "<this skill's directory>/../spec/spec.py" check
+  <plan>` until it is silent; before build writes the Status base, pass
+  `--base <default branch>`.
 - **What e2e cannot do.** A Done use case e2e cannot reach with the project's
   Environment block, its Access and Devices lines included, or one judged by
   its look alone, is marked `you check`: the user checks it at the human gate.

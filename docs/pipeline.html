@@ -14,7 +14,7 @@
   html, body { margin: 0; background: var(--bg); color: var(--ink); }
   body { font-family: 'Architects Daughter', 'Comic Sans MS', cursive; overflow-x: hidden; }
   #wrap { position: relative; margin: 12px; }
-  #stage { position: absolute; left: 0; top: 0; width: 2000px; height: 1780px; transform-origin: 0 0; background: var(--bg); }
+  #stage { position: absolute; left: 0; top: 0; width: 2000px; height: 1820px; transform-origin: 0 0; background: var(--bg); }
   #stage svg { position: absolute; left: 0; top: 0; }
   .t { position: absolute; box-sizing: border-box; line-height: 1.28; }
   .title { font-size: 60px; }
@@ -50,9 +50,9 @@
 </head>
 <body>
 <div id="bar"><button id="png">Download PNG</button></div>
-<div id="wrap"><div id="stage"><svg id="sk" width="2000" height="1780"></svg></div></div>
+<div id="wrap"><div id="stage"><svg id="sk" width="2000" height="1820"></svg></div></div>
 <script>
-const W = 2000, H = 1780;
+const W = 2000, H = 1820;
 const C = {
   blue: ['#4dabf7', '#1c2b3a'], green: ['#51cf66', '#1b2e22'], orange: ['#ff922b', '#33261a'],
   purple: ['#9775fa', '#262040'], teal: ['#3bc9db', '#16303a'], pink: ['#f06595', '#361d2a'],
@@ -114,7 +114,7 @@ text(24, 124, `<div class="leg">
   <span><i class="sw" style="border-color:#dee2e6;background:#2e3238"></i>you</span>
   <span><i class="sw" style="border-color:#9775fa;background:#262040"></i>the orchestrator — the model you started with; never edits code</span>
   <span><i class="sw" style="border-color:#ff922b;background:#33261a"></i>implementers — Sonnet, a clean context each</span>
-  <span><i class="sw" style="border-color:#3bc9db;background:#16303a"></i>workers — facts, prototypes, review, e2e</span>
+  <span><i class="sw" style="border-color:#3bc9db;background:#16303a"></i>workers — facts, spec scout, prototypes, spec write, review, e2e</span>
   <span><i class="sw" style="border-color:#51cf66;background:#1b2e22"></i>artifacts</span>
   <span><i class="sw" style="border-color:#ff6b6b;border-style:dashed;background:transparent"></i>it stops for you</span></div>`, '', 1960);
 
@@ -171,8 +171,10 @@ bar(884, 1036, L.impl, 'orange', 'C · UI · waits for A');
 bar(1150, 1280, L.impl + 72, 'orange', 'new implementer');
 
 bar(280, 380, L.work, 'teal', 'facts');
+bar(280, 380, L.work + 36, 'teal', 'spec scout');
 bar(444, 556, L.work, 'teal', 'draws it', { dash: DASH });
 bar(1044, 1110, L.work, 'teal', 'checks');
+bar(1044, 1110, L.work + 36, 'teal', 'write');
 bar(1114, 1180, L.work, 'teal', 'review');
 bar(1114, 1180, L.work + 36, 'teal', 'e2e');
 bar(1250, 1316, L.work, 'teal', 're-check');
@@ -191,7 +193,7 @@ text(232, L.art + 54, 'the build starts when the plan is written, no “go”: a
 
 /* ---------- three cards ---------- */
 const cy = 700;
-rect(14, cy, 640, 540, 'orange', { fill: '#1f1c17', sw: 1.8, r: 16 });
+rect(14, cy, 640, 580, 'orange', { fill: '#1f1c17', sw: 1.8, r: 16 });
 text(36, cy + 14, `<div class="card"><h3 class="orange">The plan — always a file, one screen</h3>
   <div class="k">RESULT</div><p>what you can do when it is done — the feature, finished</p>
   <div class="k">APPROACH</div><p>how it is solved and how the parts fit; only the decisions the implementer cannot make alone, one reason each</p>
@@ -200,18 +202,19 @@ text(36, cy + 14, `<div class="card"><h3 class="orange">The plan — always a fi
   <ul><li>what to build and why · what becomes true</li><li>its <b>territory</b>: what it changes · what it waits for</li><li>its <b>skills</b>: the project's and global ones its code follows</li><li>a status: waiting, in progress, done</li></ul>
   <div class="k">CHECKS</div><p>level-1 commands per phase; the full commands, the review, how e2e drives the system; the gate’s level</p>
   <div class="k">DONE</div><p>the use cases: do this → see that</p>
+  <div class="k">SPEC</div><p>the rules added, changed, removed; a Spec: line per phase; the grill’s spec scout brings them; spec.py check before you see it</p>
   <div class="k">AND</div><p>a link to the prototype · no file lists beyond territories, no code, no mechanisms</p></div>`, '', 600);
 
-rect(680, cy, 640, 540, 'teal', { fill: '#16222a', sw: 1.8, r: 16 });
+rect(680, cy, 640, 580, 'teal', { fill: '#16222a', sw: 1.8, r: 16 });
 text(702, cy + 14, `<div class="card"><h3 class="teal">Three levels of checks</h3>
   <div class="k">1 · INSIDE A PHASE (4) — the fastest</div>
   <ul><li>TDD, linters, typechecks, the project’s own scripts, as the plan’s Checks says</li><li>while a wave runs: only its own territory</li><li>its own findings: it fixes them itself</li><li>a plan-vs-code conflict: it rules, carries on, records the ruling</li></ul>
   <div class="k">2 · THE E2E GATE (5) — the main one</div>
-  <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases, at each width the plan names</li><li>one list → one new implementer → re-check only what it touched</li><li>then the judge, a fresh Opus context: decides every open entry and Convention, writes its prediction, lands</li><li>at the plan’s level — small, normal, wide; two fixes at most</li></ul>
+  <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases, at each width the plan names</li><li>before the gate: spec.py write, docs/spec/ committed alone; the review reads the Spec: areas’ rules</li><li>one list → one new implementer → re-check only what it touched</li><li>then the judge, a fresh Opus context: decides every open entry and Convention, writes its prediction, lands</li><li>at the plan’s level — small or normal; two fixes at most</li></ul>
   <div class="k">3 · THE HUMAN GATE (6) — you try it, then read it</div>
   <ul><li>only checked and tested work reaches it</li><li>each note gets a cause and is matched against the judge’s prediction; a round starts on your word</li></ul></div>`, '', 600);
 
-rect(1346, cy, 640, 540, 'pink', { fill: '#231a20', sw: 1.8, r: 16 });
+rect(1346, cy, 640, 580, 'pink', { fill: '#231a20', sw: 1.8, r: 16 });
 text(1368, cy + 14, `<div class="card"><h3 class="pink">The human gate — one page</h3>
   <div class="k">6 · THE GATE PAGE</div>
   <ul><li>decided without you, with the cost if wrong; open, with the judge’s report</li><li>the Done use cases: do this → see that; beside each, the machine’s result</li><li>your word → a round over every open note: implementer, review, e2e, the judge (it lands), back here</li></ul>
@@ -221,7 +224,7 @@ text(1368, cy + 14, `<div class="card"><h3 class="pink">The human gate — one p
   <ul><li>it asks: MR, or local --no-ff or --ff-only?</li><li>the message comes from Result; no push without your word; a retro in one line</li></ul></div>`, '', 600);
 
 /* ---------- the registry ---------- */
-const gy = 1270;
+const gy = 1310;
 text(14, gy, 'THE REGISTRY IS THE PLAN’S GRAPH &nbsp;<span class="note">— kept by the orchestrator; messages go through it</span>', 'sec');
 function node(x, y, w, h, col, title, sub, tag) {
   rect(x, y, w, h, col, { r: 12, sw: 2 });

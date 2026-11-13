@@ -14,14 +14,15 @@ code, and never edits code.
 one phase, a list of findings, or a round's notes.
 
 **Worker.** A Sonnet subagent for a side job: facts from the code, a
-prototype, checks, e2e.
+prototype, checks, e2e. The **spec scout** reads `docs/spec/` at the start of
+the grill and returns the rules the task touches, with reasons and contradictions.
 
 **Reviewer.** The `reviewer` agent: Opus first, then Sonnet.
 
 ## The work
 
 **Plan.** The file a change is built from, always written, one screen: Result,
-Approach, Out of scope, Phases, Checks, Done, and the prototype's link. Its
+Approach, Out of scope, Phases, Checks, Done, Spec, and the prototype's link. Its
 result is a finished feature; nothing is deferred.
 
 **Phase.** One task in a plan, for one implementer: what to build and why, its
@@ -54,10 +55,11 @@ the order they go in.
 **Level 1.** Inside a phase: TDD, linters, typechecks, the project's scripts,
 on the phase's own territory while other phases run.
 
-**The E2E gate.** After the last phase, at the level the plan names, small,
-normal or wide: the full checks, then a review and e2e over Done at once. Their
+**The E2E gate.** After the last phase, at the level the plan names, small or
+normal: the full checks, then a review and e2e over Done at once. Their
 findings make one list for one new implementer, then a targeted re-check; two
-fixes at most.
+fixes at most. Before the gate and each re-check the build runs `spec.py write`
+and commits `docs/spec/` alone; the review reads the rules of the `Spec:` areas.
 
 **The judge.** The `judge` agent, Opus, after the E2E gate. It finds nothing
 itself: it reads the gate's results and decides each Open entry and Convention

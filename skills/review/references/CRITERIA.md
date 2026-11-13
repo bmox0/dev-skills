@@ -25,7 +25,10 @@ Observations.
 ## Defects
 
 Correctness, behaviour, security, data integrity, a Done use case the code
-cannot reach, and a test that cannot fail. Show each one: run what you can,
+cannot reach, a test that cannot fail, and a rule of an area file the
+phases' `Spec:` lines name that the code breaks, its source the rule's ID
+(`area#rule`; [FORMAT.md](../../spec/references/FORMAT.md)). A rule the plan's
+`## Spec` changes or removes is not broken by that change. Show each one: run what you can,
 and give the input and the result.
 
 A test that cannot fail passes with the behaviour it names broken. It asserts on
@@ -37,6 +40,9 @@ declared with no test and no path to it is a Defect too.
 
 A departure from a written project rule, with the rule cited. Conventions go
 to the judge, who lets one through or orders a round.
+
+A test for a Done item that a spec rule cites, without that rule's ID in its
+name or title, is one (`dev-skills:tdd`).
 
 ## Observations
 

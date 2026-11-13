@@ -12,12 +12,16 @@ is shorter; none is skipped, and every plan ends in a human gate.
 
 1. **Entry.** A grill when it is unclear what is being built, a discussion when
    it is lighter. Workers bring facts from the code; you make the decisions.
-   A bug adds its reproduction and its cause.
+   A bug adds its reproduction and its cause. A second Sonnet worker, the spec
+   scout, brings the rules in `docs/spec/` that the task touches; you are asked
+   about a rule only when the task leaves open whether it stays true, in product
+   words, and the plan's writer records it.
 2. **Prototype.** Offered after the entry; you pick the shape or decline: an
    HTML file, inside the app with real data, or code. A worker draws it.
 3. **Plan.** Always a file, one screen: Result, Approach, Out of scope, Phases,
-   Checks, Done, and the prototype's link. Each phase names its territory, the
-   skills its code follows, and what it waits for; territories and waits form
+   Checks, Done, `## Spec` (the rules added, changed, removed) and the prototype's
+   link; `spec.py check` runs before you see it. Each phase names its territory, the
+   skills its code follows, the spec files it reads, and what it waits for; territories and waits form
    the graph. Status runs `draft` →
    `approved` → `building` → `at the human gate` → `passed` → `merged`, via
    `a merge-request link` when finish opens one. The plan session sets
@@ -26,9 +30,10 @@ is shorter; none is skipped, and every plan ends in a human gate.
 4. **Build.** One branch and one working tree per plan: this one, or a
    worktree when another plan is building here. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
-   inside its territory and runs the project's checks on it.
-5. **The E2E gate.** At the level the plan names, small, normal or wide: the
-   full checks, then at once a fresh review against the project's rules and
+   inside its territory and runs the project's checks on it. Before the gate and
+   each re-check, `spec.py write` runs and `docs/spec/` is committed alone.
+5. **The E2E gate.** At the level the plan names, small or normal: the
+   full checks, then at once a fresh review against the project's rules (and the `Spec:` areas' rules) and
    e2e over what you would not see by trying the app, at each width the plan
    names. Defects and failures make one list for one new implementer, then a
    targeted re-check; two fixes at most. Then a judge, a fresh Opus context: it
@@ -81,8 +86,8 @@ written, with no "go".
   a clean context each, handed the whole plan, its phase, and what earlier
   phases reported. When the plan and the code disagree, it rules, carries on,
   and records the ruling with its cost if wrong.
-- **Workers** are Sonnet subagents for side jobs: facts from the code, a
-  prototype, the full checks, e2e.
+- **Workers** are Sonnet subagents for side jobs: facts from the code, the
+  rules the task touches (the spec scout), a prototype, the full checks, e2e.
 - **The reviewer** is the [`reviewer`](agents/reviewer.md) agent: Opus for the
   first review of a plan's branch and for a range you name, Sonnet for the
   re-check and every later round.
@@ -170,7 +175,7 @@ install the same skills.
 | [`prototype`](skills/prototype/SKILL.md) | answer a design question with throwaway code |
 | [`retro`](skills/retro/SKILL.md) | propose environment changes after a plan, each with what it removes |
 | [`review`](skills/review/SKILL.md) | the code half of the E2E gate, or a review of any range |
-| [`spec`](skills/spec/SKILL.md) | the project's rules in `docs/spec/`: write one finished task's rules from a plan-shaped file, list and show them |
+| [`spec`](skills/spec/SKILL.md) | the project's rules in `docs/spec/`: the pipeline's grill, plan and build call it; alone, write one task's rules built outside the pipeline, list and show them |
 | [`tdd`](skills/tdd/SKILL.md) | red before green, read by the implementer |
 | [`verify`](skills/verify/SKILL.md) | the e2e half of the E2E gate: drive the Done use cases |
 | [`writing-skills`](skills/writing-skills/SKILL.md) | design or audit a skill |

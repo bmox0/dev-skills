@@ -48,10 +48,13 @@ still trying the app is not one. Name what the round takes; the user can
 overrule. Then take every open note; a round the judge ordered takes
 only the judge's notes:
 
-1. A new `dev-skills:implementer` with the notes file's path and the numbers
+1. A note that changes a rule changes `## Spec` along with Done first. Then a
+   new `dev-skills:implementer` with the notes file's path and the numbers
    it takes: it reads the user's words there. Its territory is what they
    touch. Its checks, as for any phase.
-2. At once: the reviewer on Sonnet over the round's commits, and the blast
+2. First `write` and its commit, as in SKILL.md §3 (when the section did not
+   change there is nothing to commit, and `git commit` exiting 1 is no
+   failure). Then at once: the reviewer on Sonnet over the round's commits, and the blast
    radius from the diff. Confined to what the notes name: tell the user what
    to look at, since they asked for it. Reaching shared code, logic or
    anything else: a fresh worker drives the Done use cases the diff touches
@@ -73,4 +76,6 @@ Notes given during a round wait under Open.
 
 An implementer rebases the branch onto the default branch; write
 `git merge-base <default> <branch>` into the plan as its base before the
-gates.
+gates. A conflict inside `docs/spec/` is not merged by hand: it goes back to the
+default branch's state, this plan's record in the archive removed too, and the
+orchestrator runs `write` once the base is rewritten. If it refuses, two plans disagree about a rule: the user's call.
