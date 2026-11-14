@@ -148,7 +148,7 @@ frontmatter "$repo_root/agents/implementer.md" | grep -qx 'model: sonnet' \
 frontmatter "$repo_root/agents/reviewer.md" | grep -qx 'model: opus' \
   || fail "TC-13: the reviewer should run on opus"
 frontmatter "$repo_root/agents/judge.md" | grep -qx 'model: opus' \
-  || fail "TC-13: the judge should run on opus"
+  || fail "TC-13: the judge should run on opus (build#judge-after-every-round)"
 grep -q '(reviewer on Sonnet)' "$repo_root/skills/build/SKILL.md" \
   || fail "TC-13: build should send its later reviews on sonnet"
 plugin_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.claude-plugin/plugin.json")

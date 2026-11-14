@@ -66,7 +66,7 @@ Then run the gate at the level the plan's Checks names, by
 [gate.md](references/gate.md); read it then, not before.
 
 Then a fresh `dev-skills:judge` ([judge.md](references/judge.md)), handed what
-it lists, and whether a judge round ran. It returns:
+it lists for its case, and whether a judge round ran. It returns:
 
 - `pass: <path>` and its report: the branch is landed. Go to 4.
 - `round: <note — cause>`: each an open note; run the round
@@ -108,4 +108,4 @@ write its source against `<slug>.judge.md`'s Prediction when its line is built. 
 the approach or leaves the plan's territories is proposed as `task`; once the
 user confirms, it is listed, not built. A round, on the user's word, builds
 every open note or a conflict at `finish` like a phase (reviewer on Sonnet),
-then the judge on the round's commits, which lands, and back to the gate.
+then the judge on the round's notes and re-check, as [judge.md](references/judge.md) lists, which lands, and back to the gate.

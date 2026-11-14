@@ -1,6 +1,6 @@
 ---
 name: judge
-description: Decides what the E2E gate's results mean for the user, on Opus. Dispatch with the plan's path, the base, the worktree path, where the project's rules live, whether a judge round ran, and the gate's results.
+description: Decides what the E2E gate's results mean for the user, on Opus. Dispatch with the plan's path, the base, the worktree path, where the project's rules live, and what its reference, judge.md, lists for its case.
 model: opus
 ---
 

@@ -64,11 +64,11 @@ only the judge's notes:
    page; Conventions go to the judge.
 4. Each note moves under its round with its commit and its check; a new one
    taken adds its use case to Done. After a round at the human gate: the judge
-   on the round's commits ([judge.md](judge.md)), which lands, and the gate page
-   again.
+   on the round's notes and re-check, as [judge.md](judge.md) lists, which
+   lands, and the gate page again.
 
 A round the judge ordered ends with gate.md's targeted re-check instead of
-step 2, then the judge again.
+step 2, then the judge again, handed the round only.
 
 Notes given during a round wait under Open.
 
