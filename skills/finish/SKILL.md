@@ -12,8 +12,8 @@ link (below); any other status goes back to `dev-skills:build`. It merges what
 ## 1. Already a merge request
 
 Status a merge-request link: `gh pr view <link> --json state`. Merged: set
-Status to `merged`; the epic's row too. Offer a retro (`dev-skills:retro`).
-Still open: say so and stop.
+Status to `merged`; the epic's row too. Offer to delete the backups (step 4), then a
+retro (`dev-skills:retro`). Still open: say so and stop.
 
 ## 2. Ask how to end
 
@@ -40,8 +40,7 @@ implementer rebases the plan's branch onto the default branch, then the judge
 (it lands) and the gate page again, and `finish` again on the user's word.
 
 No push without the user's word; choosing a merge request is that word for
-pushing the plan's branch, nothing else. Leave the plan's branch and its
-backups in place.
+pushing the plan's branch, nothing else. Leave the plan's branch in place.
 
 ## 4. After
 
@@ -49,4 +48,9 @@ Local: set Status to `merged`. A merge request: set it to the request's
 link — step 1 sets `merged` once it is. Under an epic, the plan's row follows.
 Merged from a worktree of its own: `git worktree remove <path>`; the branch
 stays.
-Offer a retro (`dev-skills:retro`); the user decides.
+Backups, local merge only (a merge request gets this question in step 1, once
+merged): list `git branch --list 'backup/<branch>-*'` and keep the names whose
+part after `backup/<branch>-` is all digits. Any: ask one question naming each,
+"delete these backups?", and on yes `git branch -D` them (`land` rewrote the
+branch, so they are not merged). A no, or any answer but yes, leaves them.
+Local: then offer a retro (`dev-skills:retro`); the user decides.
