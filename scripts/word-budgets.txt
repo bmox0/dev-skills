@@ -24,13 +24,13 @@ skills/domain-modeling/SKILL.md 650
 skills/domain-modeling/references/ADR-FORMAT.md 450
 skills/domain-modeling/references/CONTEXT-FORMAT.md 350
 skills/epic/SKILL.md 300
-skills/finish/SKILL.md 410
+skills/finish/SKILL.md 465
 skills/grill/SKILL.md 340
 skills/grill/references/INTERVIEW.md 601
 skills/handoff/SKILL.md 450
 skills/land/SKILL.md 440
-skills/plan/SKILL.md 1021
-skills/plan/references/environment-contract.md 250
+skills/plan/SKILL.md 1048
+skills/plan/references/environment-contract.md 325
 skills/plan/references/example.md 532
 skills/prototype/SKILL.md 375
 skills/prototype/references/LOGIC.md 450
@@ -38,8 +38,8 @@ skills/prototype/references/UI.md 400
 skills/retro/SKILL.md 300
 skills/review/SKILL.md 315
 skills/review/references/CRITERIA.md 613
-skills/spec/SKILL.md 331
-skills/spec/references/FORMAT.md 1212
+skills/spec/SKILL.md 350
+skills/spec/references/FORMAT.md 1227
 skills/tdd/SKILL.md 315
 skills/verify/SKILL.md 360
 skills/writing-skills/SKILL.md 1700
