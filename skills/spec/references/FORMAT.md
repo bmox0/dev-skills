@@ -46,7 +46,7 @@ When no rule changes, the section is the word `none`. A missing or empty section
 - `~` replaces the statement and the reason; its `Done:` items replace the scenarios, and without a `Done:` line the scenarios stay.
 - `-` takes a rule out and needs `Why:`. An area that loses its last rule keeps its file.
 - `Done:` lists item numbers of the plan's `## Done`. A scenario is the item's text without its `— you check` tail. A continuation line under a Done item joins it.
-- The keywords `Why:`, `About:`, `Done:` are English; the content is in the plan's language.
+- The keywords `Why:`, `About:`, `Done:` are English; the content is in the project's language, which plans share: the Language line of the Environment block, or its fallbacks, in [environment-contract.md](../../plan/references/environment-contract.md).
 - `+ area` entries apply first, then `~`, `-` and `+ rule` in order.
 
 ## Commands

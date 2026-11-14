@@ -15,6 +15,7 @@ discover them:
 **Single test file.** `<command> <path>`
 **Dev server.** `<command>`, serves on `<url>`
 **E2E.** `<command>` — or: none
+**Language.** <the language the project's documents are written in>
 **Runtime.** <how the observable behaviour is driven here: a browser, a request,
 the simulator, a CLI invocation>
 **Access.** <how e2e signs in: the account, its roles, where its credentials
@@ -22,6 +23,8 @@ live (an env var, `.env.local`, the keychain), where a one-time code comes
 from> — or: none
 **Devices.** <what e2e runs on, and what it leaves alone> — or: any
 ```
+
+Language is what plans and specs are written in. Without the line, they are written in the language of the documents in `docs/`, `docs/spec/` first (commits, code comments, a README or a changelog do not decide it); with no documents, ask the user once. In both fallbacks offer just the line, for the file the project keeps its rules in; the whole block is offered only when the project has none.
 
 State facts, not prohibitions. "none, this project has no test framework" is a
 fact and it is worth a line. Access names where a credential lives, never the

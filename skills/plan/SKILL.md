@@ -36,6 +36,9 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   territory by the area's description, as skills are.
 - Checks takes the project's commands from its `AGENTS.md` or `CLAUDE.md`:
   [environment-contract.md](references/environment-contract.md).
+- The plan is written in the project's language, found by the Language line in
+  [environment-contract.md](references/environment-contract.md). The conversation and the gate
+  page stay in the user's language.
 
 ## The file
 

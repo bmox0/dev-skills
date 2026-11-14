@@ -20,7 +20,7 @@ is shorter; none is skipped, and every plan ends in a human gate.
    HTML file, inside the app with real data, or code. A worker draws it.
 3. **Plan.** Always a file, one screen: Result, Approach, Out of scope, Phases,
    Checks, Done, `## Spec` (the rules added, changed, removed) and the prototype's
-   link; `spec.py check` runs before you see it. Each phase names its territory, the
+   link, in the language named by the `Language` line of your `AGENTS.md`; `spec.py check` runs before you see it. Each phase names its territory, the
    skills its code follows, the spec files it reads, and what it waits for; territories and waits form
    the graph. Status runs `draft` →
    `approved` → `building` → `at the human gate` → `passed` → `merged`, via
@@ -52,7 +52,8 @@ is shorter; none is skipped, and every plan ends in a human gate.
    then the judge again (it lands) and back to the gate.
 7. **Finish.** On your word at the gate ("ок, в МР"), typed or plain. It asks
    for what you did not say: a merge request, or local with `--no-ff` or
-   `--ff-only`, and the message.
+   `--ff-only`, and the message. After the merge it offers to delete the
+   plan's backups; the branch stays.
 
 The drawing: [docs/pipeline.html](docs/pipeline.html).
 
