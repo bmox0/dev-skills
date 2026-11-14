@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Skills and agents for Claude Code and Codex that take a change from discussion to merge: a plan file, phases built by subagents, a review and an e2e check, then human approval.",
-    "version": "5.0.0"
+    "version": "5.0.1"
   },
   "plugins": [
     {
@@ -14,7 +14,7 @@
       "source": "./",
       "description": "Seven stages for every change: a grill or a discussion, an optional prototype, a plan file, phases built by implementer subagents, a review and an e2e check, a judge that lands the branch, a human approval, and finish. The session the user started coordinates and does not edit code. The pipeline keeps the product's rules in docs/spec/ itself: the grill reads them, the plan carries them, the build writes them. Skills and agents, one script for the spec, no hooks.",
       "repository": "https://github.com/bmox0/dev-skills",
-      "version": "5.0.0",
+      "version": "5.0.1",
       "license": "MIT",
       "category": "development",
       "keywords": [
