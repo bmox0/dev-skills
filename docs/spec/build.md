@@ -48,8 +48,14 @@ Why: the row was forgotten in 3 of 5 runs
 
 - Under a throwaway epic, run `build start --base <tag>` → the branch starts at the tag, and Status reads `building` with the tag's SHA. The epic's row reads `building`, and `status` shows phase 1 as ready.
 
-### pre-5-1-adopted — A plan without state is adopted by `approve` as its file stands; no other command but `spec` runs on it
+### pre-5-1-adopted — A plan without state is adopted by `approve` as its file stands; no other command but `spec` and `run` runs on it
 
-Why: no migration step to remember, and a plan mid-build goes on where it is
+Why: no migration step to remember, and a plan mid-build goes on where it is; the run file is written and checked before the plan has state
 
 - Take a pre-5.1 plan at `building` with phase 1 `done` and no JSON, and run `phase start 2` → refused, with a fix naming `approve`. Run `approve` → phase 1 is still `done`, and phase 2 is ready.
+
+### brief-carries-spec — An implementer's brief lists every `## Spec` entry of the plan with its ID and Done items
+
+Why: tests carry the rule's ID, which lives only in the plan until `spec write`; a run lost a judge round to it
+
+- Run `brief implementer 2` on a plan with three `## Spec` entries → the file holds `[checks].phase`, every `[run]` key as written with the keychain pointer unresolved, each entry's ID, statement and Done items, and one `Territory:` line.
