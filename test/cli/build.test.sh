@@ -190,11 +190,9 @@ b=$(cat "$out")
 for w in "$plan" "$repo" "$pipeline" "$v0" "$(git rev-parse HEAD)" "lib/" "skills/tdd/SKILL.md" "src exists" "mind the lib" "Do two." "Branch: x"; do
   assert_contains "$b" "$w" "the brief holds $w" || exit 1
 done
-out=$(cli brief judge "$plan" --note "case: gate"); rc=$?
-assert_eq 0 "$rc" "brief judge: $out" || exit 1
-j=$(grep -o '/[^ `]*judge\.md' "$out" | head -1)
-[ -f "$j" ] || fail "the judge.md path exists: $j"
-assert_eq "$repo_root/skills/build/references/judge.md" "$j" "the plugin's judge.md" || exit 1
+out=$(cli brief judge "$plan"); rc=$?
+assert_eq 1 "$rc" "brief judge takes its case from a cycle, and none is open: $out" || exit 1
+assert_contains "$out" "no-cycle" "the refusal's code" || exit 1
 
 # build#pre-5-1-adopted: no command but approve runs on a plan with no state
 old=$repo/.ai-workflow/plans/2026-11-10-old.md
@@ -249,7 +247,6 @@ edit "$plana" '### 1. One — `waiting`' '### 1 One'
 out=$(cli brief implementer "$plana" 1 2>&1); rc=$?
 assert_eq 1 "$rc" "brief refuses a hand-edited heading" || exit 1
 case "$out" in *Traceback*) fail "no traceback: $out";; esac
-assert_contains "$(cli brief judge "$plana" --note c | xargs cat)" "Drift:" "the judge brief reports drift" || exit 1
 git worktree remove --force "$wta"
 
 # a recorded tree that is gone: refuse cleanly, and the closing writes keep working
