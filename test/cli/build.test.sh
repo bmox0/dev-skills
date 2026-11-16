@@ -444,6 +444,7 @@ for w in 'phase = ["scripts/check"]' 'admin_pwd = "keychain:app/admin"' 'can_rem
   assert_contains "$b" "$w" "the brief holds $w" || exit 1
 done
 assert_eq 1 "$(printf '%s\n' "$b" | grep -c '^Territory:')" "Territory prints once" || exit 1
+assert_contains "$b" "carries its ID" "the brief says a test guarding a Spec entry carries its ID" || exit 1
 
 # an epic that is gone is a fact, not a traceback
 pe=$repo/.ai-workflow/plans/2026-11-16-ep.md
@@ -457,4 +458,13 @@ out=$(cli phase start "$pe" 1 2>&1); rc=$?
 assert_eq 0 "$rc" "phase start with the epic gone: $out" || exit 1
 assert_contains "$out" "epic" "a line says the epic is missing" || exit 1
 case "$out" in *Traceback*) fail "no traceback: $out";; esac
+# a plan file that is not there is one refusal line, whatever the command
+for c in "status" "land" "land draft" "page --note x" "finish" "gate start" "round start" "brief judge" "plan status" "fix start" "approve"; do
+  case "$c" in "plan status") args="plan status /nonexistent/x.md passed";; *) args="$c /nonexistent/x.md";; esac
+  out=$(cli $args 2>&1); rc=$?
+  assert_eq 1 "$rc" "$c on a missing plan exits 1" || exit 1
+  case "$out" in *Traceback*) fail "$c: no traceback: $out";; esac
+  assert_eq 1 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "$c: one line: $out" || exit 1
+  assert_contains "$out" "no-plan" "$c: the code" || exit 1
+done
 echo "build.test.sh: ok"

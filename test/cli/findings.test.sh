@@ -129,6 +129,7 @@ grep -q "1\. a → b" "$b" || fail "without --cases the gate drives every case"
 b=$(cli brief reviewer "$plan") || fail "brief reviewer at the gate"
 grep -q "python3 \"$pipeline\" finding $plan --kind" "$b" || fail "the reviewer's record command is printed in full"
 sed -n '/## Record/,$p' "$b" | grep -q '\$' && fail "the reviewer's brief uses no shell variable"
+grep -q "only when there is one" "$b" && grep -q "record nothing" "$b" || fail "the reviewer records an unjudged item only when there is one: $(grep unjudged "$b")"
 
 # build#survivor-to-open: fix 1 takes everything open
 cli fix report "$plan" --became x --commit abc >/dev/null && fail "no fix to report on"

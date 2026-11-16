@@ -287,11 +287,11 @@ assert_contains "$out" "Cycle round-1" "status labels the round's lists" || exit
 
 # build#state-through-commands: the fix and round briefs carry the ruling command, the rules path and the Spec entries
 b=$(cli brief round "$plan")
-for want in "decision" "--by implementer" "build#caps-in-code"; do grep -q -- "$want" "$b" || fail "the round brief holds: $want"; done
+for want in "decision" "--by implementer" "build#caps-in-code" "carries its ID"; do grep -q -- "$want" "$b" || fail "the round brief holds: $want"; done
 cli finding "$plan" --kind defect --where src/a.txt:1 --source plan --text d >/dev/null
 cli fix start "$plan" >/dev/null || fail "fix start in a round"
 b=$(cli brief fix "$plan")
-for want in "decision" "--by implementer" "build#caps-in-code"; do grep -q -- "$want" "$b" || fail "the fix brief holds: $want"; done
+for want in "decision" "--by implementer" "build#caps-in-code" "carries its ID"; do grep -q -- "$want" "$b" || fail "the fix brief holds: $want"; done
 grep -q "^Rules: .*docs/spec" "$b" || fail "the brief header names where the rules live"
 
 # build#judge-file-by-code: a judge after the user's answer is told so, and names the judge file
@@ -320,4 +320,11 @@ git checkout -q r; git rebase -q "$def" >/dev/null 2>&1 || fail "rebase onto the
 out=$(cli gate start "$plan")
 assert_contains "$out" "plan base" "a stale base names the command that fixes it" || exit 1
 json "assert 'spec' not in [i['id'] for i in c['cycles'][0]['list']], c['cycles'][0]['list']" || fail "a stale base is not an item for a fix"
+# gate.md skips `fix start` with nothing open: the refusal fits an empty list
+newrepo
+out=$(cli fix start "$plan"); rc=$?
+assert_eq 1 "$rc" "fix start with nothing open is refused" || exit 1
+assert_contains "$out" "nothing-open" "the code" || exit 1
+assert_contains "$out" "empty" "the fix says the list is empty" || exit 1
+case "$out" in *"an item a fix took"*) fail "the hint for an empty list does not talk of items a fix took: $out";; esac
 echo "rounds.test.sh: ok"

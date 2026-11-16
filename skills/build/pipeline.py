@@ -15,10 +15,18 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py owner PLAN PATH
        pipeline.py grant [--note TEXT] PLAN N PATH
        pipeline.py decision --question Q --from S --answer A --why W --cost C PLAN
-       pipeline.py brief implementer PLAN N | brief judge|round PLAN   [--note TEXT]
+       pipeline.py brief implementer PLAN N | brief judge|round|reviewer|fix PLAN | brief verify [--cases N,N] PLAN   [--note TEXT]
+       pipeline.py gate start [--note TEXT] PLAN
+       pipeline.py finding --kind K --text T [--where F:L] [--source S] [--again ID] PLAN
+       pipeline.py result --case N --outcome passed|failed|not-reached [--capture C] [--detail T] PLAN
+       pipeline.py fix start|done PLAN | fix report --became T [--commit SHA ...] PLAN
        pipeline.py verdict pass|round|question PLAN --report T [--decide ID ACTION REASON] [--note T CAUSE]
+       pipeline.py verdict evidence-owed PLAN --owed reviewer|verify --report T
+       pipeline.py land draft PLAN | land [now] PLAN | land accept --note T PLAN | land revert [--note T] PLAN
+       pipeline.py page --note T [--message T] PLAN
        pipeline.py note add|edit|drop PLAN ...
-       pipeline.py round start|report|done PLAN
+       pipeline.py round start [--conflict T] PLAN | round report --became T [--commit SHA ...] PLAN | round done PLAN
+       pipeline.py finish [--merged] PLAN
        pipeline.py run new|check PLAN | run show [--json] PLAN
 
 check reads the plan's `## Spec` section against docs/spec/ as it is at the
@@ -31,6 +39,13 @@ not the base plus what this plan's earlier archive record (its Done and Spec)
 produces (compared as parsed, so blank lines and the `-`/`*` scenario marker do
 not matter), makes docs/spec/ equal to the base plus the section, and
 writes the archive record. A bad argument is exit 2.
+
+gate start, fix done and round done run the plan's `[checks].full` outside the plan
+lock, recording each command's result as it ends in a run that is unfinished until
+the last one; other commands work meanwhile. A run whose call is gone stays
+unfinished and runs again at the next of these commands; fix start, verdict and
+the reviewer, fix and judge briefs refuse while the newest run is unfinished.
+build start and approve pick a port under one project-wide lock.
 
 run new copies the newest run file beside the plan (else the shipped example) to
 `<slug>.run.toml`; run check prints every problem as `<code>: … — fix: …`; run show
@@ -918,6 +933,11 @@ def save(plan, st, head, tail):
     md, js, _ = plan_paths(plan)
     head = render_head(st, head)
     st["render_hash"] = head_hash(head)
+    if st.get("lands"):
+        tail = render_gate(plan, st)
+        st["tail_hash"] = head_hash(tail)
+    else:
+        st.pop("tail_hash", None)
     for path, text in ((md, "\n".join(head + tail)), (js, json.dumps(st, indent=2, ensure_ascii=False) + "\n")):
         fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".pipeline-")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -954,21 +974,25 @@ def sync_epic(root, md, st):
             os.replace(tmp, epic)
 
 
-def drift_diags(plan, st, head):
+def drift_diags(plan, st, head, tail=None):
     """What differs between the file and its last render, as Refuse diagnostics."""
+    out = []
+    if tail is not None and st.get("tail_hash") and head_hash(tail) != st["tail_hash"]:
+        out.append(("drift", f"{plan}: `## Human gate` was edited by hand", "restore it; code draws it from the records, and `pipeline.py page` changes its note and message"))
     if head_hash(head) == st.get("render_hash"):
-        return []
+        return out
     owned = code_owned(st, head)
     if owned:
-        return [("drift", f"{plan}:{n}: `{t}` was edited by hand", f"restore it, or change it with `{c}`") for n, t, c in owned]
-    return [("drift", f"{plan} differs from its last render", f"run `pipeline.py approve {plan}` to compile the edit")]
+        return out + [("drift", f"{plan}:{n}: `{t}` was edited by hand", f"restore it, or change it with `{c}`") for n, t, c in owned]
+    return out + [("drift", f"{plan} differs from its last render", f"run `pipeline.py approve {plan}` to compile the edit")]
 
 
 @contextlib.contextmanager
-def writing(plan):
+def writing(plan, edit_tail=None):
     """Lock the plan's state, refuse on drift, yield the state; saves and renders on exit.
 
     Call set_plan / set_phase inside; an exception leaves both files as they were.
+    edit_tail(state, tail lines) -> tail lines rewrites the hand-written `## Human gate` on exit.
     """
     md = plan_paths(plan)[0]
     with locked(plan):
@@ -976,13 +1000,13 @@ def writing(plan):
         if st is None:
             raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
         head, tail = read_plan(md)
-        diags = drift_diags(plan, st, head)
+        diags = drift_diags(plan, st, head, tail)
         if diags:
             r = Refuse(*diags[0])
             r.diags = diags
             raise r
         yield st
-        save(plan, st, head, tail)
+        save(plan, st, head, edit_tail(st, tail) if edit_tail else tail)
 
 
 def record(plan, st, what, frm, to, note=None):
@@ -1151,6 +1175,14 @@ def bindable(family, addr, port):
     return True
 
 
+@contextlib.contextmanager
+def port_lock(md):
+    """Held from picking a port to saving it, so plans of one project never pick the same."""
+    with open(os.path.join(os.path.dirname(os.path.abspath(md)), ".ports.lock"), "a") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        yield
+
+
 def allocate(plan, md, st, have=None):
     """What [isolation] asks for and `have` lacks: {"port": n, "data_dir": path}."""
     iso, new = st.get("run", {}).get("isolation", {}), {}
@@ -1231,7 +1263,7 @@ def cmd_approve(plan, as_json):
         print("\n".join(f"{plan}:{n}: {m}" for n, m in sorted(problems)))
         return 1
     derived = ("title", "territory", "skills", "spec", "waits", "waits_text")
-    with locked(plan):
+    with port_lock(md), locked(plan):
         st = load_state(plan)
         if st is None:
             how = "approved" if P["status"] == "draft" else "adopted"
@@ -1268,7 +1300,7 @@ def cmd_approve(plan, as_json):
             if had and (ch := run_changes(st["run"], values)):
                 record(plan, st, "run file", None, "changed", ", ".join(f"{x} {k}" for x, k in ch))
             st["run"] = values
-            if st["status"] != "approved":
+            if st["status"] in LIVE:
                 new = allocate(plan, md, st, st.get("alloc"))
                 if new:
                     st["alloc"] = {**st.get("alloc", {}), **new}
@@ -1298,11 +1330,12 @@ def cmd_approve(plan, as_json):
     return 0
 
 
-def summary(plan, st, head):
+def summary(plan, st, head, tail=None):
     """-> the dict `status --json` prints."""
     return {**{k: st.get(k) for k in ("title", "status", "branch", "base", "epic", "level", "phases", "history", "decisions")},
-            "done": st.get("done", []), "verdicts": st.get("verdicts", []), "rounds": st.get("rounds", []), "notes": st.get("notes", []), "cycles": [{**c, "list": items(c)} for c in st.get("cycles", [])], "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st), "alloc": st.get("alloc"),
-            "drift": [f"{m} — fix: {f}" for _, m, f in drift_diags(plan, st, head) + run_drift(plan, st)]}
+            "done": st.get("done", []), "verdicts": st.get("verdicts", []), "rounds": st.get("rounds", []), "notes": st.get("notes", []), "lands": st.get("lands", []), "land_stops": land_stops(st), "cycles": [{**c, "list": items(c)} for c in st.get("cycles", [])], "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st), "alloc": st.get("alloc"),
+            "page": st.get("page"),
+            "drift": [f"{m} — fix: {f}" for _, m, f in drift_diags(plan, st, head, tail) + run_drift(plan, st)]}
 
 
 def cmd_status(plan, as_json, cwd):
@@ -1316,13 +1349,13 @@ def cmd_status(plan, as_json, cwd):
         for fn in names:
             full = os.path.join(d, fn)
             st = load_state(full)
-            head = read_plan(full)[0]
+            head, tail = read_plan(full)
             if st is None:
                 m = next((STATUS_LINE.match(l) for l, f in zip(head, fenced(head)) if not f and STATUS_LINE.match(l)), None)
                 if m and m[1] in LIVE:
                     rows.append({"plan": fn[:-3], "status": None, "ready": [], "nostate": True})
             elif st["status"] in LIVE:
-                rows.append({**summary(full, st, head)})
+                rows.append({**summary(full, st, head, tail)})
         if as_json:
             print(json.dumps([{k: r.get(k) for k in ("plan", "status", "ready", "drift")} for r in rows], ensure_ascii=False))
         for r in rows:
@@ -1338,8 +1371,8 @@ def cmd_status(plan, as_json, cwd):
     st = load_state(plan)
     if st is None:
         raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
-    head = read_plan(md)[0]
-    s = summary(plan, st, head)
+    head, tail = read_plan(md)
+    s = summary(plan, st, head, tail)
     if as_json:
         print(json.dumps(s, ensure_ascii=False))
         return 0
@@ -1356,12 +1389,14 @@ def cmd_status(plan, as_json, cwd):
             print(f"Gate: {c['level']}" + (f" (raised by {', '.join(c['raised_by'])})" if c["raised_by"] else ""))
         if c["runs"]:
             print("\n".join(show_run(c["runs"][-1], True)).replace("checks at", "Checks at", 1).replace(" (reused, run", " (run", 1))
-        lines = show_cycle(c)
+        lines = show_cycle(c, st)
         if lines:
             print(f"Cycle {cycle_label(c)}:")
         for l in lines:
             print(l)
     for l in show_judging(st):
+        print(l)
+    for l in show_land(st):
         print(l)
     print("Phases:")
     for p in st["phases"]:
@@ -1436,6 +1471,13 @@ def tree_of(plan, st):
     return t
 
 
+def on_branch(st, tree):
+    """Refuse when the tree git would act in is not on the plan's branch."""
+    here = git("branch", "--show-current", check=False, cwd=tree).stdout.strip()
+    if here != st["branch"]:
+        raise Refuse("wrong-branch", f"the tree {tree} is on {here or 'a detached head'}, the plan's branch is `{st['branch']}`", f"check `{st['branch']}` out there, or add a worktree for it")
+
+
 def inside(path, roots):
     p = norm(path)
     return any(p == norm(t) or p.startswith(norm(t) + "/") for t in roots)
@@ -1450,7 +1492,7 @@ def owner_of(st, path, skip=None):
 def cmd_build_start(plan, base, worktree, branch, note):
     md = plan_paths(plan)[0]
     root = plan_root(md)
-    with writing(plan) as st:
+    with port_lock(md), writing(plan) as st:
         if st["status"] != "approved":
             raise Refuse("not-approved", f"{plan_slug(st)} is {st['status']}, not approved",
                          "build start runs once on an approved plan; `pipeline.py plan status` moves a started one")
@@ -1612,7 +1654,7 @@ def spec_entry_lines(md):
     entries = parse_section(*secs["Spec"], problems) if "Spec" in secs else "none"
     if entries != "none":
         done = done_items(secs.get("Done", (0, []))[1])
-        out += ["## Spec entries of the plan", ""]
+        out += ["## Spec entries of the plan", "", "Each test that guards one carries its ID (`area#rule`) in its name or title.", ""]
         for e in entries:
             out.append(f"{e['sign']} {e['id']} — {e['statement'] or ''}".rstrip(" —"))
             if "Done" in e["keys"]:
@@ -1686,6 +1728,10 @@ def cmd_brief(plan, kind, n, note, cases=()):
                 w["verdicts"][-1]["answer"] = note
     out += ["## Orchestrator's note", "", note or "none", ""]
     path = os.path.join(os.path.dirname(md), name)
+    k = 1
+    while kind == "verify" and os.path.exists(path):
+        k += 1
+        path = os.path.join(os.path.dirname(md), f"{name[:-3]}-{k}.md")
     open(path, "w", encoding="utf-8").write("\n".join(out))
     print(path)
     return 0
@@ -1700,7 +1746,7 @@ def level_of(st, tree):
 
 
 def tree_snapshot(tree):
-    g = lambda *a: git(*a, check=False, cwd=tree).stdout
+    g = lambda *a: git(*a, "--", ".", ":(exclude).ai-workflow", check=False, cwd=tree).stdout
     return hashlib.sha256((g("status", "--porcelain", "--untracked-files=all") + g("diff", "HEAD")).encode()).hexdigest()
 
 
@@ -1721,20 +1767,64 @@ def checks_of(st):
     return fill(st["run"], st.get("alloc"))["checks"]["full"]
 
 
-def check_run(plan, st, cycle, tree):
-    """Run `[checks].full` at HEAD unless the cycle already holds a run at this HEAD for these commands; -> (run, reused)."""
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def begin_run(plan, st, cycle, tree):
+    """Under the plan lock: -> (the cycle's run for this HEAD and these commands, reused).
+
+    A run whose call is gone is dropped and a new one starts, empty, to be executed by run_checks.
+    """
     cmds, head = checks_of(st), head_sha(plan_paths(plan)[0], tree)
+    keep = []
     for r in cycle["runs"]:
-        if r["head"] == head and r["full"] == cmds:
+        if r.get("done", True):
+            keep.append(r)
+        elif alive(r.get("pid", 0)) and r["pid"] != os.getpid():
+            raise Refuse("checks-running", f"the checks at {r['head'][:7]} are running (pid {r['pid']})", "wait for that call to end")
+    cycle["runs"] = keep
+    for r in keep:
+        if r["head"] == head and r["full"] == cmds and r.get("done", True):
             return r, True
-    run_ = {"at": now(), "head": head, "full": cmds, "commands": [run_command(c, tree) for c in cmds]}
+    run_ = {"at": now(), "head": head, "full": cmds, "commands": [], "done": not cmds, "pid": os.getpid()}
     cycle["runs"].append(run_)
     return run_, False
 
 
+def run_checks(plan, cycle, run_, tree):
+    """Run the commands of a begun run with the plan unlocked, recording each result as it ends; -> the finished run."""
+    for n, cmd in enumerate(run_["full"]):
+        res = run_command(cmd, tree)
+        with writing(plan) as st:
+            c = next(c for c in st["cycles"] if c["kind"] == cycle["kind"] and c["n"] == cycle["n"])
+            r = next(r for r in c["runs"] if r["at"] == run_["at"] and r.get("pid") == run_["pid"])
+            r["commands"].append(res)
+            r["done"] = len(r["commands"]) == len(r["full"])
+            run_ = r
+    return run_
+
+
+def settled(c):
+    """Refuse while the cycle's newest run has not finished."""
+    r = c["runs"][-1] if c["runs"] else None
+    if r and not r.get("done", True):
+        raise Refuse("checks-unfinished", f"the checks at {r['head'][:7]} did not finish ({len(r['commands'])} of {len(r['full'])} ran)",
+                     "run `gate start`, `fix done` or `round done` again; it runs them again")
+
+
 def show_run(r, reused):
     green = not any(c["red"] for c in r["commands"])
-    out = [f"checks at {r['head'][:7]}: " + ("green" if green else "red") + (f" (reused, run {r['at']})" if reused else f" (run {r['at']})")]
+    state = "green" if green else "red"
+    if not r.get("done", True):
+        state = f"unfinished, {len(r['commands'])} of {len(r['full'])} ran"
+    out = [f"checks at {r['head'][:7]}: " + state + (f" (reused, run {r['at']})" if reused else f" (run {r['at']})")]
     for c in r["commands"]:
         why = ", changed the tree" if c["changed_tree"] else ""
         out.append(f"  {'red' if c['red'] else 'ok '}  {c['command']} — exit {c['exit']}{why}")
@@ -1779,6 +1869,7 @@ def cmd_gate_start(plan, note):
         open_ = [p["n"] for p in st["phases"] if p["status"] != "done"]
         if open_ and not note:
             raise Refuse("phases-open", f"phase {', '.join(map(str, open_))} is not done", "finish them, or pass --note with the reason to open the gate now")
+        checks_of(st)
         tree = tree_of(plan, st)
         cycles = st.setdefault("cycles", [])
         cycle = next((c for c in cycles if c["kind"] == "gate"), None)
@@ -1789,9 +1880,12 @@ def cmd_gate_start(plan, note):
             record(plan, st, "gate", None, "opened", note)
         out, cycle["spec_refusal"] = commit_spec(plan, st, tree)
         cycle["level"], cycle["raised_by"] = level_of(st, tree)
-        r, reused = check_run(plan, st, cycle, tree)
-        print(f"gate: {plan_slug(st)} level {cycle['level']}" + (f", raised by {', '.join(cycle['raised_by'])}" if cycle["raised_by"] else ""))
-        print("\n".join(out + show_run(r, reused)))
+        r, reused = begin_run(plan, st, cycle, tree)
+        head = f"gate: {plan_slug(st)} level {cycle['level']}" + (f", raised by {', '.join(cycle['raised_by'])}" if cycle["raised_by"] else "")
+    if not reused:
+        r = run_checks(plan, cycle, r, tree)
+    print(head)
+    print("\n".join(out + show_run(r, reused)))
     return 0
 
 
@@ -1900,33 +1994,49 @@ def open_fix(c):
 
 
 def cmd_fix(plan, a):
+    if a.command == "done":
+        return fix_done(plan)
     with writing(plan) as st:
         c = cycle_of(st)
         tree = tree_of(plan, st)
         md = plan_paths(plan)[0]
         if a.command == "start":
+            settled(c)
             if c["fixes"] and not c["fixes"][-1]["done"]:
                 raise Refuse("fix-open", f"fix {len(c['fixes'])} is running", "finish it with `fix report` and `fix done`")
             if len(c["fixes"]) >= FIXES_PER_CYCLE:
                 raise Refuse("fixes-spent", f"this cycle's {len(c['fixes'])} fixes are spent", "what is open goes to the judge or the user")
             take = [i["id"] for i in items(c) if not taken(c, i["id"])]
             if not take:
-                raise Refuse("nothing-open", "no open item for a fix", "an item a fix took stays with it")
+                raise Refuse("nothing-open", "no open item for a fix",
+                             "an item a fix took stays with it" if items(c) else "the one list is empty: skip `fix start`")
             c["fixes"].append({"n": len(c["fixes"]) + 1, "at": now(), "from": head_sha(md, tree), "items": take, "report": None, "done": None, "survived": []})
             print(f"fix {len(c['fixes'])}: takes {', '.join(take)}")
             return 0
         f = open_fix(c)
-        if a.command == "report":
-            f["report"] = {"at": now(), "became": a.became, "skills": a.skills, "interfaces": a.interfaces, "checks": a.checks, "commits": a.commit}
-            print(f"fix report: {f['n']} recorded, {len(a.commit)} commit(s)")
-            return 0
+        f["report"] = {"at": now(), "became": a.became, "skills": a.skills, "interfaces": a.interfaces, "checks": a.checks, "commits": a.commit}
+        print(f"fix report: {f['n']} recorded, {len(a.commit)} commit(s)")
+        return 0
+
+
+def fix_done(plan):
+    with writing(plan) as st:
+        c = cycle_of(st)
+        tree = tree_of(plan, st)
+        f = open_fix(c)
         if not f["report"]:
             raise Refuse("no-report", f"fix {f['n']} has no report", "`pipeline.py fix report` first")
         gone = [x for x in f["report"]["commits"] if git("merge-base", "--is-ancestor", x, "HEAD", check=False, cwd=tree).returncode]
         if gone:
             raise Refuse("commit-gone", f"{', '.join(gone)} is not on the branch", "report the commits that are")
+        checks_of(st)
         out, c["spec_refusal"] = commit_spec(plan, st, tree)
-        r, reused = check_run(plan, st, c, tree)
+        r, reused = begin_run(plan, st, c, tree)
+    if not reused:
+        r = run_checks(plan, c, r, tree)
+    with writing(plan) as st:
+        c = next(x for x in st["cycles"] if x["kind"] == c["kind"] and x["n"] == c["n"])
+        f = open_fix(c)
         f["done"] = {"at": now(), "head": r["head"]}
         again = {i["id"] for i in items(c)}
         back = []
@@ -1940,14 +2050,33 @@ def cmd_fix(plan, a):
     return 0
 
 
-def show_cycle(c):
+def entry_of(c, i):
+    """The item or finding of cycle c with this id."""
+    return next((x for x in items(c) if x["id"] == i), None) or next((f for f in c["findings"] if f["id"] == i), None)
+
+
+def decisions(st):
+    """(cycle label, id) -> (verdict, decision): the newest verdict that decided it."""
+    return {(v["cycle"], d["id"]): (v, d) for v in st.get("verdicts", []) for d in v["decisions"]}
+
+
+def closed_by(st, c, i):
+    """What closed an entry of cycle c: 'round N' (a verdict's `round` decision the round took), 'fix N', or None."""
+    v, d = decisions(st).get((cycle_label(c), i), (None, None))
+    if d and d["action"] == "round" and v.get("round") is not None:
+        return f"round {v['round']}"
+    f = next((f for f in c["fixes"] if f["done"] and i in f["items"] and i not in f["survived"]), None)
+    return f"fix {f['n']}" if f else None
+
+
+def show_cycle(c, st=None):
     out = []
     for kind, title in LISTS:
         fs = [f for f in c["findings"] if f["kind"] == kind]
         if fs:
             out.append(f"{title}:")
             out += [f"  {f['id']} " + (f"{f['where']} — " if f["where"] else "") + f["text"] + (f" ({f['source']})" if f["source"] else "")
-                    + (f" [{f['again']} again]" if f["again"] else "") for f in fs]
+                    + (f" [{f['again']} again]" if f["again"] else "") + (f" [closed by {by}]" if st and (by := closed_by(st, c, f["id"])) else "") for f in fs]
     if c["results"]:
         out.append("Results:")
         order = {"failed": 0, "not reached": 1, "passed": 2}
@@ -1970,7 +2099,9 @@ AS_PRINTED = "Run each command below as printed, in full, never through a shell 
 
 def brief_cycle(plan, st, kind, cli, md, tree, cases):
     """The body and file name of a reviewer, verify or fix brief for the newest cycle."""
-    c, label = cycle_of(st), None
+    c = cycle_of(st)
+    if kind != "verify":
+        settled(c)
     label = cycle_label(c)
     done = [f for f in c["fixes"] if f["done"]]
     last = done[-1] if done else None
@@ -1982,14 +2113,15 @@ def brief_cycle(plan, st, kind, cli, md, tree, cases):
                     if made else [f"Range: none (fix {last['n']} made no commit)"])
             out += ["Items the fix took:"] + [f"- {i['id']} {i.get('where', '')} {i['text']}".replace("  ", " ") for i in items_of(c, last["items"])]
         elif c["kind"] == "round":
-            out += [f"Range: {st['rounds'][c['n'] - 1]['from']}..HEAD (the round's commits)", f"Level: {c['level']}"]
+            rr = st["rounds"][c["n"] - 1]
+            out += [f"Range: none (round {rr['n']} made no commit)" if rr["report"] and not rr["report"]["commits"] else f"Range: {rr['from']}..HEAD (the round's commits)", f"Level: {c['level']}"]
         else:
             out += [f"Range: {st['base']}..HEAD", f"Level: {c['level']}"]
         if c["runs"]:
             out += [""] + show_run(c["runs"][-1], True)
         out += ["", "## Record", "", AS_PRINTED, "",
                 f"- Each finding: {cli} finding {md} --kind defect|convention|observation --where <file:line> --source <rule or plan line> --text …",
-                f"- What you could not judge: {cli} finding {md} --kind unjudged --text <what and why>"]
+                f"- What you could not judge, only when there is one (with none, record nothing): {cli} finding {md} --kind unjudged --text <what and why>"]
         if last:
             out += [f"- A Defect the fix took, found again: add --again <its ID>"]
         out += ["", "With no brief you return the three lists; with this one, record and return nothing longer.", ""]
@@ -2070,7 +2202,7 @@ def render_notes(st):
     for r in reversed(st.get("rounds", [])):
         cs = r["report"]["commits"] if r["report"] else []
         span = "" if not cs else f" · `{cs[0][:7]}`" if len(cs) == 1 else f" · `{cs[0][:7]}..{cs[-1][:7]}`"
-        out += ["", f"## Round {r['n']}{span}"] + [note_line(st, n) for n in st["notes"] if n["round"] == r["n"]]
+        out += ["", f"## Round {r['n']}{span}"] + ([f"Conflict at finish: {r['conflict']}"] if r.get("conflict") else []) + [note_line(st, n) for n in st["notes"] if n["round"] == r["n"]]
     tasks = [n for n in st.get("notes", []) if n["cause"] == "task"]
     if tasks:
         out += ["", "## Tasks"] + [note_line(st, n) for n in tasks]
@@ -2109,13 +2241,19 @@ def cmd_note(plan, a):
     return 0
 
 
-def pending_round(st):
-    """The last verdict when it ordered a round that has not started."""
-    v = (st.get("verdicts") or [None])[-1]
-    return v if v and v["kind"] == "round" and not v.get("stop") and v.get("round") is None else None
+def pending_rounds(st):
+    """The latest verdicts in a row that each ordered a round that has not started."""
+    out = []
+    for v in reversed(st.get("verdicts", [])):
+        if v["kind"] != "round" or v.get("stop") or v.get("round") is not None:
+            break
+        out.insert(0, v)
+    return out
 
 
 def cmd_round(plan, a):
+    if a.command == "done":
+        return round_done(plan)
     with writing(plan) as st:
         rs, md, tree = st.setdefault("rounds", []), plan_paths(plan)[0], tree_of(plan, st)
         if a.command == "start":
@@ -2124,29 +2262,40 @@ def cmd_round(plan, a):
             gate = next((c for c in st.get("cycles", []) if c["kind"] == "gate"), None)
             if gate is None:
                 raise Refuse("no-cycle", "the gate was never opened", "run `pipeline.py gate start` first")
-            v = pending_round(st)
-            take = [n for n in st["notes"] if n["verdict"] == v["n"]] if v else open_notes(st)
-            if not take:
+            vs = [] if a.conflict else pending_rounds(st)
+            take = [] if a.conflict else [n for n in st["notes"] if n["verdict"] in {v["n"] for v in vs}] if vs else open_notes(st)
+            if not take and not a.conflict:
                 raise Refuse("nothing-open", "no open note for a round", "record the user's notes with `pipeline.py note add`")
-            r = {"n": len(rs) + 1, "at": now(), "by": "judge" if v else "user", "from": head_sha(md, tree), "notes": [n["n"] for n in take], "report": None, "done": None}
+            if a.conflict and st["status"] == "passed":
+                set_plan(plan, st, status="building", note=f"conflict at finish: {a.conflict}")
+            r = {"n": len(rs) + 1, "at": now(), "by": "judge" if vs else "user", "from": head_sha(md, tree), "notes": [n["n"] for n in take], "report": None, "done": None}
+            if a.conflict:
+                r["conflict"] = a.conflict
             rs.append(r)
             st["cycles"].append({"kind": "round", "n": r["n"], "at": now(), "level": gate["level"], "raised_by": [], "spec_refusal": None,
                                  "runs": [], "findings": [], "results": [], "fixes": []})
             for n in take:
                 n["round"] = r["n"]
-            if v:
+            for v in vs:
                 v["round"] = r["n"]
             write_notes(plan, st)
-            print(f"round {r['n']} ({r['by']}): takes notes {', '.join(map(str, r['notes']))}")
+            print(f"round {r['n']} ({r['by']}): " + (f"conflict at finish: {a.conflict}" if a.conflict else f"takes notes {', '.join(map(str, r['notes']))}"))
             return 0
         r = rs[-1] if rs and not rs[-1]["done"] else None
         if r is None:
             raise Refuse("no-round", "no round is running", "`pipeline.py round start` first")
-        if a.command == "report":
-            r["report"] = {"at": now(), "became": a.became, "skills": a.skills, "interfaces": a.interfaces, "checks": a.checks, "commits": a.commit}
-            print(f"round report: {r['n']} recorded, {len(a.commit)} commit(s)")
-            write_notes(plan, st)
-            return 0
+        r["report"] = {"at": now(), "became": a.became, "skills": a.skills, "interfaces": a.interfaces, "checks": a.checks, "commits": a.commit}
+        print(f"round report: {r['n']} recorded, {len(a.commit)} commit(s)")
+        write_notes(plan, st)
+    return 0
+
+
+def round_done(plan):
+    with writing(plan) as st:
+        rs, tree = st.get("rounds", []), tree_of(plan, st)
+        r = rs[-1] if rs and not rs[-1]["done"] else None
+        if r is None:
+            raise Refuse("no-round", "no round is running", "`pipeline.py round start` first")
         if not r["report"]:
             raise Refuse("no-report", f"round {r['n']} has no report", "`pipeline.py round report` first")
         gone = [x for x in r["report"]["commits"] if git("merge-base", "--is-ancestor", x, "HEAD", check=False, cwd=tree).returncode]
@@ -2155,9 +2304,14 @@ def cmd_round(plan, a):
         bare = [n["n"] for n in st["notes"] if n["round"] == r["n"] and n["source"] is None and n["by"] == "user"]
         if bare:
             raise Refuse("no-source", f"note {', '.join(map(str, bare))} has no source", "`pipeline.py note edit N --source P<n>|missed`")
+        checks_of(st)
         c = round_cycle(st, r["n"])
         out, c["spec_refusal"] = commit_spec(plan, st, tree)
-        run_, reused = check_run(plan, st, c, tree)
+        run_, reused = begin_run(plan, st, c, tree)
+    if not reused:
+        run_ = run_checks(plan, c, run_, tree)
+    with writing(plan) as st:
+        r = st["rounds"][r["n"] - 1]
         r["done"] = {"at": now(), "head": run_["head"]}
         for n in st["notes"]:
             if n["round"] == r["n"] and n["by"] == "judge":
@@ -2211,8 +2365,12 @@ def render_judge(st, v, a):
 def cmd_verdict(plan, a):
     with writing(plan) as st:
         c, md = cycle_of(st), plan_paths(plan)[0]
-        first = not st.get("verdicts")
-        if first and not (a.predicted and a.engine):
+        settled(c)
+        owed = a.kind == "evidence-owed"
+        first = all(x["kind"] == "evidence-owed" for x in st.get("verdicts", []))
+        if owed and (a.decide or not a.owed):
+            raise Refuse("bad-owed", "an evidence-owed verdict names --owed reviewer|verify and takes no decisions", "record who owes what; decide when the evidence is in")
+        if first and not owed and not (a.predicted and a.engine):
             raise Refuse("no-prediction", "the first verdict records the Prediction and the engine", "pass --predicted pass|round, --predict TEXT CAUSE (repeat) and --engine claude|codex")
         if a.kind == "round" and not a.note:
             raise Refuse("no-notes", "a round verdict needs the judge's notes", "pass --note TEXT CAUSE for each")
@@ -2229,12 +2387,12 @@ def cmd_verdict(plan, a):
         bad = [d for d in decided if d not in known]
         if bad or any(d[1] not in ACTIONS for d in a.decide or []):
             raise Refuse("bad-decision", f"{', '.join(bad) or 'an action'} is not decidable here", "decide an Open entry or a Convention of the newest cycle as let-through, round or question")
-        miss = [i for i in need if i not in decided]
+        miss = [i for i in need if i not in decided] if not owed else []
         if miss:
             raise Refuse("undecided", f"{', '.join(miss)} has no decision", "pass --decide ID ACTION REASON for each Open entry and Convention")
         stop = (stop_reason(st) or converging_stop(st, len(a.note or []))) if a.kind == "round" else None
         v = {"n": len(st.get("verdicts", [])) + 1, "at": now(), "head": head_sha(md, tree_of(plan, st)), "cycle": cycle_label(c), "kind": a.kind,
-             "epoch": epoch(st), "report": a.report, "decisions": [{"id": i, "action": x, "reason": r} for i, x, r in a.decide or []],
+             "epoch": epoch(st), "report": a.report, "owed": a.owed if owed else None, "decisions": [{"id": i, "action": x, "reason": r} for i, x, r in a.decide or []],
              "notes": [], "stopped_notes": [], "question": a.question, "round": None, "stop": stop}
         ns = st.setdefault("notes", [])
         for text, cause in a.note or []:
@@ -2245,7 +2403,7 @@ def cmd_verdict(plan, a):
             v["notes"].append(ns[-1]["n"])
         st.setdefault("verdicts", []).append(v)
         path = os.path.join(os.path.dirname(md), plan_slug(st) + ".judge.md")
-        if first and not os.path.exists(path):
+        if first and not owed and not os.path.exists(path):
             text = render_judge(st, v, a)
             open(path, "w", encoding="utf-8").write(text)
         write_notes(plan, st)
@@ -2258,13 +2416,15 @@ def show_judging(st):
     for v in st.get("verdicts", []):
         out.append(f"Verdict {v['n']}: {v['kind']} at {v['head'][:7]} ({v['cycle']})")
         out += [f"  {d['id']} {d['action']} — {d['reason']}" for d in v["decisions"]]
+        if v["kind"] == "evidence-owed":
+            out.append(f"  owed by {v['owed']}: {v['report']}")
         out += [f"  note {n}" for n in v["notes"]] + ([f"  question: {v['question']}"] if v["question"] else [])
         if v.get("stop"):
             out += [f"  Stopped: {v['stop']}"] + [f"  not taken: {t} — {c}" for t, c in v["stopped_notes"]]
     for r in st.get("rounds", []):
-        out.append(f"Round {r['n']} ({r['by']}): takes notes {', '.join(map(str, r['notes']))}" + (f"; done at {r['done']['head'][:7]}" if r["done"] else "; running"))
+        out.append(f"Round {r['n']} ({r['by']}): " + (f"conflict at finish: {r['conflict']}" if r.get("conflict") else f"takes notes {', '.join(map(str, r['notes']))}") + (f"; done at {r['done']['head'][:7]}" if r["done"] else "; running"))
         if r["report"]:
-            out.append(f"  report: {r['report']['became']} (commits: {', '.join(x[:7] for x in r['report']['commits'])})")
+            out.append(f"  report: {r['report']['became']} (" + ("commits: " + ", ".join(x[:7] for x in r["report"]["commits"]) if r["report"]["commits"] else "no commit") + ")")
     for title, ns in (("Open notes", open_notes(st)), ("Tasks", [n for n in st.get("notes", []) if n["cause"] == "task"])):
         if ns:
             out.append(f"{title}:")
@@ -2274,6 +2434,7 @@ def show_judging(st):
 
 def brief_judge(plan, st, cli, md, note):
     c = cycle_of(st)
+    settled(c)
     ref = os.path.join(os.path.dirname(os.path.realpath(__file__)), "references", "judge.md")
     if not os.path.isfile(ref):
         raise Refuse("no-judge-md", f"{ref} does not exist", "reinstall the plugin")
@@ -2285,6 +2446,8 @@ def brief_judge(plan, st, cli, md, note):
     if asked and not answer:
         raise Refuse("no-answer", "the last verdict asked the user a question", "pass --note with the user's answer, in their words")
     out = [f"Judge rules: {ref}", f"Plan: {slug} — {st['title']}"]
+    if asked_owed := next((v for v in st.get("verdicts", [])[-1:] if v["kind"] == "evidence-owed"), None):
+        out.append(f"Owed: {asked_owed['owed']} — {asked_owed['report']}")
     if st.get("epic"):
         out.append("Epic: " + os.path.join(plan_root(md), st["epic"]["path"]))
     if c["kind"] == "gate":
@@ -2296,7 +2459,7 @@ def brief_judge(plan, st, cli, md, note):
             out += show_run(c["runs"][-1], True)
         if asked:
             out += [f"Question asked: {asked['question']}", f"The user's answer: {answer}", ""]
-        out += show_cycle(c)
+        out += show_cycle(c, st)
         out += ["Open:"] + [f"  {i['id']} " + (f"{i['where']} — " if i.get("where") else "") + i["text"] for i in items(c) if fate(c, i["id"]).startswith("open")]
         out += [f"Conventions: {', '.join(f['id'] for f in c['findings'] if f['kind'] == 'convention') or 'none'}",
                 "You check: " + (", ".join(str(d["n"]) for d in st.get("done", []) if d["you_check"]) or "none")]
@@ -2304,13 +2467,13 @@ def brief_judge(plan, st, cli, md, note):
         if not os.path.exists(jf):
             raise Refuse("no-verdict", "no judge file exists yet", "the gate's `verdict` writes it")
         r = st["rounds"][c["n"] - 1]
-        out += [f"Case: after round {r['n']} ({r['by']})", f"Judge file: {jf}", f"Notes file: {os.path.join(root, slug + '.notes.md')}", "", f"## Round {r['n']}'s notes", ""]
+        out += [f"Case: after round {r['n']} ({r['by']})"] + ([f"Conflict at finish: {r['conflict']}"] if r.get("conflict") else []) + [f"Judge file: {jf}", f"Notes file: {os.path.join(root, slug + '.notes.md')}", "", f"## Round {r['n']}'s notes", ""]
         out += [note_line(st, n) for n in st["notes"] if n["round"] == r["n"]] + [""]
         if asked:
             out += [f"Question asked: {asked['question']}", f"The user's answer: {answer}", ""]
         if c["runs"]:
             out += show_run(c["runs"][-1], True)
-        out += show_cycle(c)
+        out += show_cycle(c, st)
         out += ["Re-check verify: " + (e2e_text(st, r["n"]) or "no case to drive")]
     return out + [""], f"{slug}.brief-judge-{cycle_label(c)}.md"
 
@@ -2321,12 +2484,557 @@ def brief_round(plan, st, cli, md, tree):
         raise Refuse("no-round", "no round is running", "`pipeline.py round start` first")
     r = rs[-1]
     sk = sorted({x for p in st["phases"] for x in p["skills"] if x != "none"})
-    out = [f"## Round {r['n']} takes", "", f"Notes file: {os.path.join(os.path.dirname(md), plan_slug(st) + '.notes.md')}"]
+    out = [f"## Round {r['n']} takes", ""] + ([f"Conflict at finish: {r['conflict']}", ""] if r.get("conflict") else []) + [f"Notes file: {os.path.join(os.path.dirname(md), plan_slug(st) + '.notes.md')}"]
     out += [f"- {n['n']}. {n['text']} — {n['cause']}" for n in st["notes"] if n["round"] == r["n"]]
     out += ["", "Skills to read first: " + (", ".join(os.path.join(tree, x) for x in sk) or "none"), ""] + spec_entry_lines(md) + ["## Record", "",
-            f"- Your report: {cli} round report {md} --became … --skills … --interfaces … --checks … --commit <sha> (repeat --commit)",
+            f"- Your report: {cli} round report {md} --became … --skills … --interfaces … --checks … [--commit <sha>] (repeat --commit; none when the round changed nothing)",
             f"- A ruling or product call: {cli} decision {md} --by implementer --question … --from … --answer … --why … --cost …", ""]
     return out, f"{plan_slug(st)}.brief-round-{r['n']}.md"
+
+
+# -- land: the shape file, the rewrite, the tree check, the record
+
+LAND_STOPS = 2
+NOT_MINE = ":(exclude).ai-workflow"
+
+
+def shape_path(plan):
+    return plan_paths(plan)[0][:-3] + ".shape.toml"
+
+
+def land_stops(st):
+    """The stops since the last land."""
+    return [s for s in st.get("land_stops", []) if s["lands"] == len(st.get("lands", []))]
+
+
+def changed_paths(st, tree):
+    r = git("diff", "--name-only", "-z", "--no-renames", f"{st['base']}..HEAD", check=False, cwd=tree)
+    return sorted(p for p in r.stdout.split("\0") if p)
+
+
+def tstr(s):
+    if "\n" not in s:
+        return json.dumps(s, ensure_ascii=False)
+    return '"""\n' + s.replace("\\", "\\\\").replace('"""', '\\"\\"\\"') + '"""'
+
+
+def read_shape(plan):
+    path = shape_path(plan)
+    try:
+        with open(path, "rb") as f:
+            v = tomllib.load(f)
+    except OSError:
+        raise Refuse("no-shape", f"{path} does not exist", f"write it with `pipeline.py land draft {plan}`")
+    except tomllib.TOMLDecodeError as e:
+        raise Refuse("bad-shape", f"{path} is not valid TOML ({e})", "fix the syntax")
+    cs = v.get("commit")
+    text = lambda c, k: isinstance(c.get(k), str) and c[k].strip()
+    if not (isinstance(cs, list) and cs and all(
+            isinstance(c, dict) and isinstance(c.get("paths"), list) and c["paths"] and all(isinstance(x, str) for x in c["paths"])
+            and text(c, "message") and text(c, "walkthrough") for c in cs)):
+        raise Refuse("bad-shape", f"{path}: every [[commit]] needs a list of paths, a message and a walkthrough, none empty", "fill them in")
+    return v
+
+
+def cmd_land_draft(plan):
+    st = load_state(plan)
+    if st is None:
+        raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
+    tree = tree_of(plan, st)
+    on_branch(st, tree)
+    changed = changed_paths(st, tree)
+    last = (st.get("lands") or [None])[-1]
+    cs, apart = [{"paths": changed, "message": "", "walkthrough": ""}], []
+    if last:
+        cs = [{**c, "paths": [p for p in map(norm, c["paths"]) if p in changed]} for c in last["shape"]]
+        cs = [c for c in cs if c["paths"]]
+        apart = [p for p in changed if not any(p in c["paths"] for c in cs)]
+    out = ["# Edit each message and walkthrough, then run `pipeline.py land`."]
+    if last:
+        out += ['since = ""  # what changed since the last land']
+        if apart:
+            out += ["unplaced = " + json.dumps(apart, ensure_ascii=False) + "  # new paths: put each in a commit"]
+    for c in cs:
+        out += ["", "[[commit]]", "paths = " + json.dumps(c["paths"], ensure_ascii=False), "message = " + tstr(c["message"]), "walkthrough = " + tstr(c["walkthrough"])]
+    path = shape_path(plan)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(out) + "\n")
+    print(f"land draft: {path}" + (f"; to place: {', '.join(apart)}" if apart else ""))
+    return 0
+
+
+def land_stop(st, tree, kind, message):
+    """Record a stop; past the cap it is also a question to the user, held as a question verdict is."""
+    stops = st.setdefault("land_stops", [])
+    stops.append({"at": now(), "kind": kind, "message": message, "lands": len(st.get("lands", []))})
+    n = len(land_stops(st))
+    if n <= LAND_STOPS:
+        return message
+    vs = st.setdefault("verdicts", [])
+    c = cycle_of(st)
+    vs.append({"n": len(vs) + 1, "at": now(), "head": head_sha(None, tree), "cycle": cycle_label(c), "kind": "question", "owed": None,
+               "epoch": epoch(st), "report": f"land stopped {n} times", "decisions": [], "notes": [], "stopped_notes": [],
+               "question": message, "round": None, "stop": None})
+    return f"{message}\nland has stopped {n} times: this is now a question for the user; ask it, then run the judge with `brief judge --note <their answer>`"
+
+
+def next_backup(branch, tree):
+    mine = re.compile(re.escape(f"backup/{branch}-") + r"(\d+)")
+    names = git("branch", "--list", f"backup/{branch}-*", "--format=%(refname:short)", check=False, cwd=tree).stdout.split()
+    return f"backup/{branch}-{1 + max([int(m[1]) for b in names if (m := mine.fullmatch(b))], default=0)}"
+
+
+def dirty_lines(tree):
+    return git("status", "--porcelain", "--untracked-files=all", "--", ".", NOT_MINE, check=False, cwd=tree).stdout.splitlines()
+
+
+def do_land(plan, st, tree):
+    """-> a refusal to raise once the state is saved, or None."""
+    g = lambda *a: git(*a, check=False, cwd=tree)
+    lands = st.setdefault("lands", [])
+    v = (st.get("verdicts") or [None])[-1]
+    if not v or not (v["kind"] == "pass" or v.get("stop")):
+        raise Refuse("no-pass", "the judge's last verdict is not a pass", "land follows a pass; run the judge")
+    if lands and lands[-1]["difference"] and not lands[-1]["accepted"]:
+        raise Refuse("undecided", f"land {lands[-1]['n']} left a difference from the checked tree", "keep it with `land accept --note`, or `land revert`")
+    if dirty := dirty_lines(tree):
+        msg = land_stop(st, tree, "dirty", "land stopped: the tree has uncommitted paths: " + ", ".join(l[3:] for l in dirty))
+        return Refuse("dirty-tree", msg, "commit them to the branch or move them away, then land again")
+    shape, changed = read_shape(plan), changed_paths(st, tree)
+    seen, again = set(), set()
+    for c in shape["commit"]:
+        for p in map(norm, c["paths"]):
+            (again if p in seen else seen).add(p)
+    prev = lands[-1] if lands else None
+    probs = [(code, f"{what} {', '.join(sorted(ps))}", fix) for code, what, ps, fix in (
+        ("shape-missing", "the shape leaves out", set(changed) - seen, "place each path in a commit"),
+        ("shape-repeats", "the shape puts in two commits", again, "put each path in one commit"),
+        ("shape-unknown", f"the shape names paths {st['base'][:7]}..HEAD does not change:", seen - set(changed), "drop them")) if ps]
+    if prev and not str(shape.get("since", "")).strip():
+        probs.append(("no-since", "a re-land needs `since` in the shape: what changed since the last land", "write it in the shape file"))
+    if probs:
+        raise refuse_all(probs)
+    pre, backup = g("rev-parse", "HEAD").stdout.strip(), next_backup(st["branch"], tree)
+    g("branch", backup, pre)
+    stash = g("stash", "list").stdout.splitlines()
+    g("reset", "-q", st["base"])
+    done = []
+    for c in shape["commit"]:
+        g("add", "-A", "-f", "--", *map(norm, c["paths"]))
+        r = g("commit", "-q", "-m", c["message"])
+        if r.returncode:
+            g("reset", "-q", "--hard", pre)
+            g("branch", "-D", backup)
+            raise Refuse("commit-failed", (r.stderr.strip() or r.stdout.strip()), "a hook refused a commit; the branch is as it was. Fix the cause and land again")
+        done.append({"paths": [norm(x) for x in c["paths"]], "message": c["message"], "walkthrough": c["walkthrough"], "sha": g("rev-parse", "HEAD").stdout.strip()})
+    tip = done[-1]["sha"]
+    held = set(map(norm, (p for c in shape["commit"] for p in c["paths"])))
+    diff = {p for p in g("diff", "--name-only", "-z", backup, "HEAD").stdout.split("\0") if p and (p in held or not inside(p, [".ai-workflow"]))} | {l[3:] for l in dirty_lines(tree)}
+    new_stash = g("stash", "list").stdout.splitlines()
+    left = new_stash[:len(new_stash) - len(stash)]
+    rd = g("range-diff", st["base"], prev["tip"], tip).stdout.rstrip() if prev else None
+    lands.append({"n": len(lands) + 1, "at": now(), "backup": backup, "pre": pre, "tip": tip, "shape": done,
+                  "since": str(shape.get("since", "")).strip() or None, "range_diff": rd, "difference": sorted(diff), "stash": left, "accepted": None})
+    print(f"land {len(lands)}: tip {tip[:7]} on {st['branch']}, {len(done)} commit(s), backup {backup} at {pre[:7]}")
+    if not diff:
+        print("the tip's tree is the backup's")
+    else:
+        print("the tip's tree differs from the backup's, which the checks passed:")
+        print(g("diff", "--stat", backup, "HEAD").stdout.rstrip())
+        for l in dirty_lines(tree):
+            print(f"  uncommitted: {l[3:]}")
+        print("keep it with `land accept --note <why>`, or `land revert`")
+    for s in left:
+        print(f"a hook left a stash: {s}")
+    return None
+
+
+def cmd_land(plan, action, note):
+    if action == "draft":
+        return cmd_land_draft(plan)
+    refusal = None
+    with writing(plan, lambda st, tail: put_commits(st, tail, action == "revert")) as st:
+        tree, lands = tree_of(plan, st), st.setdefault("lands", [])
+        on_branch(st, tree)
+        if action == "now":
+            refusal = do_land(plan, st, tree)
+        elif not lands or (action == "accept" and (not lands[-1]["difference"] or lands[-1]["accepted"])):
+            raise Refuse("nothing-to-" + action, "no land left a difference to decide" if action == "accept" else "no land to revert", "land first")
+        elif action == "accept":
+            if not note:
+                raise Refuse("no-note", "accepting a difference needs the reason", "pass --note: why the hook's change stays")
+            if dirty_lines(tree):
+                raise Refuse("dirty-tree", "the hook left uncommitted changes", "commit them, or `land revert`")
+            lands[-1]["accepted"] = {"at": now(), "note": note}
+            lands[-1]["tip"] = head_sha(None, tree)
+            print(f"land {lands[-1]['n']}: the difference is kept; the page says the tip is not the tree the checks passed")
+        else:
+            last = lands[-1]
+            if mine := [l for l in dirty_lines(tree) if l[3:] not in last["difference"]]:
+                raise Refuse("dirty-tree", "the tree has uncommitted paths: " + ", ".join(l[3:] for l in mine), "commit them to the branch or move them away, then revert; a reset would destroy them")
+            lands.pop()
+            if not lands:
+                st.pop("page", None)
+            git("reset", "-q", "--hard", last["backup"], cwd=tree)
+            why = f"land reverted to {last['backup']}" + (f": the hooks changed {', '.join(last['difference'])}" if last["difference"] else "") + (f" ({note})" if note else "")
+            print(land_stop(st, tree, "revert", why))
+    if refusal:
+        raise refusal
+    return 0
+
+
+def put_commits(st, tail, cut=False):
+    """The hand-written `## Human gate` with `### The commits` from the last land; with no land record the section stays as written unless cut (a revert of the last land)."""
+    new = commits_section(st)
+    if new is None and not cut:
+        return tail
+    mask = fenced(tail)
+    i = next((k for k, l in enumerate(tail) if l.startswith("### The commits") and not mask[k]), None)
+    if i is not None:
+        j = next((k for k in range(i + 1, len(tail)) if tail[k].startswith(("## ", "### ")) and not mask[k]), len(tail))
+        return tail[:i] + (new or []) + tail[j:]
+    if not new:
+        return tail
+    while tail and not tail[-1].strip():
+        tail = tail[:-1]
+    return (tail or ["## Human gate"]) + [""] + new
+
+
+def commits_section(st):
+    """The `### The commits` lines (ending in a blank line) from the last land's record, or None."""
+    lands = st.get("lands") or []
+    if not lands:
+        return None
+    L, prev = lands[-1], lands[-2] if len(lands) > 1 else None
+    out = [f"### The commits · landed {L['tip'][:7]} · {L['backup']}", ""]
+    if L["accepted"]:
+        out.append(f"The tip is not the tree the checks passed: a commit hook changed {', '.join(L['difference'])}; kept: {L['accepted']['note']}")
+    elif L["difference"]:
+        out.append(f"The tip is not the tree the checks passed: a commit hook changed {', '.join(L['difference'])}; undecided.")
+    else:
+        out.append(f"The tip has the tree the checks passed (the head `{L['pre'][:7]}` before the land). The commits before it were not checked.")
+    out.append("")
+    if prev:
+        out += ["Since the last land:", "", L["since"], "", "```text", L["range_diff"] or "", "```", ""]
+    for c in L["shape"]:
+        subject, _, body = c["message"].strip().partition("\n")
+        out += [f"#### {subject} · `{c['sha'][:7]}`", ""] + ([body.strip(), ""] if body.strip() else []) + [f"Paths: " + ", ".join(f"`{p}`" for p in c["paths"]), "", c["walkthrough"].strip(), ""]
+    sha = lambda cs: ", ".join(f"`{x[:7]}`" for x in cs)
+    entry = lambda c, i: " ".join(x for x in (f"- {cycle_label(c)}", i["id"], i.get("where"), i["text"]) if x)
+    fixes, rounds = [], []
+    for c in st.get("cycles", []):
+        for f in c["fixes"]:
+            if f["report"]:
+                fixes.append(f"- Fix {f['n']} ({cycle_label(c)}): {f['report']['became']} (commits {sha(f['report']['commits']) or 'none'})")
+                fixes += ["  " + entry(c, i) for i in items_of(c, f["items"]) if i["id"] not in f["survived"]]
+    for r in st.get("rounds", []):
+        if r["report"]:
+            rounds.append(f"- Round {r['n']} ({r['by']}): {r['report']['became']} (" + (f"commits {sha(r['report']['commits'])}" if r["report"]["commits"] else "no commit") + ")")
+            rounds += [f"  - note {n['n']}. {n['text']}" for n in st["notes"] if n["round"] == r["n"]]
+            for v in (v for v in st.get("verdicts", []) if v.get("round") == r["n"]):
+                c = next((c for c in st["cycles"] if cycle_label(c) == v["cycle"]), None)
+                for d in v["decisions"]:
+                    if c and d["action"] == "round" and (x := entry_of(c, d["id"])):
+                        rounds.append(f"  {entry(c, x)} (decided: round — {d['reason']})")
+    if fixes or rounds:
+        out += ["The gate's fixes and rounds; the backup keeps their commits:", ""] + fixes + rounds + [""]
+    return out
+
+
+ENDINGS = {"merge-request": "a merge request into `{}`", "ff-only": "a fast-forward into `{}`", "no-ff": "a merge commit into `{}`"}
+
+
+def tree_id(tree, rev):
+    r = git("rev-parse", f"{rev}^{{tree}}", check=False, cwd=tree)
+    return None if r.returncode else r.stdout.strip()
+
+
+def flagger(plan, st):
+    """-> flag(commit): a note for a record taken on a tree other than the last land's tip or its pre-land head, else ''."""
+    L, tree = st["lands"][-1], tree_fact(plan, st)
+    tree = tree if os.path.isdir(tree) else plan_root(plan_paths(plan)[0])
+    good = {tree_id(tree, L["tip"]), tree_id(tree, L["pre"])} - {None}
+
+    def flag(commit):
+        if not commit:
+            return " [unknown commit: not known to be the tip's tree]"
+        if tree_id(tree, commit) in good:
+            return ""
+        paths = git("diff", "--name-only", "-z", commit, L["tip"], "--", ".", NOT_MINE, check=False, cwd=tree).stdout.split("\0")
+        return f" [taken on `{commit[:7]}`, not the tip's tree]" + (f" (changed since: {', '.join(p for p in paths if p)})" if any(paths) else "")
+    return flag
+
+
+def last_results(st):
+    last = {}
+    for c in st.get("cycles", []):
+        last.update(latest_results(c))
+    return last
+
+
+def gate_decided(st):
+    out = ["### Decided without you", ""]
+    for d in st.get("decisions", []):
+        out.append(f"- {d['question']} → {d['answer']}. why: {d['why']}; cost if wrong: {d['cost']} (by {d['by']}, from {d['source']}" + (f", phase {d['phase']}" if d["phase"] else "") + ")")
+    for h in st["history"]:
+        if h.get("note") and h["what"] not in ("approved", "adopted"):
+            out.append(f"- {h['what']}: {h['from'] if h['from'] is not None else '-'} → {h['to']} @{(h['sha'] or '-')[:7]}: {h['note']}")
+    return out + ([] if len(out) > 2 else ["Nothing."]) + [""]
+
+
+def gate_open(st, flag):
+    """What is still open: the last verdict, and every entry no fix or round closed; a closed entry shows under its fix or round."""
+    out = ["### Open", ""]
+    if v := (st.get("verdicts") or [None])[-1]:
+        out.append(f"- Verdict {v['n']}: {v['kind']} at `{v['head'][:7]}` ({v['cycle']}){flag(v['head'])} — {v['report']}")
+        out += [f"  - owed by {v['owed']}"] if v["owed"] else []
+        out += [f"  - question: {v['question']}" + (f" Answer: {v['answer']}" if v.get("answer") else "")] if v["question"] else []
+        out += [f"  - round notes: {', '.join(map(str, v['notes']))}"] if v["notes"] and v.get("round") is None else []
+        out += [f"  - stopped: {v['stop']}"] if v.get("stop") else []
+    dec, left = decisions(st), []
+    for c in st.get("cycles", []):
+        label = cycle_label(c)
+        note = lambda i: (f" (decided: {dec[(label, i)][1]['action']} — {dec[(label, i)][1]['reason']})" if (label, i) in dec else "")
+        left += [f"- {label} {i['id']} {i.get('where', '')} {i['text']} ({fate(c, i['id'])}){note(i['id'])}".replace("  ", " ")
+                 for i in items(c) if fate(c, i["id"]).startswith("open") and not closed_by(st, c, i["id"])]
+        left += [f"- {label} {f['id']} {f['kind']} {f['where'] or ''} {f['text']}{note(f['id'])}".replace("  ", " ")
+                 for f in c["findings"] if f["kind"] != "defect" and not closed_by(st, c, f["id"])]
+    left += [f"- Done {n} not reached: {r['detail']}" for n, r in sorted(last_results(st).items()) if r["outcome"] == "not reached"]
+    return out + left + ([] if len(out) > 2 or left else ["Nothing."]) + [""]
+
+
+def gate_e2e(st, flag):
+    out = ["### E2E", ""]
+    gate = next((c for c in st.get("cycles", []) if c["kind"] == "gate"), None)
+    if gate:
+        out += [f"Level: {gate['level']}" + (f", raised by {', '.join(gate['raised_by'])}" if gate["raised_by"] else ""), ""]
+    for c in st.get("cycles", []):
+        if c["runs"]:
+            r = c["runs"][-1]
+            out.append(f"- Checks ({cycle_label(c)}) at `{r['head'][:7]}`: {'red' if any(x['red'] for x in r['commands']) else 'green'}{flag(r['head'])}")
+    last = last_results(st)
+    for mine in (False, True):
+        for d in st.get("done", []):
+            if bool(d["you_check"]) != mine:
+                continue
+            r = last.get(d["n"])
+            if r is None:
+                out.append(f"- {d['n']}. {d['text']} — " + ("you check" if mine else "no result"))
+                continue
+            out.append(f"- {d['n']}. {r['do']} → {r['see']} — {r['outcome']}" + (f": {r['detail']}" if r["detail"] else "") + f" — {r['capture'] or '-'} — at `{(r.get('commit') or '-')[:7]}`{flag(r.get('commit'))}"
+                       + (" — you check" if mine else ""))
+    return out + [""]
+
+
+def render_gate(plan, st):
+    """The whole `## Human gate` from the records: the page once `page` ran, then the last land's commits."""
+    out, pg = ["## Human gate", ""], st.get("page")
+    if pg and st.get("lands"):
+        flag, how, target = flagger(plan, st), pg["ending"]["how"], pg["ending"]["target"]
+        out += ["### How to try it", "", pg["note"], "", "### Ending", "", f"The run ends in {ENDINGS[how].format(target)}; your word at the gate approves it.", ""]
+        if pg["message"]:
+            out += ["Request title:" if how == "merge-request" else "Merge message:", "", "```text", pg["message"], "```", ""]
+        out += gate_decided(st) + gate_open(st, flag) + gate_e2e(st, flag)
+    return out + (commits_section(st) or [])
+
+
+def cmd_page(plan, note, message):
+    with writing(plan) as st:
+        if not st.get("lands"):
+            raise Refuse("no-land", "the branch is not landed", "the page follows a land: run `pipeline.py land`")
+        if st["status"] not in ("building", "at the human gate"):
+            raise Refuse("bad-status", f"the plan is {st['status']}", "the page is made while building or at the human gate")
+        fin = (st.get("run") or {}).get("finish")
+        if not fin:
+            raise Refuse("no-run-values", "the plan has no approved run values", "write the run file and run `pipeline.py approve`")
+        for _, m, f in run_drift(plan, st):
+            print(f"Drift: {m} — fix: {f}")
+        if fin["how"] != "ff-only" and not message:
+            raise Refuse("no-message", f"a run ending in {fin['how']} needs the merge message or request title", "pass --message")
+        st["page"] = {"at": now(), "note": note, "message": message, "ending": {"how": fin["how"], "target": fin["target"]}}
+        set_plan(plan, st, status="at the human gate")
+        print(f"page: {fin['how']} into {fin['target']}, at the human gate")
+    return 0
+
+
+# -- finish: the run file's ending, in code
+
+def remote_url(root):
+    r = git("remote", "get-url", "origin", check=False, cwd=root)
+    return r.stdout.strip() if not r.returncode else None
+
+
+def forge_of(url):
+    """The forge a remote URL (or a request's link) names: github, gitlab or None."""
+    m = re.match(r"^(?:[a-z][a-z+.-]*://(?:[^@/]*@)?|[^@/:]+@)([^/:]+)", url or "", re.I)
+    host = m[1].lower() if m else ""
+    return "github" if "github" in host else "gitlab" if "gitlab" in host else None
+
+
+def tool(args, cwd):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, cwd=cwd)
+    except OSError as e:
+        return subprocess.CompletedProcess(args, 127, "", str(e))
+
+
+def merge_conflict(st, fin, why):
+    return Refuse("merge-refused", why, f"nothing changed; a conflict round rebases the branch: `pipeline.py round start --conflict \"<what>\"`, then the judge, `land` and `page` again, and `finish` on {fin['target']}'s new head")
+
+
+def local_merge(st, root, fin):
+    """Merge the plan's branch into the target in the clean tree that has it, else here after switching; -> the merge's head. Refused, the tree is as it was."""
+    branch, target = st["branch"], fin["target"]
+    if git("rev-parse", "--verify", "-q", f"refs/heads/{target}", check=False, cwd=root).returncode:
+        raise Refuse("no-target", f"the run file's target {target} is not a branch here", "fix `[finish].target` and approve again")
+    msg = (st.get("page") or {}).get("message")
+    if fin["how"] == "no-ff" and not msg:
+        raise Refuse("no-message", "a no-ff merge needs the merge message the page recorded", "run `pipeline.py page --note T --message T`")
+    tree = branch_tree(root, target)
+    was = None if tree else git("branch", "--show-current", cwd=root).stdout.strip() or ("--detach", git("rev-parse", "HEAD", cwd=root).stdout.strip())
+    tree = tree or root
+    if dirty := dirty_lines(tree):
+        raise Refuse("dirty-target", f"{tree} has uncommitted paths: " + ", ".join(l[3:] for l in dirty), "commit them or move them away, then finish again")
+    g = lambda *a: git(*a, check=False, cwd=tree)
+    if was and (r := g("switch", target)).returncode:
+        raise Refuse("git-failed", r.stderr.strip(), "fix the tree and finish again")
+    r = g(*(["merge", "--no-ff", "-m", msg, branch] if fin["how"] == "no-ff" else ["merge", "--ff-only", branch]))
+    if r.returncode:
+        paths = g("diff", "--name-only", "--diff-filter=U").stdout.split()
+        g("merge", "--abort")
+        if was:
+            g("switch", *(was if isinstance(was, tuple) else (was,)))
+        why = (f"merging {branch} into {target} conflicts in " + ", ".join(paths)) if paths else (r.stderr.strip() or r.stdout.strip()).splitlines()[-1]
+        raise merge_conflict(st, fin, why)
+    return g("rev-parse", "HEAD").stdout.strip()
+
+
+def open_request(plan, st, root, fin):
+    """Push the plan's branch and open its request by the forge the remote names; -> the link, or None when the agent opens it."""
+    branch, target = st["branch"], fin["target"]
+    msg = (st.get("page") or {}).get("message")
+    if not msg:
+        raise Refuse("no-message", "a merge request needs the title the page recorded", "run `pipeline.py page --note T --message T`")
+    url = remote_url(root)
+    if not url:
+        raise Refuse("no-remote", "the repository has no remote `origin`", "add it, or end the run locally")
+    forge, title = forge_of(url), msg.splitlines()[0]
+    if forge is None:
+        print(f"finish: {url} is no forge this knows: nothing was pushed")
+        print(f"open the merge request from {branch} into {target} titled {title!r}, then record its link with `pipeline.py plan status {plan} <link>`; once it is merged, `pipeline.py finish --merged {plan}`")
+        return None
+    push = ["git", "push", "-u", "origin", branch] + (["-o", "merge_request.create", "-o", f"merge_request.target={target}", "-o", f"merge_request.title={title}"] if forge == "gitlab" else [])
+    r = tool(push, root)
+    if r.returncode:
+        raise Refuse("push-failed", (r.stderr.strip() or r.stdout.strip()), "fix the remote and finish again")
+    out = r.stdout + r.stderr
+    if forge == "github":
+        body = "\n".join(msg.splitlines()[1:] + render_gate(plan, st)[1:])
+        r = tool(["gh", "pr", "create", "--base", target, "--head", branch, "--title", title, "--body", body], root)
+        if r.returncode:
+            raise Refuse("gh-failed", f"{branch} was pushed; gh pr create: " + (r.stderr.strip() or r.stdout.strip()), "open the request yourself and record its link with `pipeline.py plan status`")
+        out = r.stdout
+    links = re.findall(r"https?://\S+", out)
+    link = next((l for l in reversed(links) if forge == "github" or "/merge_requests/" in l), None)
+    print(f"finish: pushed {branch} to origin")
+    if link is None:
+        print(f"finish: the forge printed no link: find the request and record its link with `pipeline.py plan status {plan} <link>`")
+        return "pushed"
+    return link
+
+
+def request_merged(plan, st, link, merged):
+    """Whether the request is merged: GitHub answers through `gh`; elsewhere the agent says so with --merged."""
+    if merged:
+        return True
+    if forge_of(link) != "github":
+        print(f"finish: {link} is not on GitHub: once it is merged, `pipeline.py finish --merged {plan}`")
+        return False
+    r = tool(["gh", "pr", "view", link, "--json", "state"], plan_root(plan_paths(plan)[0]))
+    try:
+        state = json.loads(r.stdout)["state"]
+    except (ValueError, KeyError, TypeError):
+        raise Refuse("gh-failed", "gh pr view gave no state: " + (r.stderr.strip() or r.stdout.strip()), "look at the request and run `pipeline.py finish --merged` if it is merged")
+    if state != "MERGED":
+        print(f"finish: {link} is {state.lower()}; nothing changes")
+    return state == "MERGED"
+
+
+def clean_up(plan, st, root, fin):
+    """After a merge: the worktree (never forced), the data directory, the backups (deleted only when the run file says so)."""
+    branch = st["branch"]
+    main = next((l[9:] for l in git("worktree", "list", "--porcelain", check=False, cwd=root).stdout.splitlines() if l.startswith("worktree ")), root)
+    wt = branch_tree(root, branch)
+    if wt and os.path.realpath(wt) not in (os.path.realpath(root), os.path.realpath(main)):
+        r = git("worktree", "remove", wt, check=False, cwd=root)
+        print(f"finish: worktree {wt} removed" if not r.returncode else f"finish: worktree {wt} stays: {r.stderr.strip()}")
+    d = (st.get("alloc") or {}).get("data_dir")
+    if d and os.path.isdir(d) and not os.path.islink(d):
+        shutil.rmtree(d)
+        print(f"finish: data directory {d} removed")
+    mine = re.compile(re.escape(f"backup/{branch}-") + r"\d+")
+    names = [b for b in git("branch", "--list", f"backup/{branch}-*", "--format=%(refname:short)", check=False, cwd=root).stdout.split() if mine.fullmatch(b)]
+    if names and fin["delete_backups"]:
+        git("branch", "-D", *names, check=False, cwd=root)
+        print("finish: backups deleted: " + ", ".join(names))
+    elif names:
+        print("finish: backups kept (the run file keeps them): " + ", ".join(names))
+    print(f"finish: branch {branch} stays")
+
+
+def cmd_finish(plan, merged):
+    root = plan_root(plan_paths(plan)[0])
+    with writing(plan) as st:
+        fin, status = (st.get("run") or {}).get("finish"), st["status"]
+        if not fin:
+            raise Refuse("no-run-values", "the plan has no approved run values", "write the run file and run `pipeline.py approve`")
+        for _, m, f in run_drift(plan, st):
+            print(f"Drift: {m} — fix: {f}")
+        if (pg := st.get("page")) and not status.startswith("http") and pg["ending"] != {"how": fin["how"], "target": fin["target"]}:
+            raise Refuse("page-differs", f"the page the user approved names {pg['ending']['how']} into {pg['ending']['target']}; the run file's approved ending is {fin['how']} into {fin['target']}",
+                         "set the plan back with `plan status \"at the human gate\"`, run `pipeline.py page` again so the page names the new ending, and take the user's word on it")
+        link = status.startswith("http")
+        if not link and status == "passed" and not st.get("lands"):
+            raise Refuse("no-land", "the branch is not landed: a merge or request follows a land and its page", "run `pipeline.py land` and `pipeline.py page` again")
+        if status != "passed" and not link:
+            raise Refuse("bad-status", f"the plan is {status}, not passed or a merge request's link", "finish follows the user's word at the human gate, which sets `passed`: `pipeline.py plan status`")
+        if merged and not link:
+            raise Refuse("no-request", "--merged names a request, and the plan has none", "finish opens it first")
+        if link:
+            if not request_merged(plan, st, status, merged):
+                return 0
+            how = f"merge request {status}"
+        elif fin["how"] == "merge-request":
+            tip = git("rev-parse", st["branch"], check=False, cwd=root).stdout.strip()
+            if (st.get("pushed") or {}).get("tip") == tip:
+                raise Refuse("pushed-no-link", f"{st['branch']} was pushed and the forge printed no link", f"find the request and record its link with `pipeline.py plan status {plan} <link>`; nothing is pushed again")
+            got = open_request(plan, st, root, fin)
+            if got == "pushed":
+                st["pushed"] = {"at": now(), "tip": tip}
+            elif got:
+                set_plan(plan, st, status=got, note="merge request opened")
+                print(f"finish: {got} is the plan's Status; {fin['target']} is untouched")
+            return 0
+        else:
+            how = f"{fin['how']} into {fin['target']} at {local_merge(st, root, fin)[:7]}"
+        set_plan(plan, st, status="merged", note=how)
+        print(f"finish: {plan_slug(st)} merged ({how})" + ("" if link else "; nothing was pushed"))
+        clean_up(plan, st, root, fin)
+    return 0
+
+
+def show_land(st):
+    lands = st.get("lands") or []
+    out = []
+    if lands:
+        L = lands[-1]
+        out.append(f"Land {L['n']}: tip {L['tip'][:7]} has the tree of {L['pre'][:7]}" + (
+            " (not the checked tree; undecided)" if L["difference"] and not L["accepted"] else
+            f" (not the checked tree; kept: {L['accepted']['note']})" if L["accepted"] else "")
+            + f"; {L['backup']} holds the commits earlier records name")
+    for s in land_stops(st):
+        out.append(f"Land stop ({s['kind']}): {s['message']}")
+    return out
 
 
 def main():
@@ -2455,7 +3163,8 @@ def main():
     s = xsub.add_parser("done", help="write and commit the rules, run the full checks at the new HEAD, mark what survived")
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("verdict", help="the judge's verdict on the newest cycle: a decision for every Open entry and Convention, each --decide action one of let-through, round or question; the first one writes .judge.md and alone takes --predicted, --predict and --engine. A round verdict past the cap, or on an early-stop sign, records the stop and opens no round")
-    s.add_argument("kind", choices=["pass", "round", "question"])
+    s.add_argument("kind", choices=["pass", "round", "question", "evidence-owed"])
+    s.add_argument("--owed", choices=["reviewer", "verify"], help="evidence-owed: who owes the evidence; the verdict takes no decisions")
     s.add_argument("--report", required=True, help="what was let through and why, in the judge's words")
     s.add_argument("--decide", nargs=3, action="append", metavar=("ID", "ACTION", "REASON"), help="let-through, round or question for an Open entry or a Convention; repeat for each")
     s.add_argument("--note", nargs=2, action="append", metavar=("TEXT", "CAUSE"), help="a round verdict's note in the judge's words, with its cause; repeat for each")
@@ -2463,6 +3172,20 @@ def main():
     s.add_argument("--predicted", choices=["pass", "round"], help="the user's verdict as predicted; the first verdict only")
     s.add_argument("--predict", nargs=2, action="append", metavar=("TEXT", "CAUSE"), help="a note the user will make, with its cause; the first verdict only, repeat for each")
     s.add_argument("--engine", choices=["claude", "codex"], help="the engine the judge runs on; the first verdict only")
+    s.add_argument("plan", help="the plan file")
+    lp = top.add_parser("land", help="rewrite the branch into the shape's commits: `land PLAN` lands the shape file; `land draft|accept|revert` start it, keep a hook's change, or return to the backup")
+    lsub = lp.add_subparsers(dest="command", metavar="[draft|accept|revert]")
+    for name, what in (("draft", "write the shape file: the last shape on a re-land, else one commit holding every path"),
+                       ("accept", "keep the commits a hook changed; --note says why and goes on the page"),
+                       ("revert", "reset the branch to the backup and record a stop"),
+                       ("now", "land the shape file (what `land PLAN` runs)")):
+        s = lsub.add_parser(name, help=what)
+        if name in ("accept", "revert"):
+            s.add_argument("--note", help="why" if name == "revert" else "why the change stays (required)")
+        s.add_argument("plan", help="the plan file")
+    s = top.add_parser("page", help="record how to try the build and the merge message, and set the plan at the human gate; the page itself is drawn from the records")
+    s.add_argument("--note", required=True, help="how to try it, in the author's words")
+    s.add_argument("--message", help="the merge message, or the request's title; required unless the run ends in ff-only")
     s.add_argument("plan", help="the plan file")
     np_ = top.add_parser("note", help="the user's notes, in their words; code numbers them and renders the notes file")
     nsub = np_.add_subparsers(dest="command", required=True)
@@ -2482,16 +3205,20 @@ def main():
     ro = top.add_parser("round", help="a round: the notes built by a new implementer, then re-checked as a cycle of its own")
     rosub = ro.add_subparsers(dest="command", required=True)
     s = rosub.add_parser("start", help="take the judge's notes when the last verdict ordered a round, else every open note; the user's round starts a new count")
+    s.add_argument("--conflict", metavar="WHAT", help="a round for a conflict at finish: takes no notes, starts a new count, and sets a passed plan back to building")
     s.add_argument("plan", help="the plan file")
     s = rosub.add_parser("report", help="record the round's report; a second call replaces the first")
     s.add_argument("--became", required=True, help="what became true")
     s.add_argument("--skills", default="none", help="the skills read")
     s.add_argument("--interfaces", default="none", help="interfaces changed")
     s.add_argument("--checks", default="none", help="the checks run and their result")
-    s.add_argument("--commit", action="append", required=True, help="a commit of this round; repeat for each")
+    s.add_argument("--commit", action="append", default=[], help="a commit of this round; repeat for each; none when the round changed nothing")
     s.add_argument("plan", help="the plan file")
     s = rosub.add_parser("done", help="refused while a note of the user's has no source; writes and commits the rules, runs the full checks at the new HEAD, completes the notes file")
     s.add_argument("plan", help="the plan file")
+    s = top.add_parser("finish", help="end the run as the run file's [finish] says: merge locally, or push the branch and open the merge request by the remote's forge; later, check the request and set merged")
+    s.add_argument("--merged", action="store_true", help="the request is merged (GitLab or an unknown host, where code cannot ask)")
+    s.add_argument("plan", help="the plan file, passed or a merge request's link")
     rp = top.add_parser("run", help="the run file beside the plan: its path need not exist yet")
     rsub = rp.add_subparsers(dest="command", required=True)
     s = rsub.add_parser("new", help="copy the newest run file in the plan's directory, else the shipped example; refused if the file exists")
@@ -2501,8 +3228,16 @@ def main():
     s = rsub.add_parser("show", help="the run file's values: the approved ones once the plan is approved, with any drift")
     s.add_argument("--json", action="store_true", help="print as JSON: run, approved, drift")
     s.add_argument("plan", help="the plan file, which need not exist")
-    a = p.parse_args()
+    argv = sys.argv[1:]
+    if argv[:1] == ["land"] and argv[1:2] and argv[1] not in ("draft", "accept", "revert", "now", "-h", "--help"):
+        argv.insert(1, "now")
+    a = p.parse_args(argv)
+    if a.group == "land" and not a.command:
+        lp.error("a plan file, or draft|accept|revert|now and a plan file, is required")
     try:
+        plan_arg = getattr(a, "plan", None)
+        if plan_arg and a.group not in ("run", "spec") and not os.path.isfile(plan_arg):
+            raise Refuse("no-plan", f"{plan_arg} does not exist", "pass an existing plan file")
         if a.group == "run":
             return cmd_run(a.command, a.plan, getattr(a, "json", False))
         if a.group == "approve":
@@ -2534,6 +3269,12 @@ def main():
             return cmd_note(a.plan, a)
         if a.group == "round":
             return cmd_round(a.plan, a)
+        if a.group == "land":
+            return cmd_land(a.plan, a.command, getattr(a, "note", None))
+        if a.group == "finish":
+            return cmd_finish(a.plan, a.merged)
+        if a.group == "page":
+            return cmd_page(a.plan, a.note, a.message)
         if a.group == "decision":
             return cmd_decision(a.plan, a)
         if a.group == "brief":
