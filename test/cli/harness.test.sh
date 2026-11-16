@@ -135,9 +135,14 @@ checkpoint_out=$(cd "$repo_root" && grep -rn 'Checkpoint [0-9]' skills/ 2>/dev/n
 segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
 [ -z "$segment_col_out" ] || fail "TC-11: expected no match for '| Segment |', found: $segment_col_out"
 
-# --- TC-13: no hooks, no scripts/ under skills/, no tool limits, models, one version --
+# --- TC-13: advisory hooks only, no scripts/ under skills/, no tool limits, models, one version --
 
-[ ! -e "$repo_root/hooks" ] || fail "TC-13: the plugin ships no hooks/"
+python3 - "$repo_root/hooks/hooks.json" <<'P' || fail "TC-13: hooks/hooks.json should declare only SessionStart and PostToolUse"
+import json, sys
+assert sorted(json.load(open(sys.argv[1]))["hooks"]) == ["PostToolUse", "SessionStart"]
+P
+! grep -rqiE 'PreToolUse|"decision"|"block"|sys\.exit\([1-9]' "$repo_root/hooks" \
+  || fail "TC-13: a hook only advises: no PreToolUse, decision, block or non-zero exit"
 skill_scripts=$(cd "$repo_root" && find skills -type d -name scripts 2>/dev/null)
 [ -z "$skill_scripts" ] || fail "TC-13: no scripts/ directory under skills/, found: $skill_scripts"
 for f in "$repo_root"/agents/*.md; do
