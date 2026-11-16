@@ -55,7 +55,9 @@ goes back to the implementer as printed.
 
 When every phase is done, `CLI gate start <plan>`. It writes and commits the
 rules, prints the level and the paths that raised it, and runs the full checks
-(`CLI status <plan>` shows the run). A refusal naming the plan is yours to fix
+(`CLI status <plan>` shows the run). It runs a few minutes: run it in the
+background or with a long timeout, as `fix done` and `round done`; a killed
+call keeps each command that finished, and the next one runs the rest again. A refusal naming the plan is yours to fix
 in its `## Spec`; a stale base, by `CLI plan base <plan> $(git merge-base
 <default> HEAD)` and `gate start` again.
 
@@ -71,29 +73,25 @@ records its verdict with `CLI verdict` and returns:
   ([rounds.md](references/rounds.md)), then a fresh judge.
 - `question: <…>`, even after a round: run the round, ask the user, a fresh
   judge with the answer.
-- `evidence owed: <verify|reviewer> — <what>`: a worker on `dev-skills:verify`
-  handed `CLI brief verify`, or the reviewer handed `CLI brief reviewer`,
-  records it; then the judge again.
-- `land stopped: <…>`: the judge again, once; a second goes to the user
-  as a question with land's message; nothing runs until they answer.
+- `evidence owed: <verify|reviewer> — <what>`: the judge recorded it with
+  `CLI verdict evidence-owed`; a worker on `dev-skills:verify` handed `CLI brief
+  verify`, or the reviewer handed `CLI brief reviewer`, records it; then the
+  judge again.
+- `land stopped: <…>`: the judge again. Code turns a stop that keeps coming
+  into a question to the user; `CLI brief judge` refuses until `--note`
+  holds their answer.
 
 A verdict that stops rounds says why in `CLI status`; it lands as a pass.
 
 ## 4. The human gate
 
-Run `CLI plan status <plan> "at the human gate"`, write one page under the plan's
-`## Human gate` above `land`'s `### The commits`, and put it in front of the
-user, who tries the running app and reads the commits; from a worktree, say
-how to run it there. In this order:
-
-1. **Decided without you**: the product calls and the rulings, each with its cost if wrong.
-2. **Open**: the judge's report, without the Prediction; findings that
-   survived their fix, use cases not reached and what they need; the
-   reviewer's Observations, folded.
-3. **E2E.** The level, and why if raised. Each Done use case as "do this → see
-   that", with its last result and the commit it ran on; mark one touched
-   since. The `you check` ones last, with any capture e2e took.
-4. **The commits**, which `land` wrote.
+Run `CLI page --note "<how to try it>" [--message "<merge message or request
+title>"] <plan>`: it sets `at the human gate` and draws `## Human gate` from the
+records, which you never edit. The note says how to try the running app, from
+a worktree how to run it there. The message is needed unless the run ends
+`ff-only`; draft it from the plan's Result by `dev-skills:commit-work`. Put the
+page in front of the user, who tries the app and reads the commits. A flagged
+result was not taken on the tip's tree: say whether the change touched it.
 
 The user's word of approval: `CLI plan status <plan> passed`; `dev-skills:finish` runs
 on that word, or on the next.

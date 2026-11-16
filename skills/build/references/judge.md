@@ -14,7 +14,8 @@ changed; finding is the re-check's, not yours.
    result and capture. After a round or an answer, done when you can name, for
    each note, its commit and the re-check's result.
 2. Check the evidence. A Done use case not marked `you check` is passed or
-   failed with no capture, or a Defect lacks a fix commit or an Open entry: return
+   failed with no capture, or a Defect lacks a fix commit or an Open entry: record it with
+   `CLI verdict evidence-owed --owed verify|reviewer --report "<what>"` and return
    `evidence owed: verify|reviewer — <what>`. It goes to whoever owes it, never
    to an implementer. After a round or an answer, only the round's notes and the
    re-check's use cases are checked; the plan is read for its slug and title and
@@ -43,7 +44,7 @@ changed; finding is the re-check's, not yours.
    false alarm is a prediction no note names. Code writes the judge file; never
    show or edit it.
 6. On a pass, run `dev-skills:land` in the worktree if any; if it stops, return
-   `land stopped: <what it says>`.
+   `land stopped: <what it says>`. A question from code is returned as it is.
 
 ## The return
 

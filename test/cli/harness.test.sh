@@ -227,7 +227,7 @@ while IFS= read -r v; do
     draft)                  tr '\n' ' ' < "$plan_skill" | grep -q 'written with Status `draft`' ;;
     approved)               grep -q 'Status to `approved`' "$plan_skill" ;;
     building)               grep -q '`building`' "$build_skill" ;;
-    "at the human gate")    grep -q 'plan status <plan> "at the human gate"' "$build_skill" ;;
+    "at the human gate")    grep -q 'sets `at the human gate`' "$build_skill" ;;
     passed)                 grep -q 'plan status <plan> passed' "$build_skill" ;;
     "a merge-request link") grep -q 'a merge-request link' "$finish_skill" ;;
     merged)                 grep -q 'Status to `merged`' "$finish_skill" ;;
@@ -264,5 +264,30 @@ while IFS= read -r v; do
 done <<EOF
 $implementer_phase_statuses
 EOF
+
+# --- TC-15: land, finish and build call the CLI for git, the page and the ending
+
+land_skill="$repo_root/skills/land/SKILL.md"
+refs="$repo_root/skills/build/references"
+pin() { # file fixed-string
+  grep -qF -- "$2" "$1" || fail "TC-15: ${1#$repo_root/} lost: $2"
+}
+for l in 'CLI land draft <plan>' 'CLI land <plan>' 'CLI land accept --note' 'CLI land revert'; do
+  pin "$land_skill" "$l"
+done
+pin "$finish_skill" 'CLI finish <plan>'
+pin "$finish_skill" 'CLI finish --merged <plan>'
+pin "$finish_skill" 'CLI round start --conflict'
+pin "$build_skill" 'CLI verdict evidence-owed'
+pin "$build_skill" 'background or with a long timeout'
+pin "$build_skill" 'CLI page --note'
+pin "$refs/judge.md" 'CLI verdict evidence-owed --owed'
+pin "$refs/gate.md" 'long, like `gate start`'
+pin "$refs/rounds.md" 'CLI round start --conflict'
+pin "$refs/rounds.md" 'CLI page'
+for f in land finish; do
+  ! grep -qE 'git (reset|commit|merge|push|branch -D)|gh pr' "$repo_root/skills/$f/SKILL.md" \
+    || fail "TC-15: skills/$f runs git itself"
+done
 
 echo "ok"

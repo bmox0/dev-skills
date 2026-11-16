@@ -45,7 +45,7 @@ when the last verdict ordered a round:
 3. Defects and failed use cases go through `CLI fix`, as gate.md; what
    survives is under Open on the gate page. Conventions go to the judge.
 4. A new note taken adds its use case to Done. After a round at the human gate:
-   the judge, handed `CLI brief judge`, which lands, and the gate page again.
+   the judge, handed `CLI brief judge`, which lands, and `CLI page` again.
 
 A round the judge ordered also runs `CLI round done`, then gate.md's targeted
 re-check instead of the blast radius in step 2, then the judge again.
@@ -54,8 +54,9 @@ Notes given during a round wait under Open.
 
 ## A conflict at finish
 
-An implementer rebases the branch onto the default branch; run
-`CLI plan base <plan> $(git merge-base <default> <branch>)` before the
-gates. A conflict inside `docs/spec/` is not merged by hand: it goes back to the
+`finish` refused with `merge-refused`: `CLI round start --conflict "<what>"
+<plan>` opens a round with no notes. An implementer rebases the branch onto the
+default branch; run `CLI plan base <plan> $(git merge-base <default> <branch>)`
+before the gates. A conflict inside `docs/spec/` is not merged by hand: it goes back to the
 default branch's state, this plan's record in the archive removed too, and the
 orchestrator runs `CLI gate start` once the base is rewritten. If it refuses, two plans disagree about a rule: the user's call.

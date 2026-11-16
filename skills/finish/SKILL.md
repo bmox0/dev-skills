@@ -5,52 +5,27 @@ description: Merge a plan's branch — a merge request, or local with --no-ff or
 
 # Finish
 
-Run it on the plan's branch, with the plan at `passed` or a merge-request
-link (below); any other status goes back to `dev-skills:build`. It merges what
-`dev-skills:land` made. Plain git, and `gh` for a merge request.
+Run it on the user's word of approval at the human gate, on the plan's branch.
+The page names the ending, so the word approves it and nothing is asked.
+`CLI` is `python3 "<the build skill's directory>/pipeline.py"`.
 
-## 1. Already a merge request
+## 1. Merge it
 
-Status a merge-request link: `gh pr view <link> --json state`. Merged: set
-Status to `merged`; the epic's row too. Offer to delete the backups (step 4), then a
-retro (`dev-skills:retro`). Still open: say so and stop.
+`CLI finish <plan>`. It ends the run as the run file says, and refuses unless
+the plan is `passed` or a merge-request link. Read what it prints:
 
-## 2. Ask how to end
+- A local merge sets Status to `merged`; the epic's row follows.
+- A merge request is opened and its link becomes Status. On a host code does not
+  know, open it yourself and record the link with `CLI plan status <plan>
+  "<link>"`. The user merges it in the request's view; the button is the
+  approval.
+- With the plan at a merge-request link, `CLI finish <plan>` asks the forge; where
+  code cannot ask, once the user has seen it merged, `CLI finish --merged <plan>`.
+- A refusal names its fix. `merge-refused` is a conflict or a moved target:
+  `CLI round start --conflict "<what>" <plan>`, the round in
+  `dev-skills:build`, then the gate page and `finish` again on the user's word.
 
-One message: **a merge request, `--no-ff`, or `--ff-only`?** and the message
-for the merge commit or the request's title, drafted from the plan's Result
-by `dev-skills:commit-work`. Ask only for what the user did not already say. The user's answer approves the message too.
+## 2. After
 
-## 3. Merge it
-
-Locally, in the clean tree that has `<default>` checked out
-(`git worktree list`; with none, here after `git switch <default>`):
-
-- **`--no-ff`:** `git merge --no-ff <branch>` with the message.
-- **`--ff-only`:** `git merge --ff-only <branch>`. Refused, `<default>` moved
-  on: offer `--no-ff`, or a rebase as for a conflict.
-- **A merge request:** `git push -u origin <branch>`, then
-  `gh pr create --base <default>`, the message as its title and the plan's
-  `## Human gate` page as its body, with the captures named by where they sit
-  on this machine, not linked. The user merges it in the merge request's view;
-  the button is the approval.
-
-A conflict: abort the merge. It is a new round in `dev-skills:build`: an
-implementer rebases the plan's branch onto the default branch, then the judge
-(it lands) and the gate page again, and `finish` again on the user's word.
-
-No push without the user's word; choosing a merge request is that word for
-pushing the plan's branch, nothing else. Leave the plan's branch in place.
-
-## 4. After
-
-Local: set Status to `merged`. A merge request: set it to the request's
-link — step 1 sets `merged` once it is. Under an epic, the plan's row follows.
-Merged from a worktree of its own: `git worktree remove <path>`; the branch
-stays.
-Backups, local merge only (a merge request gets this question in step 1, once
-merged): list `git branch --list 'backup/<branch>-*'` and keep the names whose
-part after `backup/<branch>-` is all digits. Any: ask one question naming each,
-"delete these backups?", and on yes `git branch -D` them (`land` rewrote the
-branch, so they are not merged). A no, or any answer but yes, leaves them.
-Local: then offer a retro (`dev-skills:retro`); the user decides.
+Code removes the worktree and the data directory, deletes the backups the run
+file says to or lists them, and keeps the branch. Then offer a retro (`dev-skills:retro`); the user decides.

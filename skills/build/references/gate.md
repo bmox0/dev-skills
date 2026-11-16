@@ -20,14 +20,16 @@ the code. Looks and feel are the user's, at the human gate.
    small, a worker driving through `dev-skills:verify` handed `CLI brief verify
    <plan>`. They record through those briefs; their final
    message is one line.
-3. `CLI fix start <plan>` takes the one list: red checks, Defects, use cases
+3. With nothing on the one list (`CLI status <plan>`), skip `fix start`. Else
+   `CLI fix start <plan>` takes the one list: red checks, Defects, use cases
    failed. A case the code keeps from being reached is `failed`. Before `fix start`, re-drive a failed case once with `CLI brief verify --cases N` when its capture does not match the command as written. One new implementer handed `CLI
-   brief fix <plan>` fixes all of it; `CLI fix done <plan>` re-runs the checks. A case not
+   brief fix <plan>` fixes all of it; `CLI fix done <plan>` re-runs the checks (long, like `gate start`). A case not
    reached for the environment goes on the gate page with what it needs;
    Conventions go to the judge, Observations folded to the gate page.
 4. A targeted re-check, on the fix's commits: the reviewer on Sonnet handed `CLI
    brief reviewer`, and at once a fresh worker handed `CLI brief verify
-   [--cases N,…]` with the cases the fix touched.
+   [--cases N,…]` with the cases the fix touched. When that brief says "no case
+   to drive", dispatch no worker; the judge brief says so.
    A fix that code still allows takes only what is new; what survived it
    is under Open on the gate page.
 5. The judge reads the results (`judge.md`).
