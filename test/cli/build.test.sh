@@ -80,6 +80,7 @@ Waits for: 2
 
 none
 P
+  cp "$repo_root/skills/run-file/references/example.run.toml" "${1%.md}.run.toml"
 }
 
 plan=$repo/.ai-workflow/plans/2026-11-16-x.md
@@ -315,4 +316,148 @@ cli grant "$planm" 1 "$repo/docs/side.txt" >/dev/null || fail "grant by absolute
 assert_contains "$(cli status "$planm")" "grants: docs/side.txt" "the grant is stored relative" || exit 1
 out=$(cli phase done "$planm" 1); rc=$?
 assert_eq 0 "$rc" "phase done passes with the grant: $out" || exit 1
+
+# run#isolated: a port and a data directory of the plan's own
+first=$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import pipeline; print(pipeline.PORTS.start)' "$(dirname "$pipeline")")
+python3 -c 'import socket,sys,time; s=socket.socket(); s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(); time.sleep(60)' "$first" &
+busy=$!
+sleep 1
+ports=""
+for k in i1 i2; do
+  pk=$repo/.ai-workflow/plans/2026-11-16-$k.md
+  mkplan "$pk" '' $k
+  cli approve "$pk" >/dev/null || fail "approve $k"
+  wk=$(dirname "$repo")/$(basename "$repo")-$k
+  out=$(cli build start "$pk" --base v0 --worktree "$wk"); rc=$?
+  assert_eq 0 "$rc" "build start $k: $out" || exit 1
+  pt=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["alloc"]["port"])' "${pk%.md}.json")
+  assert_contains "$out" "port $pt" "the port is among the facts" || exit 1
+  assert_contains "$out" "$k.data" "the data directory is among the facts" || exit 1
+  [ -d "${pk%.md}.data" ] || fail "the data directory exists for $k"
+  assert_contains "$(cli status "$pk")" "port $pt" "status shows the port" || exit 1
+  assert_contains "$(cli status --json "$pk")" "\"port\": $pt" "status --json holds the allocation" || exit 1
+  assert_contains "$(cli run show "$pk")" "--port $pt" "run show fills in {port}" || exit 1
+  assert_contains "$(cli run show --json "$pk")" "localhost:$pt" "run show --json fills in {port}" || exit 1
+  [ "$pt" != "$first" ] || fail "$k got the busy port"
+  case " $ports " in *" $pt "*) fail "$k shares a port";; esac
+  ports="$ports $pt"
+  git worktree remove --force "$wk"
+done
+kill $busy 2>/dev/null
+
+# run#isolated: a listener on [::1] holds its port; a one-sided allocation prints and shows only what it has
+python3 -c 'import socket,sys,time; s=socket.socket(socket.AF_INET6); s.bind(("::1", int(sys.argv[1]))); s.listen(); time.sleep(60)' "$first" &
+busy6=$!
+sleep 1
+p6=$repo/.ai-workflow/plans/2026-11-16-v6.md
+mkplan "$p6" '' v6
+sed -i.bak 's/^data_dir = true/data_dir = false/; s/ --data {data_dir}//' "${p6%.md}.run.toml"
+grep -q '^data_dir = false' "${p6%.md}.run.toml" || fail "v6 run file edited"
+cli approve "$p6" >/dev/null || fail "approve v6"
+w6=$(dirname "$repo")/$(basename "$repo")-v6
+cli build start "$p6" --base v0 --worktree "$w6" >/dev/null || fail "build start v6"
+kill $busy6 2>/dev/null
+pt=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["alloc"]["port"])' "${p6%.md}.json")
+[ "$pt" != "$first" ] || fail "a port listening on [::1] was counted free"
+out=$(cli status "$p6"); rc=$?
+assert_eq 0 "$rc" "status with a port and no data dir: $out" || exit 1
+assert_contains "$out" "Run: port $pt" "status shows the port" || exit 1
+case "$out" in *"data dir"*) fail "status invents a data dir: $out";; esac
+git worktree remove --force "$w6"
+
+# run#isolated: a host without IPv6 still has free ports; only "address in use" counts as busy
+python3 -B - "$pipeline" "$p6" <<'PY' || fail "a host without IPv6 found no free port"
+import errno, importlib.util, socket, sys
+spec = importlib.util.spec_from_file_location("pipeline", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+real = socket.socket
+class NoV6(real):
+    def __init__(self, family=socket.AF_INET, *a, **k):
+        if family == socket.AF_INET6:
+            raise OSError(errno.EAFNOSUPPORT, "no IPv6")
+        super().__init__(family, *a, **k)
+socket.socket = NoV6
+m.free_port(None, sys.argv[2])
+PY
+
+# run#isolated: a data directory without a port
+pd=$repo/.ai-workflow/plans/2026-11-16-d1.md
+mkplan "$pd" '' d1
+sed -i.bak 's/^port = true/port = false/; s/ --port {port}//; s/{port}/1/' "${pd%.md}.run.toml"
+cli approve "$pd" >/dev/null || fail "approve d1"
+wd=$(dirname "$repo")/$(basename "$repo")-d1
+cli build start "$pd" --base v0 --worktree "$wd" >/dev/null || fail "build start d1"
+out=$(cli status "$pd"); rc=$?
+assert_eq 0 "$rc" "status with a data dir and no port: $out" || exit 1
+assert_contains "$out" "Run: data dir " "status shows the data dir" || exit 1
+case "$out" in *"Run: port"*|*" port "*) fail "status invents a port: $out";; esac
+git worktree remove --force "$wd"
+
+# run#changes-through-approve: build start shows a changed run file, and keeps the approved values
+pc=$repo/.ai-workflow/plans/2026-11-16-bd.md
+mkplan "$pc" '' bd
+cli approve "$pc" >/dev/null || fail "approve bd"
+edit "${pc%.md}.run.toml" 'delete_backups = true' 'delete_backups = false'
+wc=$(dirname "$repo")/$(basename "$repo")-bd
+out=$(cli build start "$pc" --base v0 --worktree "$wc"); rc=$?
+assert_eq 0 "$rc" "build start with a changed run file: $out" || exit 1
+assert_contains "$out" "[finish] delete_backups" "build start names the drift: $out" || exit 1
+git worktree remove --force "$wc"
+
+# run#changes-through-approve: approve after build start allocates what isolation now asks for
+pa=$repo/.ai-workflow/plans/2026-11-16-ia.md
+mkplan "$pa" '' ia
+sed -i.bak 's/^data_dir = true/data_dir = false/; s/ --data {data_dir}//' "${pa%.md}.run.toml"
+cli approve "$pa" >/dev/null || fail "approve ia"
+wa=$(dirname "$repo")/$(basename "$repo")-ia
+cli build start "$pa" --base v0 --worktree "$wa" >/dev/null || fail "build start ia"
+edit "${pa%.md}.run.toml" 'data_dir = false' 'data_dir = true'
+edit "${pa%.md}.run.toml" '--port {port}' '--port {port} --data {data_dir}'
+out=$(cli approve "$pa"); rc=$?
+assert_eq 0 "$rc" "approve after build start: $out" || exit 1
+assert_contains "$out" "data dir " "approve prints the new allocation: $out" || exit 1
+[ -d "${pa%.md}.data" ] || fail "approve made the data directory"
+assert_contains "$(cli run show "$pa")" "--data $(cd "$(dirname "$pa")" && pwd -P)/2026-11-16-ia.data" "run show fills in {data_dir}" || exit 1
+git worktree remove --force "$wa"
+# a plan with worktree = true needs --worktree, or a note
+pw=$repo/.ai-workflow/plans/2026-11-16-wt.md
+mkplan "$pw" '' wt
+sed -i.bak 's/^worktree = false/worktree = true/' "${pw%.md}.run.toml"
+cli approve "$pw" >/dev/null || fail "approve wt"
+out=$(cli build start "$pw" --base v0); rc=$?
+assert_eq 1 "$rc" "worktree = true without --worktree is refused" || exit 1
+assert_contains "$out" "--worktree" "the fix names the flag: $out" || exit 1
+cli build start "$pw" --base v0 --note "no room for a tree" >/dev/null || fail "build start with a note"
+assert_contains "$(cli status "$pw")" "no room for a tree" "status shows the note" || exit 1
+git switch -q mg
+
+# run#secrets-as-written, build#brief-carries-spec
+ps=$repo/.ai-workflow/plans/2026-11-16-sp.md
+mkplan "$ps" '' sp
+python3 - "$ps" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+t = t.replace("1. a → b\n", "1. a → b\n2. c → d\n3. e → f\n")
+t = t.replace("## Spec\n\nnone", "## Spec\n\n+ rr — The area\n  About: a thing\n+ rr#one — Rule one\n  Why: w1\n  Done: 1\n+ rr#two — Rule two\n  Why: w2\n  Done: 2, 3\n")
+open(sys.argv[1], "w").write(t)
+PY
+cli approve "$ps" >/dev/null || fail "approve sp"
+b=$(cat "$(cli brief implementer "$ps" 2)")
+for w in 'phase = ["scripts/check"]' 'admin_pwd = "keychain:app/admin"' 'can_remove_tasks = false' 'quota = 20' "rr#one" "Rule two" "a → b" "c → d" "e → f"; do
+  assert_contains "$b" "$w" "the brief holds $w" || exit 1
+done
+assert_eq 1 "$(printf '%s\n' "$b" | grep -c '^Territory:')" "Territory prints once" || exit 1
+
+# an epic that is gone is a fact, not a traceback
+pe=$repo/.ai-workflow/plans/2026-11-16-ep.md
+mkplan "$pe" 'Epic: `.ai-workflow/epics/gone/e.md` · row 1' ep
+cli approve "$pe" >/dev/null 2>&1
+mkdir -p .ai-workflow/epics/gone && printf '## Plans\n\n| # | P | W | S |\n|---|---|---|---|\n| 1 | One | — | |\n' > .ai-workflow/epics/gone/e.md
+cli approve "$pe" >/dev/null || fail "approve ep"
+cli build start "$pe" --base v0 >/dev/null || fail "build start ep"
+rm -rf .ai-workflow/epics/gone
+out=$(cli phase start "$pe" 1 2>&1); rc=$?
+assert_eq 0 "$rc" "phase start with the epic gone: $out" || exit 1
+assert_contains "$out" "epic" "a line says the epic is missing" || exit 1
+case "$out" in *Traceback*) fail "no traceback: $out";; esac
 echo "build.test.sh: ok"

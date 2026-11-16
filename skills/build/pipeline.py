@@ -16,6 +16,7 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py grant [--note TEXT] PLAN N PATH
        pipeline.py decision --question Q --from S --answer A --why W --cost C PLAN
        pipeline.py brief implementer PLAN N | brief judge PLAN   [--note TEXT]
+       pipeline.py run new|check PLAN | run show [--json] PLAN
 
 check reads the plan's `## Spec` section against docs/spec/ as it is at the
 base (--base, else the base in the plan's Status line, else HEAD) and reports
@@ -28,6 +29,10 @@ produces (compared as parsed, so blank lines and the `-`/`*` scenario marker do
 not matter), makes docs/spec/ equal to the base plus the section, and
 writes the archive record. A bad argument is exit 2.
 
+run new copies the newest run file beside the plan (else the shipped example) to
+`<slug>.run.toml`; run check prints every problem as `<code>: … — fix: …`; run show
+prints the approved values, or the file's before approval, and any drift.
+
 list prints every area (`<area> — <title>`), its description indented under it, and its rules, indented
 (`  <area>#<rule> — <statement>`), from the working tree. show prints the rule
 `<area>#<rule>` (heading, Why, scenarios), then each archive record whose Spec
@@ -38,7 +43,9 @@ and that section's entry for the rule. An ID that is not a rule is
 approve compiles a plan into `<slug>.json` (the state) after a strict check, whose
 problems are `<plan>:<line>: <message>`, exit 1; it renders the code-owned lines
 back into the plan and the plan's row in its epic, and adopts a plan that has no
-state as its file stands. Every write refuses (`<code>: <message> — fix: <fix>`,
+state as its file stands. approve also requires the draft's run file
+(`<slug>.run.toml`, see `run check`) and records its values under `run`; a plan
+adopted without one goes on without. Every write refuses (`<code>: <message> — fix: <fix>`,
 exit 1) while the plan file differs from its last render. status prints one plan
 or all; plan status and plan base change the plan's code-owned fields. Library
 use: `writing(plan)` yields the locked state and saves and renders on exit;
@@ -48,6 +55,7 @@ use: `writing(plan)` yields the locked state and saves and renders on exit;
 import argparse
 import contextlib
 import datetime
+import errno
 import fcntl
 import hashlib
 import json
@@ -55,7 +63,10 @@ import os
 import re
 import subprocess
 import sys
+import shutil
+import socket
 import tempfile
+import tomllib
 
 HISTORY = "This is history; the rules that hold now are in `docs/spec/`."
 README = (
@@ -905,6 +916,9 @@ def sync_epic(root, md, st):
     if not e:
         return
     epic = os.path.join(root, e["path"])
+    if not os.path.exists(epic):
+        print(f"epic: {e['path']} is missing; row {e['row']} was not updated", file=sys.stderr)
+        return
     cell = f"{st['status']} · `{os.path.relpath(os.path.realpath(md), os.path.realpath(root))}`"
     with open(epic + ".lock", "a") as lf:
         fcntl.flock(lf, fcntl.LOCK_EX)
@@ -987,6 +1001,206 @@ def ready_phases(st):
     return [p["n"] for p in st["phases"] if p["status"] == "waiting" and set(p["waits"]) <= done]
 
 
+# -- the run file: `<slug>.run.toml`, written before the plan
+
+CHOICES = {("finish", "how"): ["merge-request", "ff-only", "no-ff"]}
+RUN_SECTIONS = {
+    "finish": {"how": "str", "target": "str", "delete_backups": "bool"},
+    "checks": {"phase": "list", "full": "list", "dev": "str", "url": "str"},
+    "isolation": {"worktree": "bool", "port": "bool", "data_dir": "bool"},
+}
+RUN_OPTIONAL = {("checks", "dev"), ("checks", "url")}
+PLACEHOLDER = re.compile(r"\{(port|data_dir)\}")
+EXAMPLE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "run-file", "references", "example.run.toml")
+
+
+def run_path(plan):
+    return plan_paths(plan)[0][:-3] + ".run.toml"
+
+
+def refuse_all(diags):
+    r = Refuse(*diags[0])
+    r.diags = diags
+    return r
+
+
+def type_ok(v, kind):
+    if kind == "bool":
+        return isinstance(v, bool)
+    if kind == "str":
+        return isinstance(v, str)
+    return isinstance(v, list) and all(isinstance(x, str) for x in v)
+
+
+def read_run(plan):
+    """-> (values, []) or (None, [(code, message, fix)]); the file is read as written."""
+    path = run_path(plan)
+    if not os.path.exists(path):
+        return None, [("no-run-file", f"{path} does not exist", "write it with `dev-skills:run-file`, or copy one with `pipeline.py run new`")]
+    try:
+        with open(path, "rb") as f:
+            v = tomllib.load(f)
+    except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as e:
+        return None, [("run-bad-toml", f"{path} is not valid TOML ({e})", "fix the syntax")]
+    out = []
+    for sec in v:
+        if sec not in RUN_SECTIONS and sec != "run":
+            out.append(("run-unknown-section", f"[{sec}] is not a section of the run file", "use [finish], [checks], [isolation] or [run]"))
+    for sec, keys in RUN_SECTIONS.items():
+        t = v.get(sec, {})
+        if not isinstance(t, dict):
+            out.append(("run-bad-type", f"[{sec}] must be a table", f"write [{sec}] as a section"))
+            continue
+        for k in t:
+            if k not in keys:
+                out.append(("run-unknown-key", f"[{sec}] {k} is not a key of the section", "use only: " + ", ".join(keys)))
+        for k, kind in keys.items():
+            if k not in t:
+                if (sec, k) not in RUN_OPTIONAL:
+                    out.append(("run-missing-key", f"[{sec}] {k} is missing", f"add `{k}` to [{sec}]"))
+            elif not type_ok(t[k], kind):
+                want = {"bool": "true or false", "str": "a string", "list": "a list of strings"}[kind]
+                out.append(("run-bad-type", f"[{sec}] {k} must be {want}", f"write {k} as {want}"))
+            elif (sec, k) in CHOICES and t[k] not in CHOICES[sec, k]:
+                out.append(("run-bad-value", f"[{sec}] {k} = {t[k]!r} is not one of {', '.join(CHOICES[sec, k])}", f"use one of {', '.join(CHOICES[sec, k])}"))
+    r = v.get("run", {})
+    if not isinstance(r, dict):
+        out.append(("run-bad-type", "[run] must be a table", "write [run] as a section"))
+    else:
+        for k, x in r.items():
+            if not isinstance(x, (str, int, float, bool)):
+                out.append(("run-bad-type", f"[run] {k} must be a string, number or boolean", f"write {k} as a plain value"))
+    checks, iso = v.get("checks", {}), v.get("isolation", {})
+    if isinstance(checks, dict) and isinstance(iso, dict):
+        for k, x in checks.items():
+            for s in x if isinstance(x, list) else [x]:
+                for ph in sorted(set(PLACEHOLDER.findall(s)) if isinstance(s, str) else []):
+                    if iso.get(ph) is not True:
+                        out.append(("run-bad-placeholder", f"[checks] {k} uses {{{ph}}}, but [isolation] {ph} is not true", f"set `{ph} = true` in [isolation], or drop the placeholder"))
+    return (None, out) if out else (v, [])
+
+
+def same(a, b):
+    """Equal in value and type, so 1 and true differ."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
+    return type(a) is type(b) and a == b
+
+
+def run_changes(old, new):
+    """The (section, key) pairs whose value differs, sorted."""
+    return sorted((s, k) for s in old.keys() | new.keys() for k in ((old.get(s) or {}).keys() | (new.get(s) or {}).keys())
+                  if not same((old.get(s) or {}).get(k), (new.get(s) or {}).get(k)))
+
+
+def run_drift(plan, st):
+    """What differs between the file and the values `approve` recorded: [(code, message, fix)]."""
+    if "run" not in st:
+        return []
+    fix = f"run `pipeline.py approve {plan}` to take the change, or restore the file"
+    v, probs = read_run(plan)
+    if v is None:
+        return [("run-drift", f"{run_path(plan)} no longer passes `run check` ({probs[0][1]}); the approved values stand", fix)]
+    keys = [f"[{x}] {k}" for x, k in run_changes(st["run"], v)]
+    return [("run-drift", f"the run file differs from the approved values ({', '.join(keys)}); the approved values stand", fix)] if keys else []
+
+
+PORTS = range(4300, 4400)
+
+
+def fill(values, alloc):
+    """The run's values with {port} and {data_dir} in [checks] replaced by the allocation."""
+    def sub(x):
+        if isinstance(x, list):
+            return [sub(i) for i in x]
+        for k, v in (alloc or {}).items():
+            x = x.replace("{" + k + "}", str(v))
+        return x
+    return {s: {k: sub(x) for k, x in t.items()} if s == "checks" else t for s, t in values.items()}
+
+
+# A listener on ::1 does not block the IPv4 wildcard, so each family is probed on its own.
+PROBES = [(socket.AF_INET, ""), (socket.AF_INET6, "::")]
+
+
+def bindable(family, addr, port):
+    """False only when the port is taken; a family the host cannot use (no IPv6) is skipped."""
+    try:
+        with socket.socket(family) as s:
+            if family == socket.AF_INET6:
+                s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            s.bind((addr, port))
+    except OSError as e:
+        return e.errno not in (errno.EADDRINUSE, errno.EACCES)
+    return True
+
+
+def allocate(plan, md, st, have=None):
+    """What [isolation] asks for and `have` lacks: {"port": n, "data_dir": path}."""
+    iso, new = st.get("run", {}).get("isolation", {}), {}
+    if iso.get("port") and "port" not in (have or {}):
+        new["port"] = free_port(plan, md)
+    if iso.get("data_dir") and "data_dir" not in (have or {}):
+        new["data_dir"] = os.path.join(os.path.dirname(os.path.abspath(md)), plan_slug(st) + ".data")
+    return new
+
+
+def free_port(plan, md):
+    """The first port of PORTS that nothing listens on and no live plan holds."""
+    d = os.path.dirname(md)
+    held = set()
+    for name, _, _ in other_plans(plan_root(md), md):
+        o = load_state(os.path.join(d, name + ".md"))
+        held.add(((o or {}).get("alloc") or {}).get("port"))
+    for p in PORTS:
+        if p in held:
+            continue
+        if all(bindable(fam, addr, p) for fam, addr in PROBES):
+            return p
+    raise Refuse("no-port", f"no free port in {PORTS.start}-{PORTS[-1]}", "stop a plan that holds one, or free a port")
+
+
+def cmd_run(command, plan, as_json):
+    path = run_path(plan)
+    if command == "new":
+        if os.path.exists(path):
+            raise Refuse("run-exists", f"{path} already exists", "edit it, or pick another plan name")
+        d = os.path.dirname(path)
+        runs = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".run.toml")] if os.path.isdir(d) else []
+        src = max(runs, key=os.path.getmtime) if runs else os.path.normpath(EXAMPLE)
+        os.makedirs(d, exist_ok=True)
+        with open(src, encoding="utf-8") as f:
+            text = f.read()
+        if not runs:
+            text = re.sub(r"(?ms)^(\[run\][^\n]*\n).*\Z", r"\1", text)  # keys of the shipped example are samples
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        print(f"run new: {path} (copied from {src})")
+        return 0
+    v, probs = read_run(plan)
+    if command == "check":
+        if probs:
+            raise refuse_all(probs)
+        return 0
+    st = load_state(plan)
+    if st is not None and "run" in st:
+        v, drift = fill(st["run"], st.get("alloc")), run_drift(plan, st)
+    elif probs:
+        raise refuse_all(probs)
+    else:
+        drift = []
+    if as_json:
+        print(json.dumps({"run": v, "approved": st is not None and "run" in st, "drift": [f"{m} — fix: {f}" for _, m, f in drift]}, ensure_ascii=False))
+        return 0
+    for sec, t in v.items():
+        print(f"[{sec}]")
+        for k, x in t.items():
+            print(f"{k} = {json.dumps(x, ensure_ascii=False)}")
+    for _, m, f in drift:
+        print(f"Drift: {m} — fix: {f}")
+    return 0
+
+
 # -- commands
 
 def cmd_approve(plan, as_json):
@@ -1026,6 +1240,22 @@ def cmd_approve(plan, as_json):
                 if n not in old and p["status"] != "waiting":
                     raise Refuse("drift", f"new phase {n} is marked {p['status']}", "write new phases as `waiting`")
             st["phases"] = [{**old.get(n, {"n": n, "status": "waiting"}), **{k: p[k] for k in derived}} for n, p in sorted(new.items())]
+        had = "run" in st
+        values, probs = read_run(plan)
+        if probs and (had or how == "approved" or os.path.exists(run_path(plan))):
+            raise refuse_all(probs)
+        facts = []
+        if values is not None:
+            if had and (ch := run_changes(st["run"], values)):
+                record(plan, st, "run file", None, "changed", ", ".join(f"{x} {k}" for x, k in ch))
+            st["run"] = values
+            if st["status"] != "approved":
+                new = allocate(plan, md, st, st.get("alloc"))
+                if new:
+                    st["alloc"] = {**st.get("alloc", {}), **new}
+                    if "data_dir" in new:
+                        os.makedirs(new["data_dir"], exist_ok=True)
+                    facts = ["facts: " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in new.items())]
         st.update(title=P["title"], level=P["level"], epic=P["epic"])
         head = save(plan, st, head, tail)
     words = len(" ".join(head + tail).split())
@@ -1038,9 +1268,11 @@ def cmd_approve(plan, as_json):
     last = f"{graph_line(P['phases'])} · {P['level']} · {words} words"
     if as_json:
         print(json.dumps({"plan": plan_slug(st), "result": how, "status": st["status"], "graph": graph_line(P["phases"]),
-                          "level": P["level"], "words": words, "overlaps": over}, ensure_ascii=False))
+                          "level": P["level"], "words": words, "overlaps": over, "alloc": st.get("alloc")}, ensure_ascii=False))
         return 0
     print(f"approve: {plan_slug(st)} {how}, status {st['status']}")
+    for x in facts:
+        print(x)
     for o in over:
         print(f"overlaps {o['plan']} ({o['status']}): {', '.join(o['paths'])}")
     print(last)
@@ -1050,8 +1282,8 @@ def cmd_approve(plan, as_json):
 def summary(plan, st, head):
     """-> the dict `status --json` prints."""
     return {**{k: st.get(k) for k in ("title", "status", "branch", "base", "epic", "level", "phases", "history", "decisions")},
-            "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st),
-            "drift": [f"{m} — fix: {f}" for _, m, f in drift_diags(plan, st, head)]}
+            "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st), "alloc": st.get("alloc"),
+            "drift": [f"{m} — fix: {f}" for _, m, f in drift_diags(plan, st, head) + run_drift(plan, st)]}
 
 
 def cmd_status(plan, as_json, cwd):
@@ -1098,6 +1330,8 @@ def cmd_status(plan, as_json, cwd):
     print(f"Tree: {t}" + ("" if os.path.isdir(t) else " (gone)"))
     if st.get("epic"):
         print(f"Epic: {st['epic']['path']} · row {st['epic']['row']}")
+    if st.get("alloc"):
+        print("Run: " + " · ".join(f"{k.replace('_', ' ')} {v}" for k, v in st["alloc"].items()))
     print("Phases:")
     for p in st["phases"]:
         print(f"  {p['n']}. {p['title']} — {p['status']}" + (f" (waits for {', '.join(map(str, p['waits']))})" if p["waits"] and p["status"] == "waiting" else ""))
@@ -1195,6 +1429,11 @@ def cmd_build_start(plan, base, worktree, branch, note):
         sha, branch = r.stdout.strip(), branch or st["branch"]
         if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False, cwd=root).returncode == 0:
             raise Refuse("branch-exists", f"branch {branch} already exists", "delete it, or name another with `build start --branch NAME`")
+        iso = st.get("run", {}).get("isolation", {})
+        if iso.get("worktree") and not worktree and not note:
+            raise Refuse("worktree-required", "the run file asks for a worktree and --worktree was not given",
+                         "pass --worktree PATH, or --note with the reason to build here")
+        alloc = allocate(plan, md, st)
         was = git("branch", "--show-current", cwd=root).stdout.strip() or "(detached)"
         dirty = len(git("status", "--porcelain", cwd=root).stdout.splitlines())
         if worktree:
@@ -1206,8 +1445,16 @@ def cmd_build_start(plan, base, worktree, branch, note):
         if r.returncode:
             raise Refuse("git-failed", r.stderr.strip(), "fix the tree and run it again")
         st["tree"] = tree
+        if alloc:
+            st["alloc"] = alloc
+            if "data_dir" in alloc:
+                os.makedirs(alloc["data_dir"], exist_ok=True)
         set_plan(plan, st, status="building", base=sha, branch=branch, note=note)
         print(f"build start: {plan_slug(st)} building on {branch} at {sha[:7]}, tree {tree}")
+        if alloc:
+            print("facts: " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in alloc.items()))
+        for _, m, f in run_drift(plan, st):
+            print(f"facts: {m} — fix: {f}")
         print(f"facts: was on {was}; tree was " + (f"dirty ({dirty} paths)" if dirty else "clean"))
     return 0
 
@@ -1353,8 +1600,24 @@ def cmd_brief(plan, kind, n, note):
         sk = [os.path.join(tree, x) if os.path.exists(os.path.join(tree, x)) else x for x in ph["skills"]]
         sp = [os.path.join(tree, x) for x in ph["spec"]]
         out += [f"## Phase {n}, verbatim from the plan", "", *lines[i:j], "",
-                f"Territory: {', '.join(ph['territory'])}", f"Grants: {', '.join(ph.get('grants', [])) or 'none'}",
+                f"Grants: {', '.join(ph.get('grants', [])) or 'none'}",
                 f"Skills to read first: {', '.join(sk) or 'none'}", f"Spec area files: {', '.join(sp) or 'none'}", ""]
+        if "run" in st:
+            v = fill(st["run"], st.get("alloc"))
+            out += ["## The run", "", "[checks].phase = " + json.dumps(v["checks"]["phase"], ensure_ascii=False), ""]
+            out += [f"{k} = {json.dumps(x, ensure_ascii=False)}" for k, x in v["run"].items()]
+            out += [f"Drift: {m} — fix: {f}" for _, m, f in run_drift(plan, st)] + [""]
+        problems = []
+        secs = sections(lines)
+        entries = parse_section(*secs["Spec"], problems) if "Spec" in secs else "none"
+        if entries != "none":
+            done = done_items(secs.get("Done", (0, []))[1])
+            out += ["## Spec entries of the plan", ""]
+            for e in entries:
+                out.append(f"{e['sign']} {e['id']} — {e['statement'] or ''}".rstrip(" —"))
+                if "Done" in e["keys"]:
+                    out += [f"  Done {x}: {done.get(x, '?')}" for x in cited(e, done, [])]
+            out.append("")
         for w in ph["waits"]:
             r = phase_of(st, w)
             out += [f"## Phase {w} reported ({r['title']})", ""]
@@ -1461,8 +1724,19 @@ def main():
     s = bsub.add_parser("judge", help="the plan, the tree, the base and the absolute path of judge.md; the case goes in --note")
     s.add_argument("--note", help="the case and its inputs")
     s.add_argument("plan", help="the plan file")
+    rp = top.add_parser("run", help="the run file beside the plan: its path need not exist yet")
+    rsub = rp.add_subparsers(dest="command", required=True)
+    s = rsub.add_parser("new", help="copy the newest run file in the plan's directory, else the shipped example; refused if the file exists")
+    s.add_argument("plan", help="the plan file, which need not exist")
+    s = rsub.add_parser("check", help="print every problem of the run file, silent when it is sound")
+    s.add_argument("plan", help="the plan file, which need not exist")
+    s = rsub.add_parser("show", help="the run file's values: the approved ones once the plan is approved, with any drift")
+    s.add_argument("--json", action="store_true", help="print as JSON: run, approved, drift")
+    s.add_argument("plan", help="the plan file, which need not exist")
     a = p.parse_args()
     try:
+        if a.group == "run":
+            return cmd_run(a.command, a.plan, getattr(a, "json", False))
         if a.group == "approve":
             return cmd_approve(a.plan, a.json)
         if a.group == "status":

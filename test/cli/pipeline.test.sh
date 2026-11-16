@@ -81,6 +81,8 @@ Waits for: 1
 none
 P
 
+example="$repo_root/skills/run-file/references/example.run.toml"
+
 # build#state-through-commands: a broken plan gives one line per problem and no JSON
 out=$(cli approve "$plan"); rc=$?
 assert_eq 1 "$rc" "approve refuses a broken plan" || exit 1
@@ -92,6 +94,14 @@ assert_contains "$out" "phases 1 and 2 both change" "names the unordered overlap
 
 edit "$plan" 'Waits for: 9 — a thing' 'Waits for: 1 — a thing'
 edit "$plan" ', `skills/nope/SKILL.md`' ''
+
+# run#required-to-approve: a draft with no run file is refused, naming the skill, with no JSON
+out=$(cli approve "$plan"); rc=$?
+assert_eq 1 "$rc" "approve refuses a plan with no run file" || exit 1
+assert_contains "$out" "dev-skills:run-file" "the fix names the skill" || exit 1
+[ ! -e "${plan%.md}.json" ] || fail "no JSON after a refusal"
+
+cp "$example" "${plan%.md}.run.toml"
 draft=$(cat "$plan")
 out=$(cli approve "$plan"); rc=$?
 assert_eq 0 "$rc" "approve passes: $out" || exit 1
@@ -310,6 +320,7 @@ Waits for: nothing
 
 none
 P
+  cp "$example" "${1%.md}.run.toml"
 }
 
 # status without a plan lists building to passed; a named plan always shows
@@ -381,4 +392,108 @@ out=$(cli plan status "$pf" passed); rc=$?
 assert_eq 1 "$rc" "a text edit refuses the write" || exit 1
 case "$out" in *"edited by hand"*) fail "a fenced heading is not a hand edit: $out";; esac
 assert_contains "$out" "pipeline.py approve" "the fix is approve" || exit 1
+
+# run#starts-from-last: run new copies the newest run file, else the example, and never overwrites
+r=$(mktemp_dir)
+cd "$r" && git init -q && mkdir -p .ai-workflow/plans && cd .ai-workflow/plans || exit 1
+out=$(cli run new 2026-11-20-a.md); rc=$?
+assert_eq 0 "$rc" "run new: $out" || exit 1
+assert_contains "$out" "2026-11-20-a.run.toml" "run new names the file" || exit 1
+assert_contains "$out" "copied from" "run new names the source" || exit 1
+[ -z "$(cli run check 2026-11-20-a.md)" ] || fail "the example passes run check"
+python3 - 2026-11-20-a.run.toml "$example" <<'P' || fail "a first run file is the example with an empty [run]"
+import sys, tomllib
+a, b = (tomllib.load(open(f, "rb")) for f in sys.argv[1:])
+assert a.pop("run") == {} and b.pop("run") and a == b
+P
+printf 'quota = 33\n' >> 2026-11-20-a.run.toml
+touch -t 202611210000 2026-11-20-a.run.toml
+cp "$example" 2026-11-19-old.run.toml; touch -t 202611200000 2026-11-19-old.run.toml
+cli run new 2026-11-22-b.md >/dev/null || fail "run new b"
+grep -q 'quota = 33' 2026-11-22-b.run.toml || fail "run new copies the newest"
+cp 2026-11-22-b.run.toml before.toml
+out=$(cli run new 2026-11-22-b.md); rc=$?
+assert_eq 1 "$rc" "run new refuses to overwrite" || exit 1
+assert_contains "$out" "run-exists:" "code form" || exit 1
+cmp -s before.toml 2026-11-22-b.run.toml || fail "the file is unchanged"
+rm before.toml
+
+# run#contract-checked: one line per problem, naming its section and key; [run] takes plain values
+cat > 2026-11-23-c.run.toml <<'T'
+[finish]
+mode = "x"
+how = "squash"
+target = "main"
+delete_backups = true
+[checks]
+phase = []
+dev = "serve {port}"
+[isolation]
+worktree = false
+port = false
+data_dir = false
+[deploy]
+x = 1
+[run]
+t = { a = 1 }
+l = [1]
+admin_pwd = "keychain:app/admin"
+can_remove_tasks = false
+quota = 20
+T
+out=$(cli run check 2026-11-23-c.md); rc=$?
+assert_eq 1 "$rc" "run check refuses" || exit 1
+assert_eq 7 "$(printf '%s\n' "$out" | grep -c ' — fix: ')" "one line per problem: $out" || exit 1
+for want in 'run-unknown-key: [finish] mode' 'run-bad-value: [finish] how' 'run-missing-key: [checks] full' 'run-unknown-section: [deploy]' 'run-bad-type: [run] t ' 'run-bad-type: [run] l ' 'run-bad-placeholder: [checks] dev uses {port}'; do
+  assert_contains "$out" "$want" "names $want" || exit 1
+done
+case "$out" in *admin_pwd*|*can_remove*|*quota*) fail "plain [run] values pass: $out";; esac
+cd "$repo" || exit 1
+
+# run#changes-through-approve: recorded at approve; a changed file is drift, the approved value stands, approve takes it
+pr="$plans/2026-11-24-r.md"
+mkp "$pr" r ''
+cli approve "$pr" >/dev/null || fail "approve r"
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["run"]["finish"]["delete_backups"] is True' "${pr%.md}.json" || fail "the state records the run file"
+edit "${pr%.md}.run.toml" 'delete_backups = true' 'delete_backups = false'
+out=$(cli status "$pr")
+assert_contains "$out" "Drift: " "status reports the drift" || exit 1
+assert_contains "$out" "[finish] delete_backups" "status names the key" || exit 1
+out=$(cli run show "$pr")
+assert_contains "$out" 'delete_backups = true' "run show gives the approved value" || exit 1
+assert_contains "$out" "Drift: " "run show reports the drift" || exit 1
+assert_eq true "$(cli run show --json "$pr" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["run"]["finish"]["delete_backups"]))')" "--json gives the approved value" || exit 1
+cli approve "$pr" >/dev/null || fail "approve r again"
+assert_contains "$(cli run show "$pr")" 'delete_backups = false' "approve takes the new value" || exit 1
+case "$(cli status "$pr")" in *Drift:*) fail "no drift after approve";; esac
+# a changed value is a history entry naming section and key, and 1 -> true is a change
+out=$(cli status "$pr")
+assert_contains "$out" "finish delete_backups" "status lists the changed key in the history" || exit 1
+cat >> "${pr%.md}.run.toml" <<'T'
+T
+python3 - "${pr%.md}.run.toml" <<'P'
+import sys, re
+p = sys.argv[1]; t = open(p).read()
+t = re.sub(r"(?ms)^\[run\].*\Z", "", t) + "[run]\nquota = 1\n"
+open(p, "w").write(t)
+P
+cli approve "$pr" >/dev/null || fail "approve quota"
+edit "${pr%.md}.run.toml" 'quota = 1' 'quota = true'
+assert_contains "$(cli status "$pr")" "[run] quota" "1 -> true is drift" || exit 1
+cli approve "$pr" >/dev/null || fail "approve quota true"
+assert_contains "$(cli status "$pr")" "run quota" "the history names run quota" || exit 1
+# a bad file is refused by approve with run check's lines
+edit "${pr%.md}.run.toml" 'how = "merge-request"' 'how = "squash"'
+out=$(cli approve "$pr"); rc=$?
+assert_eq 1 "$rc" "approve refuses a bad run file" || exit 1
+assert_contains "$out" "run-bad-value: [finish] how" "run check's line" || exit 1
+
+# run#required-to-approve: a pre-5.1 plan at building with no run file is adopted
+po="$plans/2026-11-02-pre.md"
+mkp "$po" pre ''
+rm "${po%.md}.run.toml"
+sed -i.bak 's/^Status: draft/Status: building/' "$po"; rm "$po.bak"
+cli approve "$po" >/dev/null || fail "adopt a plan without a run file"
+python3 -c 'import json,sys; assert "run" not in json.load(open(sys.argv[1]))' "${po%.md}.json" || fail "no run recorded"
+
 echo "pipeline.test.sh: ok"

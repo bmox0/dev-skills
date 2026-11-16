@@ -1,0 +1,26 @@
+# The run file: what this run may do, how it checks and ends. Every key of the
+# fixed sections is required, except `dev` and `url`.
+
+[finish]
+how = "merge-request"        # merge-request | ff-only | no-ff
+target = "main"              # the branch the run merges into
+delete_backups = true
+
+[checks]
+phase = ["scripts/check"]    # run by an implementer on its own territory
+full = ["scripts/check", "scripts/test"]
+dev = "npm run dev -- --port {port}"   # optional; {port} and {data_dir} stand for the run's allocation
+url = "http://localhost:{port}"        # optional
+
+[isolation]
+worktree = false
+port = true
+data_dir = true
+
+# Any key with a string, number or boolean value. A secret is written directly
+# or as a pointer, `keychain:<service>/<account>`, which code never resolves.
+[run]
+admin_login = "admin@example.com"
+admin_pwd = "keychain:app/admin"
+can_remove_tasks = false
+quota = 20
