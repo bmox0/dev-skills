@@ -3,7 +3,8 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-spec="$repo_root/skills/spec/spec.py"
+spec=$(mktemp -d)/spec
+printf 'import os, sys\nos.execv(sys.executable, [sys.executable, "%s/skills/build/pipeline.py", "spec", *sys.argv[1:]])\n' "$repo_root" >"$spec"
 
 . "$repo_root/test/lib/harness.sh"
 
@@ -160,7 +161,7 @@ Why: a visit, not a place to stay
   Done: 1' "$out" "TC-5: show" || fail "TC-5 show: $out"
 err=$(python3 "$spec" show card-editor#nope 2>&1 >/dev/null)
 assert_exit 1 "TC-5: unknown rule exits 1" || fail "TC-5 unknown"
-assert_eq "spec.py: no rule card-editor#nope" "$err" "TC-5: unknown message" || fail "TC-5 msg"
+assert_eq "pipeline.py spec: no rule card-editor#nope" "$err" "TC-5: unknown message" || fail "TC-5 msg"
 python3 "$spec" show card-editor >/dev/null 2>&1; assert_exit 1 "TC-5: an area is not a rule" || fail "TC-5 area"
 python3 "$spec" show >/dev/null 2>&1; assert_exit 2 "TC-5: show needs an ID" || fail "TC-5 arg"
 
