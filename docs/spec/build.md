@@ -59,3 +59,47 @@ Why: no migration step to remember, and a plan mid-build goes on where it is; th
 Why: tests carry the rule's ID, which lives only in the plan until `spec write`; a run lost a judge round to it
 
 - Run `brief implementer 2` on a plan with three `## Spec` entries → the file holds `[checks].phase`, every `[run]` key as written with the keychain pointer unresolved, each entry's ID, statement and Done items, and one `Territory:` line.
+
+### checks-by-code — The full checks run in code at the gate and at every re-check, whenever HEAD or the approved checks are new
+
+Why: a round that skipped them reported a red word budget as green
+
+- In a throwaway repo, a `small` plan with every phase done changes one path outside its territories and one under `docs/spec/`. Its `full` holds a passing command, a failing one and one that edits a tracked file. `gate start` → `docs/spec/` is committed alone; the level is `normal`, naming only the outside path; each command shows its exit code, the failing one its output tail, and the editing one is red. Again with no new commit → nothing runs, and the last result prints with its SHA; after a commit → they run.
+
+### level-from-diff — The gate's level is the plan's, raised to normal by any changed path outside the plan's territories other than `docs/spec/`
+
+Why: the level follows from the diff; a slip in this rule once shipped untested
+
+- In a throwaway repo, a `small` plan with every phase done changes one path outside its territories and one under `docs/spec/`. Its `full` holds a passing command, a failing one and one that edits a tracked file. `gate start` → `docs/spec/` is committed alone; the level is `normal`, naming only the outside path; each command shows its exit code, the failing one its output tail, and the editing one is red. Again with no new commit → nothing runs, and the last result prints with its SHA; after a commit → they run.
+
+### findings-recorded — With a plan, the reviewer and the e2e worker record each finding and result through the CLI, and every reader sees them from there
+
+Why: free-text returns drifted in shape, so readers parsed them by guess
+
+- At the gate, record two Defects, a Convention, an Observation and what could not be judged; then Done 1 passed, Done 2 failed, and Done 3 not reached with its need → `status` prints the three lists as review returns them and one line per case as verify does. The one list holds the red check, both Defects and Done 2, nothing else. A result without a capture → refused.
+
+### survivor-to-open — A fix takes every open item of the one list; an item found again after its fix goes to Open and gets no second fix
+
+Why: a second try at the same finding repeats the first; the judge or the user decides it
+
+- `fix start` takes the one list, and `brief fix` holds each item's `file:line` and text. After its commit and report, `fix done` → the full checks run at the new HEAD. Record Done 2 failed again, the first Defect as one the fix took, and a new Defect → the first two go to Open, and the next fix takes only the new one. At code's cap, `fix start` → refused. `status` shows each fix with its items and commits.
+
+### caps-in-code — Code alone caps fixes per check cycle and judge rounds per gate, and stops rounds that stop converging; no cap or threshold appears in prose an agent reads
+
+Why: a number in prose becomes a quota
+
+- Run `scripts/check` and `scripts/test` → both exit 0, and no line in `skills/`, `agents/` or `AGENTS.md` says how many fixes or judge rounds are allowed, or when rounds stop.
+- `fix start` takes the one list, and `brief fix` holds each item's `file:line` and text. After its commit and report, `fix done` → the full checks run at the new HEAD. Record Done 2 failed again, the first Defect as one the fix took, and a new Defect → the first two go to Open, and the next fix takes only the new one. At code's cap, `fix start` → refused. `status` shows each fix with its items and commits.
+- Order judge rounds in one gate → the one past code's cap is stopped: no round opens, and `status` shows the reason. In fresh gates, each sign stops a `verdict round` with its reason: rounds that leave no fewer new notes than they took, until code stops them; a check red, green after a fix, then red again; a cycle's fixes spent with a Defect standing. After a user's round at the human gate, the count starts afresh.
+
+### judge-file-by-code — `<slug>.judge.md` is written once, by code, from the first verdict, with HEAD, a UTC time and the engine
+
+Why: written by hand, its format drifted: time zones, a slug without its date
+
+- `verdict pass` with a decision for each Open entry and Convention and a Prediction → `.judge.md` names the slug, HEAD's SHA, a UTC time ending in `Z` and the engine; a later verdict leaves it byte for byte. A verdict leaving one undecided → refused, naming it.
+
+### notes-in-their-words — Each note keeps its author's words, the user's or the judge's, and code alone numbers notes and rounds
+
+Why: the round's implementer reads the note as it was said
+
+- Record three user notes and mark one `task` → `<slug>.notes.md` lists two under Open and one under Tasks, in the words given, with their causes. `round start` takes the two; after one commit, `round done` → the heading reads ``## Round 1 · `<sha>` ``, and after two commits, `<first>..<last>`. `verdict round` → its notes are recorded with source `judge`, in the judge's words.
