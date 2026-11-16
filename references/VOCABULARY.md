@@ -14,12 +14,20 @@ code, and never edits code.
 one phase, a list of findings, or a round's notes.
 
 **Worker.** A Sonnet subagent for a side job: facts from the code, a
-prototype, checks, e2e. The **spec scout** reads `docs/spec/` at the start of
+prototype, e2e. The **spec scout** reads `docs/spec/` at the start of
 the grill and returns the rules the task touches, with reasons and contradictions.
 
 **Reviewer.** The `reviewer` agent: Opus first, then Sonnet.
 
 ## The work
+
+**Run file.** `<slug>.run.toml`, written before the plan with
+`dev-skills:run-file`: what the run may do, its checks and how it ends, asked
+once. `approve` needs it.
+
+**CLI.** `skills/build/pipeline.py`: keeps each plan's state, renders the plan,
+notes, judge file and gate page, runs the checks, holds the caps, lands and
+finishes as the run file says. Agents decide; it manages.
 
 **Plan.** The file a change is built from, always written, one screen: Result,
 Approach, Out of scope, Phases, Checks, Done, Spec, and the prototype's link. Its
@@ -34,8 +42,7 @@ by side.
 
 **Graph.** The phases and what each waits for; every phase whose dependencies
 are met starts at once. The plan file is also the **registry**: each phase
-carries its status, `waiting`, `in progress` or `done`, kept by the
-orchestrator.
+carries its status, `waiting`, `in progress` or `done`, kept through the CLI.
 
 **Ruling.** What an implementer decided alone where the plan and the code
 disagreed: what, why, the cost if wrong. The human gate page shows them.
@@ -57,8 +64,8 @@ on the phase's own territory while other phases run.
 
 **The E2E gate.** After the last phase, at the level the plan names, small or
 normal: the full checks, then a review and e2e over Done at once. Their
-findings make one list for one new implementer, then a targeted re-check; two
-fixes at most. Before the gate and each re-check the build runs `pipeline.py spec write`
+findings make one list for one new implementer, then a targeted re-check. Code
+runs the checks and holds the caps. Before the gate and each re-check the build runs `pipeline.py spec write`
 and commits `docs/spec/` alone; the review reads the rules of the `Spec:` areas.
 
 **The judge.** The `judge` agent, Opus, after the E2E gate. It finds nothing

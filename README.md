@@ -18,28 +18,34 @@ is shorter; none is skipped, and every plan ends in a human gate.
    words, and the plan's writer records it.
 2. **Prototype.** Offered after the entry; you pick the shape or decline: an
    HTML file, inside the app with real data, or code. A worker draws it.
-3. **Plan.** Always a file, one screen: Result, Approach, Out of scope, Phases,
+3. **Run file and plan.** First the run file (`<slug>.run.toml`,
+   [`run-file`](skills/run-file/SKILL.md)): what the run may do, its checks, its
+   isolation and how it ends, asked once so nothing pulls you in mid-run. Then
+   the plan, always a file, one screen: Result, Approach, Out of scope, Phases,
    Checks, Done, `## Spec` (the rules added, changed, removed) and the prototype's
    link, in the language named by the `Language` line of your `AGENTS.md`; `pipeline.py spec check` runs before you see it. Each phase names its territory, the
    skills its code follows, the spec files it reads, and what it waits for; territories and waits form
-   the graph. Status runs `draft` →
+   the graph. `pipeline.py approve` compiles the plan into its state, a JSON
+   file beside it; from then on the CLI keeps the state and renders the plan,
+   its notes, the judge's file and the gate page from it. Status runs `draft` →
    `approved` → `building` → `at the human gate` → `passed` → `merged`, via
    `a merge-request link` when finish opens one. The plan session sets
-   `approved` itself and starts the build at once, unless the session's brief
-   names a command to run first.
+   `approved` itself, only with a run file that passes its check, and starts
+   the build at once, unless the session's brief names a command to run first.
 4. **Build.** One branch and one working tree per plan: this one, or a
    worktree when another plan is building here. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it. Before the gate and
    each re-check, `pipeline.py spec write` runs and `docs/spec/` is committed alone.
-5. **The E2E gate.** At the level the plan names, small or normal: the
-   full checks, then at once a fresh review against the project's rules (and the `Spec:` areas' rules) and
+5. **The E2E gate.** At the level the plan names, small or normal: code runs
+   the full checks, then at once a fresh review against the project's rules (and the `Spec:` areas' rules) and
    e2e over what you would not see by trying the app, at each width the plan
-   names. Defects and failures make one list for one new implementer, then a
-   targeted re-check; two fixes at most. Then a judge, a fresh Opus context: it
-   re-runs nothing, decides every open entry and every Convention (let
-   through, one round with a cause, or a question to you), writes its
-   prediction of your verdict, and lands the branch: the working commits
+   names. Code records the findings and results; defects and failures make one
+   list for one new implementer, then a targeted re-check. How many fixes and
+   rounds a gate allows is held in code, not here. Then a judge, a fresh Opus
+   context: it re-runs nothing, decides every open entry and every Convention
+   (let through, one round with a cause, or a question to you), records its
+   verdict and its prediction of your verdict, and lands the branch: the working commits
    become the ones a reviewer reads, one or a few by meaning, on the same tree;
    a backup branch keeps the old ones.
 6. **The human gate.** One page: what was decided without you, what is still
@@ -51,9 +57,9 @@ is shorter; none is skipped, and every plan ends in a human gate.
    the approach is listed as a task, not built. A round runs on your word,
    then the judge again (it lands) and back to the gate.
 7. **Finish.** On your word at the gate ("ок, в МР"), typed or plain. It asks
-   for what you did not say: a merge request, or local with `--no-ff` or
-   `--ff-only`, and the message. After the merge it offers to delete the
-   plan's backups; the branch stays.
+   nothing: the run file says how it ends (a merge request, or local with
+   `--no-ff` or `--ff-only`) and whether the plan's backups go; the message
+   comes from the plan's Result. The branch stays.
 
 The drawing: [docs/pipeline.html](docs/pipeline.html).
 
@@ -89,7 +95,7 @@ written, with no "go".
   phases reported. When the plan and the code disagree, it rules, carries on,
   and records the ruling with its cost if wrong.
 - **Workers** are Sonnet subagents for side jobs: facts from the code, the
-  rules the task touches (the spec scout), a prototype, the full checks, e2e.
+  rules the task touches (the spec scout), a prototype, e2e.
 - **The reviewer** is the [`reviewer`](agents/reviewer.md) agent: Opus for the
   first review of a plan's branch and for a range you name, Sonnet for the
   re-check and every later round.
@@ -102,8 +108,20 @@ reasoning effort `high` where Claude Code uses Sonnet and `xhigh` for the first
 review and the judge. The skills name Claude Code's tools;
 [`references/CODEX.md`](references/CODEX.md) says what each one is in Codex.
 
-The plugin ships no hooks. The pipeline lives in the skills' text, with
-two tools beside it: `skills/build/pipeline.py` and `skills/browser-test/tab.mjs`; the level-1 checks are the project's own tests, linters and typechecks.
+The state lives in code. `skills/build/pipeline.py` (the CLI) keeps each plan's
+state and the run file's approved values, renders the plan and the gate page,
+runs the checks, holds the caps, and lands and finishes as the run file says;
+the skills and agents decide what to do with what it reports. The other tool is
+`skills/browser-test/tab.mjs`; the level-1 checks are the project's own tests,
+linters and typechecks.
+
+The plugin's hooks only advise, in both hosts: none blocks a tool or reads a
+shell command. When a session starts, resumes or is compacted, the agent gets
+`status` of each plan from `building` to `passed`. After an edit of a compiled
+plan's rendered or state file, it is told which `pipeline.py` command makes that
+change. In Claude Code the hooks run once the plugin is enabled. In Codex you
+trust them, and again after every plugin update. Untrusted or off, they change
+no run: only the advice is lost.
 
 ## The project's side
 
@@ -206,7 +224,7 @@ skills Codex shows its model: all of them
 ([`scripts/check-codex.py`](scripts/check-codex.py)).
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
-plugin's shape — TC-13 pins the shape itself (no hooks, no `scripts/` under `skills/`,
+plugin's shape — TC-13 pins the shape itself (hooks that only advise, no `scripts/` under `skills/`,
 Sonnet implementers, an Opus reviewer and judge, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
 `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 

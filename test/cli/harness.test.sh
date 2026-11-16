@@ -161,7 +161,7 @@ for cmd in 'CLI gate start' 'CLI brief judge' 'CLI round start' 'CLI note add'; 
 done
 grep -qF 'CLI verdict' "$repo_root/skills/build/references/judge.md" \
   || fail "TC-13: the judge reference should record through \`CLI verdict\`"
-caps_out=$(cd "$repo_root" && grep -rniE 'two fixes at most|one round per gate|fix [12]\b' skills agents AGENTS.md 2>/dev/null)
+caps_out=$(cd "$repo_root" && grep -rniE --exclude-dir=archive 'two fixes at most|one round per gate|fix [12]\b' skills agents AGENTS.md README.md references docs 2>/dev/null)
 [ -z "$caps_out" ] || fail "build#caps-in-code: TC-13: no cap in prose an agent reads, found: $caps_out"
 plugin_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.claude-plugin/plugin.json")
 market_versions=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["metadata"]["version"], d["plugins"][0]["version"])' "$repo_root/.claude-plugin/marketplace.json")

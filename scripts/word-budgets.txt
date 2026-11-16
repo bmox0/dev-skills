@@ -7,7 +7,7 @@ agents/implementer.md 482
 agents/judge.md 100
 agents/reviewer.md 100
 references/CODEX.md 400
-references/VOCABULARY.md 640
+references/VOCABULARY.md 705
 skills/browser-test/SKILL.md 1100
 skills/browser-test/references/WEBSOCKETS.md 300
 skills/bug/SKILL.md 455
