@@ -5,9 +5,9 @@ description: Use when one finished task, built outside the pipeline, has to leav
 
 # Spec
 
-The project's rules live in `docs/spec/`, one file per area, each rule with its reason and its scenarios. `spec.py` writes them from a plan-shaped file; the grammar and the commands are in [`FORMAT.md`](references/FORMAT.md). A rule is changed through a plan or this skill, never by hand. The pipeline (`grill`, `plan` and `build`) calls `spec.py` itself; this skill's standalone mode is for work done outside it.
+The project's rules live in `docs/spec/`, one file per area, each rule with its reason and its scenarios. `pipeline.py spec` writes them from a plan-shaped file; the grammar and the commands are in [`FORMAT.md`](references/FORMAT.md). A rule is changed through a plan or this skill, never by hand. The pipeline (`grill`, `plan` and `build`) calls `pipeline.py spec` itself; this skill's standalone mode is for work done outside it.
 
-The script is called as `python3 "<this skill's directory>/spec.py"`. `<this skill's directory>` is the folder this `SKILL.md` sits in: Claude Code gives it as the skill's base directory, Codex in its skill list.
+The CLI is called as `python3 "<this skill's directory>/../build/pipeline.py" spec`. `<this skill's directory>` is the folder this `SKILL.md` sits in: Claude Code gives it as the skill's base directory, Codex in its skill list.
 
 ## Reading the rules
 

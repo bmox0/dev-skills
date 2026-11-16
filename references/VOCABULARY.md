@@ -58,7 +58,7 @@ on the phase's own territory while other phases run.
 **The E2E gate.** After the last phase, at the level the plan names, small or
 normal: the full checks, then a review and e2e over Done at once. Their
 findings make one list for one new implementer, then a targeted re-check; two
-fixes at most. Before the gate and each re-check the build runs `spec.py write`
+fixes at most. Before the gate and each re-check the build runs `pipeline.py spec write`
 and commits `docs/spec/` alone; the review reads the rules of the `Spec:` areas.
 
 **The judge.** The `judge` agent, Opus, after the E2E gate. It finds nothing

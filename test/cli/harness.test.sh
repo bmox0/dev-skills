@@ -220,8 +220,8 @@ while IFS= read -r v; do
     draft)                  tr '\n' ' ' < "$plan_skill" | grep -q 'written with Status `draft`' ;;
     approved)               grep -q 'Status to `approved`' "$plan_skill" ;;
     building)               grep -q '`building`' "$build_skill" ;;
-    "at the human gate")    grep -q 'Status to `at the human gate`' "$build_skill" ;;
-    passed)                 grep -q 'Status to `passed`' "$build_skill" ;;
+    "at the human gate")    grep -q 'plan status <plan> "at the human gate"' "$build_skill" ;;
+    passed)                 grep -q 'plan status <plan> passed' "$build_skill" ;;
     "a merge-request link") grep -q 'a merge-request link' "$finish_skill" ;;
     merged)                 grep -q 'Status to `merged`' "$finish_skill" ;;
     *) false ;;
@@ -238,9 +238,9 @@ phase_statuses=$(grep -m1 -- '<n>\. <task>' "$plan_skill" \
 while IFS= read -r v; do
   [ -n "$v" ] || continue
   case "$v" in
-    "in progress") grep -qi 'mark it `in progress`' "$build_skill" ;;
-    done)          grep -qi 'mark it `done`' "$build_skill" ;;
-    waiting)       grep -qi 'mark it `waiting`' "$build_skill" ;;
+    "in progress") grep -q 'CLI phase start <plan> <n>' "$build_skill" ;;
+    done)          grep -q 'CLI phase done <plan>' "$build_skill" ;;
+    waiting)       grep -q 'CLI status <plan>` names the phases that are ready' "$build_skill" ;;
     *) false ;;
   esac || fail "TC-14: skills/plan/SKILL.md's phase status list names \`$v\`, but skills/build/SKILL.md never sets it"
 done <<EOF

@@ -113,14 +113,14 @@ too, usually `none`.
   other. An interface is written out only where two phases meet.
 - A bug: phase 1 starts from the red test that reproduces it. A refactor, or an
   improvement with tests: phase 1 pins today's behaviour with tests.
-- Under an epic, an `Epic: <path>` line follows Status; the epic's decisions are
+- Under an epic, an `Epic: <path> · row <n>` line follows Status; the epic's decisions are
   not repeated.
 
 ## Handing it over
 
 Before showing it:
 
-- **The spec.** Run `python3 "<this skill's directory>/../spec/spec.py" check
+- **The spec.** Run `python3 "<this skill's directory>/../build/pipeline.py" spec check
   <plan>` until it is silent; before build writes the Status base, pass
   `--base <default branch>`.
 - **What e2e cannot do.** A Done use case e2e cannot reach with the project's
@@ -129,12 +129,13 @@ Before showing it:
   What e2e needs from the user goes in the message that starts the build, which does not wait.
 - **The gate level** goes into Checks, from the table in
   [gate.md](../build/references/gate.md).
-- **Other plans** from `building` to `passed` whose territories overlap
-  this one's are named.
 
-Show the path, the Result, and in one line the graph, the level and the word
-count (`1 → 2 ∥ 3 · normal · 1100 words`). Set Status to `approved`, with the branch
-named; build writes the base when it cuts it. Then start `dev-skills:build
+Run `python3 "<this skill's directory>/../build/pipeline.py" approve <plan>` until
+it passes. It checks the shape, sets Status to `approved` with the branch named
+(build writes the base when it cuts it) and prints the plans from `building` to
+`passed` whose territories overlap this one's, then the graph, the level and the
+word count. Show the path, the Result and what `approve` printed (`1 → 2 ∥ 3 ·
+normal · 1100 words`). Then start `dev-skills:build
 <plan>` at once: here for a small task, a new session for anything bigger, as the
 user chooses. A brief that names a command to
 run first: run it, build on the message it brings.

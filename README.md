@@ -20,7 +20,7 @@ is shorter; none is skipped, and every plan ends in a human gate.
    HTML file, inside the app with real data, or code. A worker draws it.
 3. **Plan.** Always a file, one screen: Result, Approach, Out of scope, Phases,
    Checks, Done, `## Spec` (the rules added, changed, removed) and the prototype's
-   link, in the language named by the `Language` line of your `AGENTS.md`; `spec.py check` runs before you see it. Each phase names its territory, the
+   link, in the language named by the `Language` line of your `AGENTS.md`; `pipeline.py spec check` runs before you see it. Each phase names its territory, the
    skills its code follows, the spec files it reads, and what it waits for; territories and waits form
    the graph. Status runs `draft` →
    `approved` → `building` → `at the human gate` → `passed` → `merged`, via
@@ -31,7 +31,7 @@ is shorter; none is skipped, and every plan ends in a human gate.
    worktree when another plan is building here. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it. Before the gate and
-   each re-check, `spec.py write` runs and `docs/spec/` is committed alone.
+   each re-check, `pipeline.py spec write` runs and `docs/spec/` is committed alone.
 5. **The E2E gate.** At the level the plan names, small or normal: the
    full checks, then at once a fresh review against the project's rules (and the `Spec:` areas' rules) and
    e2e over what you would not see by trying the app, at each width the plan
@@ -102,7 +102,7 @@ review and the judge. The skills name Claude Code's tools;
 [`references/CODEX.md`](references/CODEX.md) says what each one is in Codex.
 
 The plugin ships no hooks. The pipeline lives in the skills' text, with
-two tools beside it: `skills/spec/spec.py` and `skills/browser-test/tab.mjs`; the level-1 checks are the project's own tests, linters and typechecks.
+two tools beside it: `skills/build/pipeline.py` and `skills/browser-test/tab.mjs`; the level-1 checks are the project's own tests, linters and typechecks.
 
 ## The project's side
 

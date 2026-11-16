@@ -202,7 +202,7 @@ text(36, cy + 14, `<div class="card"><h3 class="orange">The plan — always a fi
   <ul><li>what to build and why · what becomes true</li><li>its <b>territory</b>: what it changes · what it waits for</li><li>its <b>skills</b>: the project's and global ones its code follows</li><li>a status: waiting, in progress, done</li></ul>
   <div class="k">CHECKS</div><p>level-1 commands per phase; the full commands, the review, how e2e drives the system; the gate’s level</p>
   <div class="k">DONE</div><p>the use cases: do this → see that</p>
-  <div class="k">SPEC</div><p>the rules added, changed, removed; a Spec: line per phase; the grill’s spec scout brings them; spec.py check before you see it</p>
+  <div class="k">SPEC</div><p>the rules added, changed, removed; a Spec: line per phase; the grill’s spec scout brings them; pipeline.py spec check before you see it</p>
   <div class="k">AND</div><p>a link to the prototype · no file lists beyond territories, no code, no mechanisms</p></div>`, '', 600);
 
 rect(680, cy, 640, 580, 'teal', { fill: '#16222a', sw: 1.8, r: 16 });
@@ -210,7 +210,7 @@ text(702, cy + 14, `<div class="card"><h3 class="teal">Three levels of checks</h
   <div class="k">1 · INSIDE A PHASE (4) — the fastest</div>
   <ul><li>TDD, linters, typechecks, the project’s own scripts, as the plan’s Checks says</li><li>while a wave runs: only its own territory</li><li>its own findings: it fixes them itself</li><li>a plan-vs-code conflict: it rules, carries on, records the ruling</li></ul>
   <div class="k">2 · THE E2E GATE (5) — the main one</div>
-  <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases, at each width the plan names</li><li>before the gate: spec.py write, docs/spec/ committed alone; the review reads the Spec: areas’ rules</li><li>one list → one new implementer → re-check only what it touched</li><li>then the judge, a fresh Opus context: decides every open entry and Convention, writes its prediction, lands</li><li>at the plan’s level — small or normal; two fixes at most</li></ul>
+  <ul><li>the full project checks at the quiet point</li><li>a fresh review against the project’s rules ∥ e2e by the Done use cases, at each width the plan names</li><li>before the gate: pipeline.py spec write, docs/spec/ committed alone; the review reads the Spec: areas’ rules</li><li>one list → one new implementer → re-check only what it touched</li><li>then the judge, a fresh Opus context: decides every open entry and Convention, writes its prediction, lands</li><li>at the plan’s level — small or normal; two fixes at most</li></ul>
   <div class="k">3 · THE HUMAN GATE (6) — you try it, then read it</div>
   <ul><li>only checked and tested work reaches it</li><li>each note gets a cause and is matched against the judge’s prediction; a round starts on your word</li></ul></div>`, '', 600);
 

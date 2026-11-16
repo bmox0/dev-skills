@@ -13,60 +13,62 @@ Sonnet workers check it.
 
 ## 1. The branch
 
-Read the plan, its epic, and the project's `AGENTS.md` or `CLAUDE.md`, and the
-other plans from `building` to `passed`: a territory this plan shares with one
-is named to the user in a line.
+Read the plan, its epic, and the project's `AGENTS.md` or `CLAUDE.md`.
+`CLI` is `python3 "<this skill's directory>/pipeline.py"`; every status, the
+base and the epic's row change through it, never by hand. `CLI status` lists
+the other plans from `building` to `passed`: a territory this plan shares with
+one is named to the user in a line.
 
-Cut the branch named on the plan's Status line from the default branch with
-plain git: here on a clean tree; when another plan's branch is checked out
-here, in a worktree of its own (`git worktree add ../<repo>-<slug> -b <branch>
-<default>`). Write the base SHA and `building` on the Status line; under an
-epic, its row gets `building` too. Every phase commits to this branch, in that
-one tree. From a worktree, hand every implementer, worker and judge its path; the
-plan, its notes and the rest of `.ai-workflow/` stay in the main tree, and the
-app runs from the worktree on a port of its own.
+Run `CLI build start --base <ref> [--worktree <path>] <plan>`. You name the
+base, which is not always the default branch. It reports the checked-out
+branch and a dirty tree as facts: when another plan's branch is checked out
+here, pass a worktree of its own. Every phase commits to this branch, in that one tree.
+From a worktree, hand every implementer, worker and judge its path; the plan,
+its notes and the rest of `.ai-workflow/` stay in the main tree, and the app
+runs from the worktree on a port of its own.
 
-Resuming: switch to the branch, or its worktree in `git worktree list`; the
-statuses in the plan and `git log <base>..HEAD` say what's done.
+Resuming: `CLI status <plan>` prints the branch and the tree it lives in; work there.
 
 ## 2. The graph
 
-The plan file is the registry. Mark it `waiting`; start every phase whose
-Waits for is done, all at once, each a `dev-skills:implementer` in the
-background, handed the plan's path, its phase, and what earlier phases
-reported. Mark it `in progress`; when its report comes in, mark it `done` and
-start what it unblocks.
+`CLI status <plan>` names the phases that are ready. Per ready phase, all at
+once: `CLI phase start <plan> <n>`, then `CLI brief implementer <plan> <n>`,
+and a `dev-skills:implementer` in the background whose prompt is the path it
+prints. To go against a fact the CLI reports, pass `--note` with your reason; it
+reaches the gate page. When an implementer finishes, `CLI phase done <plan>
+<n>` checks its report and commits and prints what is ready next; a failure
+goes back to the implementer as printed.
 
 - **Messages go through you.** An implementer writes to you for a file outside
   its territory, or a product call the plan does not hold, and carries on
-  meanwhile. Grant the file when no running phase owns it, or pass it to the
-  phase that does. Answer a product call yourself, from the plan, its epic and
-  what the user said, and tell the user in a line; only an irreversible one,
-  deleting data, sending outside, production, waits for the user, whose answer
-  goes on in their words. Answer with `SendMessage`. No git running: clear a
-  stuck `index.lock`.
-- **A changed interface** a later phase uses goes into that phase's hand-off.
-- **Decided without you**, kept for the human gate page: the product calls you
-  answered and the rulings; each with the question as asked and where it came
-  from, the answer, why, and the cost if wrong.
+  meanwhile. `CLI owner <plan> <path>` names who holds a path: when no one
+  does, `CLI grant <plan> <n> <path>`; otherwise pass the question to that
+  phase. Answer a product call yourself, from the plan, its epic and what the
+  user said, and tell the user in a line; only an irreversible one, deleting
+  data, sending outside, production, waits for the user, whose answer goes on
+  in their words. Answer with `SendMessage`, and record it with `CLI decision`.
+  No git running: clear a stuck `index.lock`.
+- **Decided without you**: rulings and calls are `CLI decision` records, which
+  `CLI status <plan>` lists for the human gate page.
 
 ## 3. The E2E gate
 
 When every phase is done, before every re-check, and before the review of a
-round, run `python3 "<this skill's directory>/../spec/spec.py" write <plan>` (the grammar
+round, run `CLI spec write <plan>` (the grammar
 is in the `spec` skill's `references/FORMAT.md`) in the plan's branch tree, its worktree when
 there is one, never the main tree of another branch, and commit `docs/spec/`
 alone with plain git: a script's output, not code. When
 nothing changed there is nothing to commit; `git commit` exiting 1 is no
 failure. A refusal naming the plan is yours to fix in its `## Spec`; a stale
-base, by the Status line's base or `--base $(git merge-base <default> HEAD)`;
+base, by the base `CLI status` shows or `--base $(git merge-base <default> HEAD)`;
 one naming `docs/spec/` is a finding.
 
 Then run the gate at the level the plan's Checks names, by
 [gate.md](references/gate.md); read it then, not before.
 
-Then a fresh `dev-skills:judge` ([judge.md](references/judge.md)), handed what
-it lists for its case, and whether a judge round ran. It returns:
+Then a fresh `dev-skills:judge` ([judge.md](references/judge.md)): put its
+case and what judge.md lists for it in `CLI brief judge --note "<…>" <plan>`,
+and the prompt is the path it prints. It returns:
 
 - `pass: <path>` and its report: the branch is landed. Go to 4.
 - `round: <note — cause>`: each an open note; run the round
@@ -81,7 +83,7 @@ it lists for its case, and whether a judge round ran. It returns:
 
 ## 4. The human gate
 
-Set Status to `at the human gate`, write one page under the plan's
+Run `CLI plan status <plan> "at the human gate"`, write one page under the plan's
 `## Human gate` above `land`'s `### The commits`, and put it in front of the
 user, who tries the running app and reads the commits; from a worktree, say
 how to run it there. In this order:
@@ -95,7 +97,7 @@ how to run it there. In this order:
    since. The `you check` ones last, with any capture e2e took.
 4. **The commits**, which `land` wrote.
 
-The user's word of approval sets Status to `passed`; `dev-skills:finish` runs
+The user's word of approval: `CLI plan status <plan> passed`; `dev-skills:finish` runs
 on that word, or on the next.
 
 ## 5. Notes and rounds
@@ -108,4 +110,5 @@ write its source against `<slug>.judge.md`'s Prediction when its line is built. 
 the approach or leaves the plan's territories is proposed as `task`; once the
 user confirms, it is listed, not built. A round, on the user's word, builds
 every open note or a conflict at `finish` like a phase (reviewer on Sonnet),
-then the judge on the round's notes and re-check, as [judge.md](references/judge.md) lists, which lands, and back to the gate.
+then the judge on the round's notes and re-check, as [judge.md](references/judge.md) lists, dispatched through `CLI brief judge --note` like every judge, which lands, and back to the gate.
+A fix implementer has no brief: its final message holds its report and rulings, and you record each ruling with `CLI decision --by implementer`.

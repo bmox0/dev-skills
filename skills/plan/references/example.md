@@ -1,6 +1,6 @@
 # Plan: Rebind keyboard shortcuts in Settings
 
-A worked example: the territories and commands are made up. It passes `spec.py check`.
+A worked example: the territories and commands are made up. It passes `pipeline.py spec check`.
 
 Status: approved · branch `feat/shortcut-rebinding` · base `a1b2c3d`
 Prototype: `.ai-workflow/prototypes/2026-09-26-settings-shortcuts.html`, variant B

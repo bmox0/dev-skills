@@ -20,7 +20,7 @@ Run the interview in [INTERVIEW.md](references/INTERVIEW.md).
   Keep asking the questions that do not wait on it.
 - **The rules come first.** At the start a second worker, a Sonnet subagent,
   reads `docs/spec/` (`list`, the area files, `show` of a rule, through the
-  `python3 "<this skill's directory>/../spec/spec.py"`, resolved to a path for the
+  `python3 "<this skill's directory>/../build/pipeline.py" spec`, resolved to a path for the
   worker; grammar in the `spec` skill's `references/FORMAT.md`) and returns
   the rules the task touches, each with its reason and any contradiction: with
   the task, between rules, with the code or an ADR. None is a normal answer.
