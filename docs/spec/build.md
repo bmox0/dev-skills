@@ -103,3 +103,11 @@ Why: written by hand, its format drifted: time zones, a slug without its date
 Why: the round's implementer reads the note as it was said
 
 - Record three user notes and mark one `task` → `<slug>.notes.md` lists two under Open and one under Tasks, in the words given, with their causes. `round start` takes the two; after one commit, `round done` → the heading reads ``## Round 1 · `<sha>` ``, and after two commits, `<first>..<last>`. `verdict round` → its notes are recorded with source `judge`, in the judge's words.
+
+### page-from-records — The human gate page is rendered from the records; Open holds only what is still open, and each result, check run and verdict not taken on the tip's tree is flagged with the paths changed since
+
+Why: hand-written pages carried a stale item and an Open already decided
+
+- After a land, on a plan ending `no-ff`: `page --note "<…>"` without `--message` → refused; with one → Status `at the human gate`, and `## Human gate` holds in order the note, ending and message; Decided without you with costs; Open with each verdict and its decisions, no Prediction, a survivor, a case not reached with its need, an Observation; E2E with the level, the raising path, each Done case's result and commit, `you check` last; the commits. Before a land → refused.
+- A result taken before a later fix → flagged with its commit; one on the pre-land head → not flagged; one with no commit → flagged as unknown. A hand edit to the page → drift. A hand-written `## Human gate` with no land → byte for byte after `plan status`.
+- A gate whose Conventions a round closed, then a pass → `### Open` holds only what is undecided, let through, survived its fix or not reached, and the last verdict's report; each closed item shows once, under the fix or round that closed it; no verdict's decisions repeat as findings; `status` marks each finding with the cycle that closed it. A flagged result names the paths changed between its tree and the tip's.
