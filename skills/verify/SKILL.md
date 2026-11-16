@@ -12,15 +12,18 @@ each run, that follows the steps below, and reads only its lines. It drives
 what the user will see at the human gate.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e
-drives the system and where it runs (the plan's Checks, the project's
-`AGENTS.md` or `CLAUDE.md`); the prototype when the plan links one.
+drives the system and where it runs (the plan's Checks, and the plan's run
+file through `python3 "<this skill's directory>/../build/pipeline.py" run show
+<plan>`; without a plan, the project's `AGENTS.md` or `CLAUDE.md`); the prototype when the plan links one.
 
 1. **Find the running system.** If the user's dev instance of the tree you were
    handed is up, use it; never start a second one or restart theirs. If none
-   is up, start it as the project says, on a port of its own in a worktree, and
-   stop it when done. The project's Environment block, its Access and Devices
-   lines included, is all you set up: what it does not cover is
-   `not reached: needs <what>`.
+   is up, start it with the run file's `dev`, on the port and data directory `run show`
+   gives, and stop it when done. The run file's `[run]` keys and `[checks]` are
+   all you set up. A login, a secret or a permission comes only from them, never
+   the code or a `.env`; without one: `not reached: needs <what>`.
+   Without a plan, the project's Environment block, its Access and Devices
+   lines included, is all you set up.
 2. **Drive each use case** as a user would: a web app through
    `dev-skills:browser-test`, all of them as one scenario in the window the
    user watches; iOS through the simulator's MCP server, a backend with curl, a

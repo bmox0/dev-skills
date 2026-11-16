@@ -61,10 +61,11 @@ The drawing: [docs/pipeline.html](docs/pipeline.html).
 
 | You type | It does |
 |---|---|
-| [`grill`](skills/grill/SKILL.md), or just talk | reach a shared understanding; then a prototype is offered, then the plan |
+| [`grill`](skills/grill/SKILL.md), or just talk | reach a shared understanding; then a prototype is offered, then the run file, then the plan |
 | [`bug`](skills/bug/SKILL.md) | a worker reproduces it and brings the cause; the red test becomes phase 1 |
 | [`prototype`](skills/prototype/SKILL.md) | a throwaway answer to a design question, drawn by a worker |
 | [`epic`](skills/epic/SKILL.md) | several plans in order, only when you say so |
+| [`run-file`](skills/run-file/SKILL.md) | what the run may do, its checks and how it ends, asked once before the plan |
 | [`plan`](skills/plan/SKILL.md) | the one-screen plan and its graph |
 | [`build <plan>`](skills/build/SKILL.md) | the branch, the implementers, the E2E gate, the judge, the human gate |
 | [`land`](skills/land/SKILL.md) | the commits a reviewer reads; the judge runs it |
@@ -176,6 +177,7 @@ install the same skills.
 | [`prototype`](skills/prototype/SKILL.md) | answer a design question with throwaway code |
 | [`retro`](skills/retro/SKILL.md) | propose environment changes after a plan, each with what it removes |
 | [`review`](skills/review/SKILL.md) | the code half of the E2E gate, or a review of any range |
+| [`run-file`](skills/run-file/SKILL.md) | what the run may do, its checks and how it ends, asked once before the plan |
 | [`spec`](skills/spec/SKILL.md) | the project's rules in `docs/spec/`: the pipeline's grill, plan and build call it; alone, write one task's rules built outside the pipeline, list and show them |
 | [`tdd`](skills/tdd/SKILL.md) | red before green, read by the implementer |
 | [`verify`](skills/verify/SKILL.md) | the e2e half of the E2E gate: drive the Done use cases |

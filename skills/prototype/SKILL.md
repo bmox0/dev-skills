@@ -44,3 +44,4 @@ elsewhere.
 4. **Capture the answer.** The user picks; the plan's Prototype line gets the
    path and the chosen variant. The worker takes in-app prototype code out of
    the tree; the build writes the real thing.
+5. **Then the run file:** `dev-skills:run-file`, before the plan.

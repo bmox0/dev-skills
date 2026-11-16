@@ -3,7 +3,8 @@
 A plan's Checks names the commands each phase runs, the full commands run after
 all phases, and how e2e drives the system. They come from one block in the
 project's `AGENTS.md` or `CLAUDE.md`, stated once so that no plan has to
-discover them:
+discover them. It fills a first run file's `[checks]`; later runs copy the last
+run file, and the run file is what plan and verify read:
 
 ```markdown
 ## Environment

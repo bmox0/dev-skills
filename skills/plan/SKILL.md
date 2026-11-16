@@ -34,18 +34,20 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   outside this repository that a decision points at gets its path. The same
   worker lists the areas in `docs/spec/` (`list`) and matches them to each
   territory by the area's description, as skills are.
-- Checks takes the project's commands from its `AGENTS.md` or `CLAUDE.md`:
-  [environment-contract.md](references/environment-contract.md).
+- The run file exists, `.ai-workflow/plans/YYYY-MM-DD-<slug>.run.toml`
+  (`dev-skills:run-file`); if not, write it first. The plan takes its name with
+  `.md`. `approve` refuses a draft without a sound one.
+- Checks takes its commands from the run file's `[checks]`, read with
+  `python3 "<this skill's directory>/../build/pipeline.py" run show <plan>`;
+  the Environment block of `AGENTS.md` or `CLAUDE.md` fills only what the run
+  file lacks: [environment-contract.md](references/environment-contract.md).
 - The plan is written in the project's language, found by the Language line in
   [environment-contract.md](references/environment-contract.md). The conversation and the gate
   page stay in the user's language.
 
 ## The file
 
-`.ai-workflow/plans/YYYY-MM-DD-<slug>.md`, where `<slug>` is the slug of the
-branch the plan will be built on. If `git check-ignore -q .ai-workflow` fails,
-add `.ai-workflow` to `$(git rev-parse --git-path info/exclude)`. It is written
-with Status `draft`. A worked example: [example.md](references/example.md).
+The run file's name with `.md`. It is written with Status `draft` and base `—`; build writes the SHA. A worked example: [example.md](references/example.md).
 
 ```markdown
 # Plan: <what the user gets, in a few words>
@@ -121,12 +123,12 @@ too, usually `none`.
 Before showing it:
 
 - **The spec.** Run `python3 "<this skill's directory>/../build/pipeline.py" spec check
-  <plan>` until it is silent; before build writes the Status base, pass
-  `--base <default branch>`.
-- **What e2e cannot do.** A Done use case e2e cannot reach with the project's
-  Environment block, its Access and Devices lines included, or one judged by
+  <plan> --base <default branch>` until it is silent.
+- **What e2e cannot do.** A Done use case e2e cannot reach with what the run file
+  gives (`[run]` keys, `[checks].dev` and `url`, `[isolation]`), or one judged by
   its look alone, is marked `you check`: the user checks it at the human gate.
-  What e2e needs from the user goes in the message that starts the build, which does not wait.
+  What e2e needs goes in the run file's `[run]` keys, through
+  `dev-skills:run-file`; what the file lacks is `you check`.
 - **The gate level** goes into Checks, from the table in
   [gate.md](../build/references/gate.md).
 
