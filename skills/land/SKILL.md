@@ -56,5 +56,5 @@ one; the Status stays as it is. Build writes the rest of the page above it.
    `git range-diff <base> <the last landed tip> HEAD`, the only part to reread.
 2. **The commits**, each with its message and a walkthrough in 2–5 lines:
    what changed, where, why. The change is `git log -p <base>..<branch>`.
-3. **The E2E gate's fixes**: what Fix 1 and Fix 2 fixed; the backup keeps
+3. **The E2E gate's fixes**: what the gate's fixes changed; the backup keeps
    their commits.

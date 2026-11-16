@@ -14,10 +14,10 @@ skills/bug/SKILL.md 455
 skills/bug/references/condition-based-waiting.md 325
 skills/bug/references/defense-in-depth.md 300
 skills/bug/references/root-cause-tracing.md 325
-skills/build/SKILL.md 1042
-skills/build/references/gate.md 359
-skills/build/references/judge.md 700
-skills/build/references/rounds.md 660
+skills/build/SKILL.md 1000
+skills/build/references/gate.md 310
+skills/build/references/judge.md 600
+skills/build/references/rounds.md 570
 skills/commit-work/SKILL.md 300
 skills/commit-work/references/commit-message-template.md 700
 skills/domain-modeling/SKILL.md 650
@@ -42,7 +42,7 @@ skills/run-file/SKILL.md 294
 skills/spec/SKILL.md 353
 skills/spec/references/FORMAT.md 1233
 skills/tdd/SKILL.md 315
-skills/verify/SKILL.md 400
+skills/verify/SKILL.md 420
 skills/writing-skills/SKILL.md 1700
 skills/writing-skills/references/GLOSSARY.md 2800
 skills/writing-skills/references/TESTING.md 650

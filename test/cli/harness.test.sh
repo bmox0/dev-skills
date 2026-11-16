@@ -151,6 +151,13 @@ frontmatter "$repo_root/agents/judge.md" | grep -qx 'model: opus' \
   || fail "TC-13: the judge should run on opus (build#judge-after-every-round)"
 grep -q '(reviewer on Sonnet)' "$repo_root/skills/build/SKILL.md" \
   || fail "TC-13: build should send its later reviews on sonnet"
+for cmd in 'CLI gate start' 'CLI brief judge' 'CLI round start' 'CLI note add'; do
+  grep -qF "$cmd" "$repo_root/skills/build/SKILL.md" || fail "TC-13: build should call \`$cmd\`"
+done
+grep -qF 'CLI verdict' "$repo_root/skills/build/references/judge.md" \
+  || fail "TC-13: the judge reference should record through \`CLI verdict\`"
+caps_out=$(cd "$repo_root" && grep -rniE 'two fixes at most|one round per gate|fix [12]\b' skills agents AGENTS.md 2>/dev/null)
+[ -z "$caps_out" ] || fail "build#caps-in-code: TC-13: no cap in prose an agent reads, found: $caps_out"
 plugin_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.claude-plugin/plugin.json")
 market_versions=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["metadata"]["version"], d["plugins"][0]["version"])' "$repo_root/.claude-plugin/marketplace.json")
 assert_eq "$plugin_version $plugin_version" "$market_versions" "TC-13: both manifests carry one version" || fail "TC-13"

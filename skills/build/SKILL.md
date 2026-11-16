@@ -53,33 +53,31 @@ goes back to the implementer as printed.
 
 ## 3. The E2E gate
 
-When every phase is done, before every re-check, and before the review of a
-round, run `CLI spec write <plan>` (the grammar
-is in the `spec` skill's `references/FORMAT.md`) in the plan's branch tree, its worktree when
-there is one, never the main tree of another branch, and commit `docs/spec/`
-alone with plain git: a script's output, not code. When
-nothing changed there is nothing to commit; `git commit` exiting 1 is no
-failure. A refusal naming the plan is yours to fix in its `## Spec`; a stale
-base, by the base `CLI status` shows or `--base $(git merge-base <default> HEAD)`;
-one naming `docs/spec/` is a finding.
+When every phase is done, `CLI gate start <plan>`. It writes and commits the
+rules, prints the level and the paths that raised it, and runs the full checks
+(`CLI status <plan>` shows the run). A refusal naming the plan is yours to fix
+in its `## Spec`; a stale base, by `CLI plan base <plan> $(git merge-base
+<default> HEAD)` and `gate start` again.
 
-Then run the gate at the level the plan's Checks names, by
-[gate.md](references/gate.md); read it then, not before.
+Then the rest of the gate, by [gate.md](references/gate.md); read it then, not
+before.
 
-Then a fresh `dev-skills:judge` ([judge.md](references/judge.md)): put its
-case and what judge.md lists for it in `CLI brief judge --note "<…>" <plan>`,
-and the prompt is the path it prints. It returns:
+Then a fresh `dev-skills:judge` ([judge.md](references/judge.md)): `CLI brief
+judge [--note "<…>"] <plan>`, and the prompt is the path it prints. The judge
+records its verdict with `CLI verdict` and returns:
 
 - `pass: <path>` and its report: the branch is landed. Go to 4.
-- `round: <note — cause>`: each an open note; run the round
-  ([rounds.md](references/rounds.md)), the targeted re-check, a fresh judge.
-  A second `round:` goes under Open.
-- `question: <…>`, even after `round:` lines: run the round, ask the user, a
-  fresh judge with the answer.
+- `round`: `CLI round start <plan>` takes the judge's notes; run the round
+  ([rounds.md](references/rounds.md)), then a fresh judge.
+- `question: <…>`, even after a round: run the round, ask the user, a fresh
+  judge with the answer.
 - `evidence owed: <verify|reviewer> — <what>`: a worker on `dev-skills:verify`
-  or the reviewer supplies it, then the judge again.
+  handed `CLI brief verify`, or the reviewer handed `CLI brief reviewer`,
+  records it; then the judge again.
 - `land stopped: <…>`: the judge again, once; a second goes to the user
   as a question with land's message; nothing runs until they answer.
+
+A verdict that stops rounds says why in `CLI status`; it lands as a pass.
 
 ## 4. The human gate
 
@@ -102,13 +100,13 @@ on that word, or on the next.
 
 ## 5. Notes and rounds
 
-From the first phase on, the user's notes go into
-`.ai-workflow/plans/<slug>.notes.md`. Nothing starts on one; no running agent
-hears of it. At the gate, give each note a cause from the seven in
-[rounds.md](references/rounds.md), propose it, let the user correct it, and
-write its source against `<slug>.judge.md`'s Prediction when its line is built. A note that changes
+From the first phase on, record the user's notes in their words:
+`CLI note add --text "<…>" --cause <cause> <plan>`. Nothing starts on one; no
+running agent hears of it. The notes file is code's. At the gate, give each note
+a cause from the seven in [rounds.md](references/rounds.md), propose it, let the
+user correct it (`CLI note edit`), and mark its source against
+`<slug>.judge.md`'s Prediction when its round is done. A note that changes
 the approach or leaves the plan's territories is proposed as `task`; once the
 user confirms, it is listed, not built. A round, on the user's word, builds
 every open note or a conflict at `finish` like a phase (reviewer on Sonnet),
-then the judge on the round's notes and re-check, as [judge.md](references/judge.md) lists, dispatched through `CLI brief judge --note` like every judge, which lands, and back to the gate.
-A fix implementer has no brief: its final message holds its report and rulings, and you record each ruling with `CLI decision --by implementer`.
+then the judge, dispatched through `CLI brief judge` like every judge, which lands, and back to the gate.
