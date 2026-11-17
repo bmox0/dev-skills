@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PIPELINE="$here/../../skills/build/pipeline.py"
+python3 -B <<'PY'
+import json, os, pathlib, subprocess, tempfile, tomllib
+
+presets = '''## Executors
+
+```toml
+[executors."GPT".primary]
+model = "gpt-custom"
+effort = "ultra"
+[executors."GPT".secondary]
+model = "gpt-custom"
+effort = "high"
+[executors."Claude".primary]
+model = "opus-custom"
+[executors."Claude".secondary]
+model = "sonnet-custom"
+effort = "medium"
+[executors."Qwen".primary]
+model = "qwen-custom"
+effort = "xhigh"
+[executors."Qwen".secondary]
+model = "qwen-custom"
+[executors."Other / provider".primary]
+model = "arbitrary model"
+[executors."Other / provider".secondary]
+model = "another model"
+```
+'''
+with tempfile.TemporaryDirectory() as directory:
+    root = pathlib.Path(directory).resolve()
+    def command(*args):
+        return subprocess.run(args, cwd=root, text=True, capture_output=True)
+    def git(*args):
+        result = command('git', *args)
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+    def cli(*args, ok=True, code=None):
+        result = command('python3', '-B', os.environ['PIPELINE'], *map(str, args))
+        assert (result.returncode == 0) == ok, result.stdout + result.stderr
+        if code:
+            assert code in result.stdout, result.stdout
+        return result.stdout
+    git('init', '-q', '-b', 'main')
+    git('config', 'user.name', 'Test')
+    git('config', 'user.email', 'test@example.org')
+    agents = root / 'AGENTS.md'
+    agents.write_text(presets)
+    (root / 'src').mkdir()
+    (root / 'src/a').write_text('base\n')
+    git('add', '.')
+    git('commit', '-qm', 'base')
+    plans = root / '.ai-workflow/plans'
+    plans.mkdir(parents=True)
+    plan = plans / '2026-11-17-executors.md'
+    # run#starts-from-last: all current providers replace copied presets; task scalars stay as written.
+    cli('run', 'new', plan)
+    run = plan.with_suffix('.run.toml')
+    values = tomllib.loads(run.read_text())
+    assert values['run'] == {}
+    assert set(values.get('executors', {})) == {'GPT', 'Qwen', 'Claude', 'Other / provider'}, 'new runs must snapshot all current AGENTS providers'
+    # run#executor-presets: planning helpers select current AGENTS without a plan.
+    selected = json.loads(cli('executor', 'show', '--provider', 'Other / provider', '--json'))
+    assert selected['primary'] == {'model': 'arbitrary model'}
+    assert selected['source'] == str(agents)
+    for provider in ['', ' ', 'GPT\nQwen']:
+        cli('executor', 'show', '--provider', provider, ok=False, code='bad-provider')
+    task_values = 'gpt_primary_model = "task-owned"\nquota = 33\nadmin_pwd = "keychain:app/admin"\nmessage = """\n[executors.fake.primary]\nmodel = "task data"\n"""\n'
+    run.write_text(run.read_text() + task_values)
+    agents.write_text(presets.replace('gpt-custom', 'new-gpt'))
+    copied_plan = plans / '2026-11-18-copied.md'
+    cli('run', 'new', copied_plan)
+    copied = copied_plan.with_suffix('.run.toml').read_text()
+    assert task_values in copied
+    assert tomllib.loads(copied)['executors']['GPT']['primary']['model'] == 'new-gpt'
+    cli('run', 'check', copied_plan)
+    # A header-looking line inside a fixed string cannot move the snapshot into that string.
+    copied_plan.with_suffix('.run.toml').write_text(copied.replace('dev = "npm run dev -- --port {port}"', 'dev = """echo\n[run]\n"""'))
+    another_plan = plans / '2026-11-19-another.md'
+    cli('run', 'new', another_plan)
+    another = tomllib.loads(another_plan.with_suffix('.run.toml').read_text())
+    assert another['checks']['dev'] == 'echo\n[run]\n'
+    assert another['executors']['GPT']['primary']['model'] == 'new-gpt'
+    # run#contract-checked: fixed nested fields name their complete paths; identifiers are opaque.
+    good = run.read_text()
+    for old, new, path in [
+        ('model = "gpt-custom"', 'models = "wrong"', 'executors."GPT".primary.models'),
+        ('[executors."GPT".secondary]', '[executors."GPT".helper]', 'executors."GPT".helper'),
+        ('model = "gpt-custom"', 'model = "  "', 'executors."GPT".primary.model'),
+        ('model = "gpt-custom"', 'model = 42', 'executors."GPT".primary.model'),
+        ('effort = "ultra"', 'effort = "\\n"', 'executors."GPT".primary.effort'),
+        ('[executors."GPT".primary]', '[executors."".primary]', 'executors.""'),
+    ]:
+        run.write_text(good.replace(old, new, 1))
+        cli('run', 'check', plan, ok=False, code=path)
+    run.write_text(good)
+    agents.write_text(presets.replace('effort = "ultra"', 'strength = "ultra"'))
+    missing = plans / '2026-11-19-bad.md'
+    cli('run', 'new', missing, ok=False, code='executors."GPT".primary.strength')
+    assert not missing.with_suffix('.run.toml').exists()
+    agents.write_text('## Environment\n')
+    cli('run', 'new', missing, ok=False, code='Executors')
+    agents.write_text(presets)
+    # run#changes-through-approve: selection freezes on consent, even after AGENTS changes.
+    plan.write_text('''# Plan: executors
+
+Status: draft · branch `executors` · base `<sha>`
+Prototype: none
+
+## Result
+
+R.
+
+## Approach
+
+A.
+
+## Out of scope
+
+- n
+
+## Phases
+
+### 1. One — `waiting`
+
+Territory: `src/`
+Skills: none
+Spec: none
+Waits for: nothing
+
+## Checks
+
+- Gate: small — CLI
+
+## Done
+
+1. a → b
+
+## Spec
+
+none
+''')
+    run.write_text(good.replace('full = ["scripts/check", "scripts/test"]', 'full = []'))
+    cli('approve', plan)
+    agents.write_text(presets.replace('gpt-custom', 'current-gpt'))
+    assert json.loads(cli('executor', 'show', plan, '--provider', 'GPT', '--json'))['primary']['model'] == 'current-gpt'
+    cli('run', 'approve', plan, '--by', 'user', '--words', 'approve fixture run')
+    agents.write_text('## Executors\n\n```toml\ninvalid TOML\n```\n')
+    selected = json.loads(cli('executor', 'show', plan, '--provider', 'Claude', '--json'))
+    assert selected['primary'] == {'model': 'opus-custom'}
+    assert selected['secondary'] == {'model': 'sonnet-custom', 'effort': 'medium'}
+    assert selected['source'] == 'approved run snapshot'
+    refused = cli('executor', 'show', plan, '--provider', 'Missing', ok=False, code='executors."Missing"')
+    assert 'explicitly approve the changed run' in refused
+    # An approved legacy snapshot is readable, but cannot invent executor assignments.
+    state_file = plan.with_suffix('.json')
+    saved_state = state_file.read_bytes()
+    legacy = json.loads(saved_state)
+    del legacy['run']['executors']
+    state_file.write_text(json.dumps(legacy))
+    cli('executor', 'show', plan, '--provider', 'GPT', ok=False, code='executors."GPT"')
+    legacy_brief = pathlib.Path(cli('brief', 'implementer', plan, '1').strip()).read_text()
+    assert 'Executor model:' not in legacy_brief
+    state_file.write_bytes(saved_state)
+    summary = plan.with_suffix('.summary.md')
+    summary.write_text(f'Build [the plan]({plan.name}) and check the CLI.\n')
+    cli('summary', 'approve', plan, '--file', summary, '--by', 'user', '--words', 'approve fixture summary')
+    cli('build', 'start', plan, '--base', 'main')
+    def brief(kind, tier, *extra):
+        path = pathlib.Path(cli('brief', kind, plan, *extra, '--provider', 'GPT').strip())
+        text = path.read_text()
+        assert f'Executor tier: {tier}' in text, text
+        assert 'Executor model: gpt-custom' in text, text
+        assert f'Executor effort: {"ultra" if tier == "primary" else "high"}' in text, text
+        assert 'AGENTS.md' in text and 'CLAUDE.md' not in text
+        return text
+    cli('brief', 'implementer', plan, '1', ok=False, code='--provider')
+    brief('implementer', 'secondary', '1')
+    cli('phase', 'start', plan, '1')
+    (root / 'src/a').write_text('built\n')
+    git('commit', '-qm', 'phase', '--', 'src/a')
+    cli('phase', 'report', plan, '1', '--became', 'built', '--commit', git('rev-parse', 'HEAD'))
+    cli('phase', 'done', plan, '1')
+    cli('gate', 'start', plan)
+    brief('reviewer', 'primary')
+    brief('verify', 'secondary')
+    cli('finding', plan, '--kind', 'defect', '--where', 'src/a:1', '--source', 'plan', '--text', 'fix fixture')
+    cli('fix', 'start', plan)
+    brief('fix', 'secondary')
+    cli('fix', 'report', plan, '--became', 'no change needed')
+    cli('fix', 'done', plan)
+    brief('reviewer', 'secondary')
+    brief('judge', 'primary')
+    # build#judge-file-by-code: open engine names, first prediction required, later file immutable.
+    cli('verdict', 'pass', plan, '--report', 'ready', '--engine', 'qwen', ok=False, code='no-prediction')
+    for engine in ['', '  ', 'qwen\npi', 'qwen\rpi']:
+        cli('verdict', 'pass', plan, '--report', 'ready', '--predicted', 'pass', '--engine', engine, ok=False, code='bad-engine')
+    for engine in ['qwen', 'pi', 'hermes']:
+        judge = plan.with_suffix('.judge.md')
+        if judge.exists():
+            judge.unlink()
+        # Each first-verdict case starts from the same real, settled gate snapshot.
+        state = plan.with_suffix('.json')
+        saved = state.read_bytes()
+        cli('verdict', 'pass', plan, '--report', 'ready', '--predicted', 'pass', '--engine', engine)
+        assert f' · engine {engine}\n' in judge.read_text()
+        first = judge.read_bytes()
+        cli('verdict', 'pass', plan, '--report', 'later')
+        assert first == judge.read_bytes()
+        state.write_bytes(saved)
+    cli('verdict', 'round', plan, '--report', 'one round', '--predicted', 'pass', '--engine', 'qwen', '--note', 'fixture note', 'bug')
+    cli('round', 'start', plan)
+    brief('round', 'secondary')
+    cli('round', 'report', plan, '--became', 'no change needed')
+    cli('round', 'done', plan)
+    brief('reviewer', 'secondary')
+    brief('judge', 'primary')
+PY

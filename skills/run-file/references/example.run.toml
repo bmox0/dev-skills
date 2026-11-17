@@ -1,5 +1,11 @@
 # The run file: what this run may do, how it checks and ends. Every key of the
-# fixed sections is required, except `dev` and `url`.
+# fixed sections is required, except `dev` and `url`. `run new` inserts all
+# AGENTS.md Executors profiles before [run], using this shape for each provider:
+# [executors."PROVIDER".primary]
+# model = "model identifier"
+# effort = "optional effort"
+# [executors."PROVIDER".secondary]
+# model = "model identifier"
 
 [finish]
 how = "merge-request"        # merge-request | ff-only | no-ff

@@ -5,15 +5,16 @@ description: Drive a plan's Done use cases on the running system — a browser, 
 
 # Verify
 
-In Codex, read [CODEX.md](../../references/CODEX.md) first.
+Read shared `AGENTS.md` and the executor contract:
+[SESSIONS.md](../../references/SESSIONS.md).
 
-The session that asks for e2e dispatches a worker, a fresh Sonnet subagent, that follows the steps below, and reads only its lines. It drives
+The session that asks for e2e dispatches a worker, a fresh secondary subagent, that follows the steps below, and reads only its lines. It drives
 what the user will see at the human gate.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e
 drives the system and where it runs (the plan's Checks, and the plan's run
 file through `python3 "<this skill's directory>/../build/pipeline.py" run show
-<plan>`; without a plan, the project's `AGENTS.md` or `CLAUDE.md`); the prototype when the plan links one.
+<plan>`; without a plan, the project's `AGENTS.md`); the prototype when the plan links one.
 
 1. **Find the running system.** If the user's dev instance of the tree is
    up, use it; never start a second or restart theirs. If none, start it with the run file's `dev`, on the port and data directory `run show`

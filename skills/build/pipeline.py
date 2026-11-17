@@ -6,6 +6,9 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py spec list
        pipeline.py spec show ID
        pipeline.py approve [--json] PLAN
+       pipeline.py run approve PLAN --by NAME --words TEXT
+       pipeline.py summary approve PLAN --file PATH --by NAME --words TEXT [--acceptor NAME --authority TEXT]
+       pipeline.py accept PLAN --by NAME --words TEXT
        pipeline.py status [--json] [PLAN]
        pipeline.py plan status [--note TEXT] PLAN VALUE
        pipeline.py plan base [--note TEXT] PLAN REF
@@ -15,12 +18,12 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py owner PLAN PATH
        pipeline.py grant [--note TEXT] PLAN N PATH
        pipeline.py decision --question Q --from S --answer A --why W --cost C PLAN
-       pipeline.py brief implementer PLAN N | brief judge|round|reviewer|fix PLAN | brief verify [--cases N,N] PLAN   [--note TEXT]
+       pipeline.py brief implementer PLAN N | brief judge|round|reviewer|fix PLAN | brief verify [--cases N,N] PLAN   --provider NAME [--note TEXT]
        pipeline.py gate start [--note TEXT] PLAN
        pipeline.py finding --kind K --text T [--where F:L] [--source S] [--again ID] PLAN
        pipeline.py result --case N --outcome passed|failed|not-reached [--capture C] [--detail T] PLAN
        pipeline.py fix start|done PLAN | fix report --became T [--commit SHA ...] PLAN
-       pipeline.py verdict pass|round|question PLAN --report T [--decide ID ACTION REASON] [--note T CAUSE]
+       pipeline.py verdict pass|round|question PLAN --report T [--decide ID ACTION REASON] [--note T CAUSE] [--evidence-note TEXT]
        pipeline.py verdict evidence-owed PLAN --owed reviewer|verify --report T
        pipeline.py land draft PLAN | land [now] PLAN | land accept --note T PLAN | land revert [--note T] PLAN
        pipeline.py page --note T [--message T] PLAN
@@ -28,6 +31,7 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py round start [--conflict T] PLAN | round report --became T [--commit SHA ...] PLAN | round done PLAN
        pipeline.py finish [--merged] PLAN
        pipeline.py run new|check PLAN | run show [--json] PLAN
+       pipeline.py executor show --provider NAME [PLAN] [--json]
 
 check reads the plan's `## Spec` section against docs/spec/ as it is at the
 base (--base, else the base in the plan's Status line, else HEAD) and reports
@@ -45,11 +49,14 @@ lock, recording each command's result as it ends in a run that is unfinished unt
 the last one; other commands work meanwhile. A run whose call is gone stays
 unfinished and runs again at the next of these commands; fix start, verdict and
 the reviewer, fix and judge briefs refuse while the newest run is unfinished.
-build start and approve pick a port under one project-wide lock.
+build start, compilation and run approval pick a port under one project-wide lock.
 
 run new copies the newest run file beside the plan (else the shipped example) to
 `<slug>.run.toml`; run check prints every problem as `<code>: … — fix: …`; run show
 prints the approved values, or the file's before approval, and any drift.
+executor show selects the current provider from shared AGENTS Executors before
+run approval and the frozen snapshot afterward. Briefs require --provider and
+expose the assigned tier/model/effort; dispatch applies those values explicitly.
 
 list prints every area (`<area> — <title>`), its description indented under it, and its rules, indented
 (`  <area>#<rule> — <statement>`), from the working tree. show prints the rule
@@ -61,9 +68,14 @@ and that section's entry for the rule. An ID that is not a rule is
 approve compiles a plan into `<slug>.json` (the state) after a strict check, whose
 problems are `<plan>:<line>: <message>`, exit 1; it renders the code-owned lines
 back into the plan and the plan's row in its epic, and adopts a plan that has no
-state as its file stands. approve also requires the draft's run file
-(`<slug>.run.toml`, see `run check`) and records its values under `run`; a plan
-adopted without one goes on without. Every write refuses (`<code>: <message> — fix: <fix>`,
+state as its file stands. Compilation never records consent. `run approve` records
+explicit approval and the run snapshot; `summary approve` records approval of a
+linked summary of at most 350 words bound to that run and the planning content.
+Summary approval starts nothing; a subsequent instruction chooses the handoff. Both require the
+approver's unchanged words. A draft becomes approved only after both; reapproval
+preserves progress. `accept` binds the designated acceptor's words to the current
+judge, land and page before setting passed. Protected transitions and finish
+independently verify those records and their freshness. Every write refuses (`<code>: <message> — fix: <fix>`,
 exit 1) while the plan file differs from its last render. status prints one plan
 or all; plan status and plan base change the plan's code-owned fields. Library
 use: `writing(plan)` yields the locked state and saves and renders on exit;
@@ -1072,6 +1084,140 @@ def type_ok(v, kind):
     return isinstance(v, list) and all(isinstance(x, str) for x in v)
 
 
+def single_line(value):
+    return isinstance(value, str) and bool(value.strip()) and len(value.splitlines()) == 1 and not value.endswith(("\n", "\r"))
+
+
+def executor_diags(values):
+    """Validate the fixed executor structure without restricting provider or model names."""
+    out = []
+    def bad(path, message):
+        out.append(("executor-invalid", f"{path} {message}", "use [executors.\"PROVIDER\".primary] and secondary, each with model and optional effort"))
+    if not isinstance(values, dict) or not values:
+        bad("executors", "must be a nonempty table of provider profiles")
+        return out
+    for provider, profiles in values.items():
+        path = "executors." + json.dumps(provider, ensure_ascii=False)
+        if not single_line(provider):
+            bad(path, "must name a nonblank single-line provider")
+        if not isinstance(profiles, dict):
+            bad(path, "must be a table")
+            continue
+        for tier in sorted(profiles.keys() - {"primary", "secondary"}):
+            bad(f"{path}.{tier}", "is an unknown field")
+        for tier in ("primary", "secondary"):
+            profile = profiles.get(tier)
+            here = f"{path}.{tier}"
+            if not isinstance(profile, dict):
+                bad(here, "must be a table")
+                continue
+            for key in sorted(profile.keys() - {"model", "effort"}):
+                bad(f"{here}.{key}", "is an unknown field")
+            for key in ("model", "effort"):
+                if key == "model" or key in profile:
+                    if not single_line(profile.get(key)):
+                        bad(f"{here}.{key}", "must be a nonblank single-line string")
+    return out
+
+
+def agents_executors(tree):
+    path = os.path.join(tree, "AGENTS.md")
+    fix = f"add ## Executors with one fenced toml block of provider primary/secondary profiles to {path}"
+    try:
+        with open(path, encoding="utf-8") as f:
+            dups = []
+            secs = sections(f.read().splitlines(), dups)
+    except (OSError, UnicodeDecodeError) as e:
+        raise Refuse("executors-missing", f"cannot read Executors from {path} ({e})", fix)
+    body = "\n".join(secs.get("Executors", (0, []))[1])
+    blocks = re.findall(r"(?ms)^```toml[ \t]*\n(.*?)^```[ \t]*$", body)
+    if len(blocks) != 1 or any(name == "Executors" for _, name in dups):
+        raise Refuse("executors-missing", f"{path} must have one ## Executors section with one fenced toml block", fix)
+    try:
+        values = tomllib.loads(blocks[0])
+    except tomllib.TOMLDecodeError as e:
+        raise Refuse("executors-bad-toml", f"{path} Executors is not valid TOML ({e})", fix)
+    problems = [("executor-invalid", f"{path}: {key} is an unknown field in Executors", fix) for key in values if key != "executors"]
+    problems += executor_diags(values.get("executors"))
+    if problems:
+        raise refuse_all(problems)
+    return values["executors"], path
+
+
+def executor_selection(plan, provider):
+    if not single_line(provider):
+        raise Refuse("bad-provider", "--provider must be a nonblank single-line identifier", "supply the current provider explicitly")
+    st = load_state(plan) if plan else None
+    if st and st.get("approvals", {}).get("run"):
+        values, source = st.get("run", {}).get("executors", {}), "approved run snapshot"
+    else:
+        if st:
+            tree = tree_of(plan, st)
+        else:
+            directory = os.path.dirname(plan_paths(plan)[0]) if plan else os.getcwd()
+            while not os.path.isdir(directory):
+                directory = os.path.dirname(directory)
+            tree = plan_root(os.path.join(directory, "executor.md"))
+        values, source = agents_executors(tree)
+    if provider not in values:
+        fix = ("ask the user to add this provider's primary/secondary profiles to the run and explicitly approve the changed run"
+               if source == "approved run snapshot" else "add this provider's primary/secondary profiles to AGENTS.md ## Executors")
+        raise Refuse("executor-missing", f"executors.{json.dumps(provider, ensure_ascii=False)} is missing from {source}", fix)
+    problems = executor_diags({provider: values[provider]})
+    if problems:
+        raise refuse_all(problems)
+    return {"provider": provider, "source": source, **values[provider]}
+
+
+def cmd_executor(plan, provider, as_json):
+    selected = executor_selection(plan, provider)
+    if as_json:
+        print(json.dumps(selected, ensure_ascii=False))
+    else:
+        print(f"Provider: {provider}\nSource: {selected['source']}")
+        for tier in ("primary", "secondary"):
+            profile = selected[tier]
+            print(f"{tier}: model = {json.dumps(profile['model'], ensure_ascii=False)}" +
+                  (f", effort = {json.dumps(profile['effort'], ensure_ascii=False)}" if "effort" in profile else ""))
+    return 0
+
+
+def toml_statements(text):
+    """Yield complete TOML statements, keeping multiline values intact."""
+    try:
+        tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        raise Refuse("run-bad-toml", f"the copied run is not valid TOML ({e})", "fix the source run before copying it")
+    statement = ""
+    for line in text.splitlines(keepends=True):
+        statement += line
+        try:
+            value = tomllib.loads(statement)
+        except tomllib.TOMLDecodeError:
+            continue
+        yield statement, value
+        statement = ""
+
+
+def without_table(text, name, keep_header=False):
+    """Remove a top-level TOML table and its subtables while preserving other text."""
+    out, skipping, in_table = [], False, False
+    for statement, value in toml_statements(text):
+        if statement.lstrip().startswith("["):
+            skipping, in_table = name in value, True
+            if skipping and keep_header:
+                out.append(statement)
+        if not skipping and (in_table or name not in value):
+            out.append(statement)
+    return "".join(out)
+
+
+def executor_toml(values):
+    return "\n".join(f"[executors.{json.dumps(provider, ensure_ascii=False)}.{tier}]\n" +
+                     "\n".join(f"{key} = {json.dumps(value, ensure_ascii=False)}" for key, value in profile.items()) + "\n"
+                     for provider, profiles in values.items() for tier, profile in profiles.items())
+
+
 def read_run(plan):
     """-> (values, []) or (None, [(code, message, fix)]); the file is read as written."""
     path = run_path(plan)
@@ -1084,8 +1230,10 @@ def read_run(plan):
         return None, [("run-bad-toml", f"{path} is not valid TOML ({e})", "fix the syntax")]
     out = []
     for sec in v:
-        if sec not in RUN_SECTIONS and sec != "run":
-            out.append(("run-unknown-section", f"[{sec}] is not a section of the run file", "use [finish], [checks], [isolation] or [run]"))
+        if sec not in RUN_SECTIONS and sec not in ("run", "executors"):
+            out.append(("run-unknown-section", f"[{sec}] is not a section of the run file", "use [finish], [checks], [isolation], [executors] or [run]"))
+    if "executors" in v:
+        out += executor_diags(v["executors"])
     for sec, keys in RUN_SECTIONS.items():
         t = v.get(sec, {})
         if not isinstance(t, dict):
@@ -1134,10 +1282,10 @@ def run_changes(old, new):
 
 
 def run_drift(plan, st):
-    """What differs between the file and the values `approve` recorded: [(code, message, fix)]."""
-    if "run" not in st:
+    """What differs between the proposed run and its frozen snapshot."""
+    if "run" not in st or (st["status"] == "draft" and not st.get("approvals", {}).get("run")):
         return []
-    fix = f"run `pipeline.py approve {plan}` to take the change, or restore the file"
+    fix = f"obtain renewed consent with `pipeline.py run approve {plan} --by NAME --words TEXT`, or restore the file"
     v, probs = read_run(plan)
     if v is None:
         return [("run-drift", f"{run_path(plan)} no longer passes `run check` ({probs[0][1]}); the approved values stand", fix)]
@@ -1220,7 +1368,21 @@ def cmd_run(command, plan, as_json):
         with open(src, encoding="utf-8") as f:
             text = f.read()
         if not runs:
-            text = re.sub(r"(?ms)^(\[run\][^\n]*\n).*\Z", r"\1", text)  # keys of the shipped example are samples
+            text = without_table(text, "run", keep_header=True)
+        directory = d
+        while not os.path.isdir(directory):
+            directory = os.path.dirname(directory)
+        st = load_state(plan)
+        values, _ = agents_executors(tree_of(plan, st) if st else plan_root(os.path.join(directory, "executor.md")))
+        text = without_table(text, "executors")
+        snapshot = executor_toml(values) + "\n"
+        out = []
+        for statement, value in toml_statements(text):
+            if snapshot and statement.lstrip().startswith("[") and "run" in value:
+                out.append(snapshot)
+                snapshot = ""
+            out.append(statement)
+        text = "".join(out).rstrip() + "\n" + ("\n" + snapshot if snapshot else "")
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
         print(f"run new: {path} (copied from {src})")
@@ -1231,16 +1393,19 @@ def cmd_run(command, plan, as_json):
             raise refuse_all(probs)
         return 0
     st = load_state(plan)
-    if st is not None and "run" in st:
+    if st is not None and "run" in st and (st.get("approvals", {}).get("run") or st["status"] != "draft"):
         v, drift = fill(st["run"], st.get("alloc")), run_drift(plan, st)
     elif probs:
         raise refuse_all(probs)
     else:
         drift = []
     if as_json:
-        print(json.dumps({"run": v, "approved": st is not None and "run" in st, "alloc": (st or {}).get("alloc"), "drift": [f"{m} — fix: {f}" for _, m, f in drift]}, ensure_ascii=False))
+        print(json.dumps({"run": v, "approved": bool((st or {}).get("approvals", {}).get("run")), "alloc": (st or {}).get("alloc"), "drift": [f"{m} — fix: {f}" for _, m, f in drift]}, ensure_ascii=False))
         return 0
     for sec, t in v.items():
+        if sec == "executors":
+            print(executor_toml(t))
+            continue
         print(f"[{sec}]")
         for k, x in t.items():
             print(f"{k} = {json.dumps(x, ensure_ascii=False)}")
@@ -1254,6 +1419,163 @@ def cmd_run(command, plan, as_json):
 
 # -- commands
 
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def planning_digest(plan):
+    head, _ = read_plan(plan_paths(plan)[0])
+    lines = []
+    for line, masked in zip(head, fenced(head)):
+        if not masked and (STATUS_LINE.match(line) or line.startswith("Rendered from `")):
+            continue
+        m = None if masked else PHASE_HEAD.match(line)
+        lines.append(line[:m.start(3)] + "waiting" + line[m.end(3):] if m else line)
+    return digest(lines)
+
+
+def consent_diags(plan, st):
+    approvals = st.get("approvals", {})
+    run = approvals.get("run")
+    values, problems = read_run(plan)
+    if not run:
+        return [("run-unapproved", "the proposed run has no explicit approval", "record the user's words with `pipeline.py run approve --by NAME --words TEXT`")]
+    if problems or digest(values) != run["digest"] or digest(st.get("run")) != run["digest"]:
+        return [("run-stale", "the proposed run differs from its approval", "validate it and obtain renewed `run approve`, then `summary approve`")]
+    summary = approvals.get("summary")
+    if not summary:
+        return [("summary-unapproved", "the current plan has no approved summary", "present a linked summary, then record `summary approve --file PATH --by NAME --words TEXT`")]
+    try:
+        text = open(summary["file"], encoding="utf-8").read()
+    except OSError:
+        text = None
+    if summary["planning"] != planning_digest(plan) or summary["run"] != run["digest"] or digest(text) != summary["digest"]:
+        return [("summary-stale", "the approved summary, plan or Spec changed", "validate the plan and obtain renewed `summary approve`")]
+    return []
+
+
+def require_consent(plan, st):
+    if problems := consent_diags(plan, st):
+        raise refuse_all(problems)
+
+
+def approval_words(a):
+    if not a.by.strip() or not a.words.strip():
+        raise Refuse("empty-approval", "approval needs an author and their nonblank words", "pass --by NAME and --words TEXT unchanged")
+    return {"at": now(), "by": a.by, "words": a.words}
+
+
+def cmd_consent(plan, kind, a):
+    with port_lock(plan_paths(plan)[0]), writing(plan) as st:
+        entry = approval_words(a)
+        approvals = st.setdefault("approvals", {})
+        if kind == "run":
+            values, problems = read_run(plan)
+            if problems:
+                raise refuse_all(problems)
+            if "run" in st and (changes := run_changes(st["run"], values)):
+                record(plan, st, "run file", None, "changed", ", ".join(f"{x} {k}" for x, k in changes))
+            st["run"] = values
+            if st["status"] in LIVE and (allocated := allocate(plan, plan_paths(plan)[0], st, st.get("alloc"))):
+                st["alloc"] = {**st.get("alloc", {}), **allocated}
+                if "data_dir" in allocated:
+                    os.makedirs(allocated["data_dir"], exist_ok=True)
+                print("facts: " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in allocated.items()))
+            approvals["run"] = {**entry, "digest": digest(values)}
+        else:
+            if problems := [d for d in consent_diags(plan, st) if d[0].startswith("run-")]:
+                raise refuse_all(problems)
+            path = os.path.abspath(a.file)
+            try:
+                text = open(path, encoding="utf-8").read()
+            except OSError as error:
+                raise Refuse("no-summary", str(error), "write and present the linked summary first")
+            if not text.strip() or len(text.split()) > 350 or not re.search(r"\[[^\]]+\]\([^)]*" + re.escape(os.path.basename(plan_paths(plan)[0])) + r"(?:#[^)]*)?\)", text):
+                raise Refuse("bad-summary", "the summary must link this plan and contain at most 350 words", "present a concise linked summary before recording approval")
+            if a.acceptor != "user" and not (a.authority or "").strip():
+                raise Refuse("no-authority", "a designated acceptor needs the user's grant", "pass --authority with their unchanged grant words, or use --acceptor user")
+            approvals["summary"] = {**entry, "file": path, "digest": digest(text), "planning": planning_digest(plan), "run": approvals["run"]["digest"],
+                                    "acceptor": a.acceptor, "authority": a.authority}
+            if st["status"] == "draft":
+                set_plan(plan, st, status="approved")
+        record(plan, st, kind + " approval", None, "recorded", a.words)
+        print(f"{kind} approval: recorded by {a.by}; build starts only on a separate instruction")
+    return 0
+
+
+def judge_evidence(st):
+    return digest({k: st.get(k, []) for k in ("cycles", "rounds", "notes", "phases")})
+
+
+def contract_digest(plan, st):
+    return digest([planning_digest(plan), st.get("run"), st["base"], st["branch"]])
+
+
+def require_judge(plan, st):
+    require_consent(plan, st)
+    c = cycle_of(st)
+    settled(c)
+    v = (st.get("verdicts") or [None])[-1]
+    if not v or not (v["kind"] == "pass" or v.get("stop")):
+        raise Refuse("no-pass", "the judge's last verdict is not a pass or stopped round", "run the judge on the current evidence")
+    require_results(st, v.get("evidence_note"))
+    tree = tree_of(plan, st)
+    current = tree_id(tree, "HEAD")
+    allowed = {tree_id(tree, v["head"])} - {None}
+    last = (st.get("lands") or [None])[-1]
+    if last and last.get("judge") == v["n"] and last["accepted"]:
+        allowed.add(tree_id(tree, last["tip"]))
+    if v.get("evidence") != judge_evidence(st) or v.get("contract") != contract_digest(plan, st) or current not in allowed:
+        raise Refuse("judge-stale", "the judge does not cover the current tree, planning content or evidence", "run current checks and the judge, then land and page again")
+    if st.get("rounds") and not st["rounds"][-1]["done"]:
+        raise Refuse("round-open", "a round is still running", "finish the round and run the judge")
+    return v
+
+
+def page_binding(plan, st):
+    return digest({"summary": st["approvals"]["summary"], "contract": contract_digest(plan, st),
+                   "records": {k: st.get(k) for k in ("cycles", "rounds", "notes", "verdicts", "lands", "decisions", "phases")}})
+
+
+def require_page(plan, st):
+    require_consent(plan, st)
+    lands = st.get("lands") or []
+    if not lands:
+        raise Refuse("no-land", "the branch is not landed", "run `land`, then `page` and obtain acceptance")
+    require_judge(plan, st)
+    last, tree = lands[-1], tree_of(plan, st)
+    if head_sha(None, tree) != last["tip"] or git("rev-parse", f"refs/heads/{st['branch']}", check=False, cwd=tree).stdout.strip() != last["tip"] or (last["difference"] and not last["accepted"]) or dirty_lines(tree):
+        raise Refuse("land-stale", "the current branch differs from its accepted land", "land the current result and render its page again")
+    pg = st.get("page")
+    if not pg:
+        raise Refuse("no-page", "the landed result has no acceptance page", "render `page` and obtain acceptance")
+    if pg.get("binding") != page_binding(plan, st):
+        raise Refuse("page-stale", "the page no longer describes the current approval and evidence", "render `page` again and obtain acceptance")
+    return pg
+
+
+def require_acceptance(plan, st):
+    pg = require_page(plan, st)
+    accepted = st.get("acceptance")
+    if not accepted or accepted.get("page") != digest(pg):
+        raise Refuse("acceptance-required", "the current page has no authorized acceptance", "record `accept --by NAME --words TEXT` from the user or designated acceptor")
+
+
+def cmd_accept(plan, a):
+    with writing(plan) as st:
+        entry = approval_words(a)
+        if st["status"] not in ("at the human gate", "passed"):
+            raise Refuse("bad-status", f"the plan is {st['status']}", "acceptance follows the current page at the human gate")
+        pg = require_page(plan, st)
+        acceptor = st["approvals"]["summary"]["acceptor"]
+        if a.by != acceptor:
+            raise Refuse("unauthorized-acceptor", f"{a.by!r} has no acceptance grant; the acceptor is {acceptor!r}", "obtain the designated acceptor's unchanged words")
+        st["acceptance"] = {**entry, "page": digest(pg)}
+        set_plan(plan, st, status="passed", note=a.words)
+        print(f"accept: current page accepted by {a.by}; passed")
+    return 0
+
+
 def cmd_approve(plan, as_json):
     md = plan_paths(plan)[0]
     root = plan_root(md)
@@ -1266,12 +1588,12 @@ def cmd_approve(plan, as_json):
     with port_lock(md), locked(plan):
         st = load_state(plan)
         if st is None:
-            how = "approved" if P["status"] == "draft" else "adopted"
-            st = {"version": 1, "plan": os.path.basename(md), "status": "approved" if how == "approved" else P["status"],
+            how = "validated" if P["status"] == "draft" else "adopted"
+            st = {"version": 1, "plan": os.path.basename(md), "status": P["status"],
                   "branch": P["branch"], "base": P["base"], "history": [], "phases": []}
             if how == "adopted" and (t := branch_tree(root, P["branch"])):
                 st["tree"] = t
-            record(plan, st, how, P["status"], st["status"], None if how == "approved" else "a plan without state, taken as its file stood")
+            record(plan, st, how, P["status"], st["status"], None if how == "validated" else "a plan without state, taken as its file stood")
             for ph in P["phases"]:
                 st["phases"].append({"n": ph["n"], "status": ph["status"], **{k: ph[k] for k in derived}})
                 if ph["status"] != "waiting":
@@ -1293,13 +1615,12 @@ def cmd_approve(plan, as_json):
             st["phases"] = [{**old.get(n, {"n": n, "status": "waiting"}), **{k: p[k] for k in derived}} for n, p in sorted(new.items())]
         had = "run" in st
         values, probs = read_run(plan)
-        if probs and (had or how == "approved" or os.path.exists(run_path(plan))):
+        if probs and (had or how == "validated" or os.path.exists(run_path(plan))):
             raise refuse_all(probs)
         facts = []
         if values is not None:
-            if had and (ch := run_changes(st["run"], values)):
-                record(plan, st, "run file", None, "changed", ", ".join(f"{x} {k}" for x, k in ch))
-            st["run"] = values
+            if not st.get("approvals", {}).get("run"):
+                st["run"] = values
             if st["status"] in LIVE:
                 new = allocate(plan, md, st, st.get("alloc"))
                 if new:
@@ -1330,12 +1651,24 @@ def cmd_approve(plan, as_json):
     return 0
 
 
+def stale_evidence(plan, st):
+    if st["status"] == "merged":
+        return []
+    check = require_acceptance if st.get("acceptance") else require_page if st.get("page") else require_judge if st.get("verdicts") else None
+    if check:
+        try:
+            check(plan, st)
+        except Refuse as error:
+            return [f"{code}: {message} — fix: {fix}" for code, message, fix in error.diags]
+    return []
+
+
 def summary(plan, st, head, tail=None):
     """-> the dict `status --json` prints."""
     return {**{k: st.get(k) for k in ("title", "status", "branch", "base", "epic", "level", "phases", "history", "decisions")},
             "done": st.get("done", []), "verdicts": st.get("verdicts", []), "rounds": st.get("rounds", []), "notes": st.get("notes", []), "lands": st.get("lands", []), "land_stops": land_stops(st), "cycles": [{**c, "list": items(c)} for c in st.get("cycles", [])], "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st), "alloc": st.get("alloc"),
-            "page": st.get("page"),
-            "drift": [f"{m} — fix: {f}" for _, m, f in drift_diags(plan, st, head, tail) + run_drift(plan, st)]}
+            "stale": stale_evidence(plan, st), "page": st.get("page"), "approvals": st.get("approvals", {}), "acceptance": st.get("acceptance"),
+            "drift": [f"{m} — fix: {f}" for _, m, f in drift_diags(plan, st, head, tail) + run_drift(plan, st) + ([] if st["status"] == "merged" else consent_diags(plan, st))]}
 
 
 def cmd_status(plan, as_json, cwd):
@@ -1357,7 +1690,7 @@ def cmd_status(plan, as_json, cwd):
             elif st["status"] in LIVE:
                 rows.append({**summary(full, st, head, tail)})
         if as_json:
-            print(json.dumps([{k: r.get(k) for k in ("plan", "status", "ready", "drift")} for r in rows], ensure_ascii=False))
+            print(json.dumps([{k: r.get(k) for k in ("plan", "status", "ready", "drift", "stale")} for r in rows], ensure_ascii=False))
         for r in rows:
             if not as_json:
                 if r.get("nostate"):
@@ -1418,12 +1751,31 @@ def cmd_status(plan, as_json, cwd):
                   f"    from: {d['source']}\n    answer: {d['answer']}\n    why: {d['why']}\n    cost if wrong: {d['cost']}")
     for d in s["drift"]:
         print(f"Drift: {d}")
+    for d in s["stale"]:
+        print(f"Evidence: {d}")
     return 0
 
 
 def cmd_plan(command, plan, value, note):
     with writing(plan) as st:
         if command == "status":
+            if value == "passed":
+                require_acceptance(plan, st)
+            elif value == "approved":
+                require_consent(plan, st)
+            elif value == "building":
+                require_consent(plan, st)
+                if st["status"] == "draft" or not st.get("tree"):
+                    raise Refuse("build-required", "build start has not created the branch", "run `build start --base REF`")
+            elif value == "at the human gate":
+                require_page(plan, st)
+            elif value == "merged" and st["status"] != "merged":
+                raise Refuse("finish-required", "merged is recorded only by finish", "run `finish` after current acceptance")
+            elif value.startswith("http"):
+                request = st.get("request")
+                if not request or request["tip"] != git("rev-parse", st["branch"], cwd=plan_root(plan_paths(plan)[0])).stdout.strip() or request["acceptance"] != digest(st.get("acceptance")):
+                    raise Refuse("no-request", "no current finish handoff permits recording a request link", "finish the accepted result first")
+                require_acceptance(plan, st)
             old = st["status"]
             set_plan(plan, st, status=value, note=note)
             print(f"plan status: {plan_slug(st)} {old} → {st['status']}")
@@ -1493,6 +1845,7 @@ def cmd_build_start(plan, base, worktree, branch, note):
     md = plan_paths(plan)[0]
     root = plan_root(md)
     with port_lock(md), writing(plan) as st:
+        require_consent(plan, st)
         if st["status"] != "approved":
             raise Refuse("not-approved", f"{plan_slug(st)} is {st['status']}, not approved",
                          "build start runs once on an approved plan; `pipeline.py plan status` moves a started one")
@@ -1534,6 +1887,7 @@ def cmd_build_start(plan, base, worktree, branch, note):
 
 def cmd_phase_start(plan, n, note):
     with writing(plan) as st:
+        require_consent(plan, st)
         ph = phase_of(st, n)
         if ph["status"] == "in progress":
             raise Refuse("running", f"phase {n} is already in progress", "report and finish it with `pipeline.py phase done`")
@@ -1663,7 +2017,7 @@ def spec_entry_lines(md):
     return out
 
 
-def cmd_brief(plan, kind, n, note, cases=()):
+def cmd_brief(plan, kind, n, note, cases=(), provider=None):
     st = load_state(plan)
     if st is None:
         raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
@@ -1679,7 +2033,22 @@ def cmd_brief(plan, kind, n, note, cases=()):
     out = [f"# Brief: {kind} — {st['title']}", "",
            f"Plan: {md}", f"Tree: {tree}", f"CLI: {cli}",
            f"Branch: {st['branch']}", f"Base: {st['base']}", f"HEAD: {head}",
-           "Rules: " + (", ".join(x for x in (os.path.join(tree, "docs", "spec"), *(os.path.join(tree, f) for f in ("AGENTS.md", "CLAUDE.md"))) if os.path.exists(x)) or "none"), ""]
+           "Rules: " + (", ".join(x for x in (os.path.join(tree, "docs", "spec"), os.path.join(tree, "AGENTS.md")) if os.path.exists(x)) or "none"), ""]
+    if provider is None and "executors" in st.get("run", {}):
+        raise Refuse("provider-required", "a brief with executor presets requires --provider", "supply the current provider; no provider is inferred from a model")
+    if provider is not None:
+        selected = executor_selection(plan, provider)
+        tier = "primary" if kind == "judge" else "secondary"
+        if kind == "reviewer":
+            cycle = cycle_of(st)
+            if cycle["kind"] == "gate" and not any(f["done"] for f in cycle["fixes"]):
+                tier = "primary"
+        profile = selected[tier]
+        out += [f"Executor provider: {provider}", f"Executor source: {selected['source']}", f"Executor tier: {tier}",
+                f"Executor model: {profile['model']}"]
+        if "effort" in profile:
+            out.append(f"Executor effort: {profile['effort']}")
+        out += ["Apply this model and effort explicitly; do not inherit another role preset.", ""]
     if kind == "implementer":
         ph = phase_of(st, n)
         lines = read_plan(md)[0]
@@ -1866,6 +2235,7 @@ def commit_spec(plan, st, tree):
 
 def cmd_gate_start(plan, note):
     with writing(plan) as st:
+        require_consent(plan, st)
         open_ = [p["n"] for p in st["phases"] if p["status"] != "done"]
         if open_ and not note:
             raise Refuse("phases-open", f"phase {', '.join(map(str, open_))} is not done", "finish them, or pass --note with the reason to open the gate now")
@@ -2356,22 +2726,40 @@ def converging_stop(st, new):
 
 
 def render_judge(st, v, a):
-    body = [v["report"]] + [f"Round: {t} — {c}" for t, c in a.note or []] + ([f"Question: {v['question']}"] if v["question"] else [])
+    body = [v["report"]] + ([f"Evidence exception: {v['evidence_note']}"] if v.get("evidence_note") else []) + [f"Round: {t} — {c}" for t, c in a.note or []] + ([f"Question: {v['question']}"] if v["question"] else [])
     pred = [f"User's verdict: {a.predicted}"] + [f"P{i}. {t} — {c}" for i, (t, c) in enumerate(a.predict or [], 1)]
     return (f"# Judge: {plain_title(st)}\n\nPlan: `{plan_slug(st)}` · head `{v['head'][:7]}` · {v['at']} · engine {a.engine}\n\n"
             "## Verdict\n" + "\n".join(body) + "\n\n## Prediction\n" + "\n".join(pred) + "\n")
 
 
+def require_results(st, note=None):
+    c = cycle_of(st)
+    left = [d["n"] for d in st.get("done", []) if not d["you_check"] and d["n"] not in latest_results(c)] if c["kind"] == "gate" else []
+    if left and c["level"] != "small" and not (note or "").strip():
+        raise Refuse("result-missing", f"Done {', '.join(map(str, left))} has no result at level {c['level']}", "record each result, or name the reason with `verdict --evidence-note TEXT`")
+
+
 def cmd_verdict(plan, a):
+    if a.engine is not None and not single_line(a.engine):
+        raise Refuse("bad-engine", "--engine must be a nonblank single-line identifier", "supply the engine the judge runs on")
     with writing(plan) as st:
+        require_consent(plan, st)
         c, md = cycle_of(st), plan_paths(plan)[0]
         settled(c)
         owed = a.kind == "evidence-owed"
+        if not owed:
+            tree = tree_of(plan, st)
+            checked = c["runs"][-1] if c["runs"] else None
+            if not checked or checked["full"] != checks_of(st) or tree_id(tree, checked["head"]) != tree_id(tree, "HEAD"):
+                raise Refuse("checks-stale", "the newest cycle has no current full check run", "run `gate start`, `fix done` or `round done` before the judge")
+            if st.get("rounds") and not st["rounds"][-1]["done"]:
+                raise Refuse("round-open", "a round is still running", "finish its report and re-check before judging")
+            require_results(st, a.evidence_note)
         first = all(x["kind"] == "evidence-owed" for x in st.get("verdicts", []))
         if owed and (a.decide or not a.owed):
             raise Refuse("bad-owed", "an evidence-owed verdict names --owed reviewer|verify and takes no decisions", "record who owes what; decide when the evidence is in")
         if first and not owed and not (a.predicted and a.engine):
-            raise Refuse("no-prediction", "the first verdict records the Prediction and the engine", "pass --predicted pass|round, --predict TEXT CAUSE (repeat) and --engine claude|codex")
+            raise Refuse("no-prediction", "the first verdict records the Prediction and the engine", "pass --predicted pass|round, --predict TEXT CAUSE (repeat) and --engine IDENTIFIER (nonblank, single-line)")
         if a.kind == "round" and not a.note:
             raise Refuse("no-notes", "a round verdict needs the judge's notes", "pass --note TEXT CAUSE for each")
         if a.kind != "round" and a.note:
@@ -2392,7 +2780,7 @@ def cmd_verdict(plan, a):
             raise Refuse("undecided", f"{', '.join(miss)} has no decision", "pass --decide ID ACTION REASON for each Open entry and Convention")
         stop = (stop_reason(st) or converging_stop(st, len(a.note or []))) if a.kind == "round" else None
         v = {"n": len(st.get("verdicts", [])) + 1, "at": now(), "head": head_sha(md, tree_of(plan, st)), "cycle": cycle_label(c), "kind": a.kind,
-             "epoch": epoch(st), "report": a.report, "owed": a.owed if owed else None, "decisions": [{"id": i, "action": x, "reason": r} for i, x, r in a.decide or []],
+             "epoch": epoch(st), "report": a.report, "evidence_note": a.evidence_note, "owed": a.owed if owed else None, "decisions": [{"id": i, "action": x, "reason": r} for i, x, r in a.decide or []],
              "notes": [], "stopped_notes": [], "question": a.question, "round": None, "stop": stop}
         ns = st.setdefault("notes", [])
         for text, cause in a.note or []:
@@ -2401,6 +2789,7 @@ def cmd_verdict(plan, a):
                 continue
             ns.append({"n": 1 + max([x["n"] for x in ns], default=0), "text": text, "cause": cause, "by": "judge", "source": "judge", "round": None, "verdict": v["n"]})
             v["notes"].append(ns[-1]["n"])
+        v["evidence"], v["contract"] = judge_evidence(st), contract_digest(plan, st)
         st.setdefault("verdicts", []).append(v)
         path = os.path.join(os.path.dirname(md), plan_slug(st) + ".judge.md")
         if first and not owed and not os.path.exists(path):
@@ -2451,9 +2840,7 @@ def brief_judge(plan, st, cli, md, note):
     if st.get("epic"):
         out.append("Epic: " + os.path.join(plan_root(md), st["epic"]["path"]))
     if c["kind"] == "gate":
-        left = [d["n"] for d in st.get("done", []) if not d["you_check"] and d["n"] not in latest_results(c)]
-        if left and c["level"] != "small" and not note:
-            raise Refuse("result-missing", f"Done {', '.join(map(str, left))} has no result at level {c['level']}", "record it, or pass --note with the reason to brief without it")
+        require_results(st, note)
         out += ["Case: " + ("after the user's answer" if asked else "at the gate")] + ([f"Judge file: {jf}"] if asked else []) + [f"Level: {c['level']}" + (f" (raised by {', '.join(c['raised_by'])})" if c["raised_by"] else ""), ""]
         if c["runs"]:
             out += show_run(c["runs"][-1], True)
@@ -2599,9 +2986,7 @@ def do_land(plan, st, tree):
     """-> a refusal to raise once the state is saved, or None."""
     g = lambda *a: land_git(tree, *a)
     lands = st.setdefault("lands", [])
-    v = (st.get("verdicts") or [None])[-1]
-    if not v or not (v["kind"] == "pass" or v.get("stop")):
-        raise Refuse("no-pass", "the judge's last verdict is not a pass", "land follows a pass; run the judge")
+    v = require_judge(plan, st)
     if lands and lands[-1]["difference"] and not lands[-1]["accepted"]:
         raise Refuse("undecided", f"land {lands[-1]['n']} left a difference from the checked tree", "keep it with `land accept --note`, or `land revert`")
     if dirty := dirty_lines(tree):
@@ -2648,7 +3033,7 @@ def do_land(plan, st, tree):
             error.diags.append(("land-restored", f"the branch is restored to {pre}; backup {backup} is kept", "fix the Git error and land again"))
         raise
     lands.append({"n": len(lands) + 1, "at": now(), "backup": backup, "pre": pre, "tip": tip, "shape": done,
-                  "since": str(shape.get("since", "")).strip() or None, "range_diff": rd, "difference": sorted(diff), "stash": left, "accepted": None})
+                  "judge": v["n"], "since": str(shape.get("since", "")).strip() or None, "range_diff": rd, "difference": sorted(diff), "stash": left, "accepted": None})
     print(f"land {len(lands)}: tip {tip[:7]} on {st['branch']}, {len(done)} commit(s), backup {backup} at {pre[:7]}")
     if not diff:
         print("the tip's tree is the backup's")
@@ -2791,7 +3176,7 @@ def gate_decided(st):
     for d in st.get("decisions", []):
         out.append(f"- {d['question']} → {d['answer']}. why: {d['why']}; cost if wrong: {d['cost']} (by {d['by']}, from {d['source']}" + (f", phase {d['phase']}" if d["phase"] else "") + ")")
     for h in st["history"]:
-        if h.get("note") and h["what"] not in ("approved", "adopted"):
+        if h.get("note") and h["what"] not in ("approved", "adopted", "validated", "run approval", "summary approval") and not (h["what"] == "status" and h["to"] == "passed"):
             out.append(f"- {h['what']}: {h['from'] if h['from'] is not None else '-'} → {h['to']} @{(h['sha'] or '-')[:7]}: {h['note']}")
     return out + ([] if len(out) > 2 else ["Nothing."]) + [""]
 
@@ -2802,9 +3187,11 @@ def gate_open(st, flag):
     if v := (st.get("verdicts") or [None])[-1]:
         out.append(f"- Verdict {v['n']}: {v['kind']} at `{v['head'][:7]}` ({v['cycle']}){flag(v['head'])} — {v['report']}")
         out += [f"  - owed by {v['owed']}"] if v["owed"] else []
+        out += [f"  - evidence exception: {v['evidence_note']}"] if v.get("evidence_note") else []
         out += [f"  - question: {v['question']}" + (f" Answer: {v['answer']}" if v.get("answer") else "")] if v["question"] else []
         out += [f"  - round notes: {', '.join(map(str, v['notes']))}"] if v["notes"] and v.get("round") is None else []
         out += [f"  - stopped: {v['stop']}"] if v.get("stop") else []
+        out += [f"  - stopped proposal: {text} — {cause}" for text, cause in v.get("stopped_notes", [])]
     dec, left = decisions(st), []
     for c in st.get("cycles", []):
         label = cycle_label(c)
@@ -2854,8 +3241,12 @@ def render_gate(plan, st):
 
 def cmd_page(plan, note, message):
     with writing(plan) as st:
+        require_judge(plan, st)
         if not st.get("lands"):
             raise Refuse("no-land", "the branch is not landed", "the page follows a land: run `pipeline.py land`")
+        last = st["lands"][-1]
+        if head_sha(None, tree_of(plan, st)) != last["tip"] or git("rev-parse", f"refs/heads/{st['branch']}", check=False, cwd=tree_of(plan, st)).stdout.strip() != last["tip"] or (last["difference"] and not last["accepted"]) or dirty_lines(tree_of(plan, st)):
+            raise Refuse("land-stale", "the current branch differs from its accepted land", "land the current result before rendering its page")
         if st["status"] not in ("building", "at the human gate"):
             raise Refuse("bad-status", f"the plan is {st['status']}", "the page is made while building or at the human gate")
         fin = (st.get("run") or {}).get("finish")
@@ -2865,7 +3256,7 @@ def cmd_page(plan, note, message):
             print(f"Drift: {m} — fix: {f}")
         if fin["how"] != "ff-only" and not message:
             raise Refuse("no-message", f"a run ending in {fin['how']} needs the merge message or request title", "pass --message")
-        st["page"] = {"at": now(), "note": note, "message": message, "ending": {"how": fin["how"], "target": fin["target"]}}
+        st["page"] = {"at": now(), "note": note, "message": message, "ending": {"how": fin["how"], "target": fin["target"]}, "binding": page_binding(plan, st)}
         set_plan(plan, st, status="at the human gate")
         print(f"page: {fin['how']} into {fin['target']}, at the human gate")
     return 0
@@ -2946,7 +3337,7 @@ def open_request(plan, st, root, fin):
         body = "\n".join(msg.splitlines()[1:] + render_gate(plan, st)[1:])
         r = tool(["gh", "pr", "create", "--base", target, "--head", branch, "--title", title, "--body", body], root)
         if r.returncode:
-            raise Refuse("gh-failed", f"{branch} was pushed; gh pr create: " + (r.stderr.strip() or r.stdout.strip()), "open the request yourself and record its link with `pipeline.py plan status`")
+            return Refuse("gh-failed", f"{branch} was pushed; gh pr create: " + (r.stderr.strip() or r.stdout.strip()), "open the request yourself and record its link with `pipeline.py plan status`")
         out = r.stdout
     links = re.findall(r"https?://\S+", out)
     link = next((l for l in reversed(links) if forge == "github" or "/merge_requests/" in l), None)
@@ -3004,14 +3395,15 @@ def cmd_finish(plan, merged):
             raise Refuse("no-run-values", "the plan has no approved run values", "write the run file and run `pipeline.py approve`")
         for _, m, f in run_drift(plan, st):
             print(f"Drift: {m} — fix: {f}")
-        if (pg := st.get("page")) and not status.startswith("http") and pg["ending"] != {"how": fin["how"], "target": fin["target"]}:
+        if (pg := st.get("page")) and pg["ending"] != {"how": fin["how"], "target": fin["target"]}:
             raise Refuse("page-differs", f"the page the user approved names {pg['ending']['how']} into {pg['ending']['target']}; the run file's approved ending is {fin['how']} into {fin['target']}",
                          "set the plan back with `plan status \"at the human gate\"`, run `pipeline.py page` again so the page names the new ending, and take the user's word on it")
         link = status.startswith("http")
-        if not link and status == "passed" and not st.get("lands"):
-            raise Refuse("no-land", "the branch is not landed: a merge or request follows a land and its page", "run `pipeline.py land` and `pipeline.py page` again")
-        if status != "passed" and not link:
-            raise Refuse("bad-status", f"the plan is {status}, not passed or a merge request's link", "finish follows the user's word at the human gate, which sets `passed`: `pipeline.py plan status`")
+        if not link and status not in ("passed",):
+            raise Refuse("bad-status", f"the plan is {status}, not passed or a merge request's link", "finish follows current authorized `accept` at the human gate")
+        require_acceptance(plan, st)
+        if link and (not st.get("request") or st["request"]["tip"] != git("rev-parse", st["branch"], cwd=root).stdout.strip() or st["request"]["acceptance"] != digest(st["acceptance"])):
+            raise Refuse("no-request", "the request has no current authorized finish record", "finish the currently accepted result before recording its link")
         if merged and not link:
             raise Refuse("no-request", "--merged names a request, and the plan has none", "finish opens it first")
         if link:
@@ -3023,6 +3415,12 @@ def cmd_finish(plan, merged):
             if (st.get("pushed") or {}).get("tip") == tip:
                 raise Refuse("pushed-no-link", f"{st['branch']} was pushed and the forge printed no link", f"find the request and record its link with `pipeline.py plan status {plan} <link>`; nothing is pushed again")
             got = open_request(plan, st, root, fin)
+            st["request"] = {"at": now(), "tip": tip, "acceptance": digest(st["acceptance"])}
+            if isinstance(got, Refuse):
+                st["pushed"] = {"at": now(), "tip": tip}
+                for code, message, fix in got.diags:
+                    print(f"{code}: {message} — fix: {fix}")
+                return 1
             if got == "pushed":
                 st["pushed"] = {"at": now(), "tip": tip}
             elif got:
@@ -3070,7 +3468,7 @@ def main():
     s.add_argument("plan", nargs="?", help="the plan file, any status; omit for the plans in .ai-workflow/plans/ from building to passed")
     pp = top.add_parser("plan", help="the plan's own status and base")
     psub = pp.add_subparsers(dest="command", required=True)
-    for name, what in (("status", "set the plan's status; any value in the list, forward or back"),
+    for name, what in (("status", "set status only when its required evidence exists; merged belongs to finish"),
                        ("base", "move the plan's base, for example after a rebase")):
         s = psub.add_parser(name, help=what)
         s.add_argument("--note", help="why")
@@ -3142,6 +3540,8 @@ def main():
     s = bsub.add_parser("fix", help="the running fix's items with file:line and text, and the command to record its report")
     s.add_argument("--note", help="what only the orchestrator knows")
     s.add_argument("plan", help="the plan file")
+    for parser in bsub.choices.values():
+        parser.add_argument("--provider", help="the current provider, required for runs with executor presets")
     gp = top.add_parser("gate", help="the E2E gate")
     s = gp.add_subparsers(dest="command", required=True).add_parser(
         "start", help="write and commit the rules, compute the level, run the full checks unless this HEAD has a run")
@@ -3179,13 +3579,14 @@ def main():
     s = top.add_parser("verdict", help="the judge's verdict on the newest cycle: a decision for every Open entry and Convention, each --decide action one of let-through, round or question; the first one writes .judge.md and alone takes --predicted, --predict and --engine. A round verdict past the cap, or on an early-stop sign, records the stop and opens no round")
     s.add_argument("kind", choices=["pass", "round", "question", "evidence-owed"])
     s.add_argument("--owed", choices=["reviewer", "verify"], help="evidence-owed: who owes the evidence; the verdict takes no decisions")
+    s.add_argument("--evidence-note", help="the reason to judge with missing gate results; recorded on the acceptance page")
     s.add_argument("--report", required=True, help="what was let through and why, in the judge's words")
     s.add_argument("--decide", nargs=3, action="append", metavar=("ID", "ACTION", "REASON"), help="let-through, round or question for an Open entry or a Convention; repeat for each")
     s.add_argument("--note", nargs=2, action="append", metavar=("TEXT", "CAUSE"), help="a round verdict's note in the judge's words, with its cause; repeat for each")
     s.add_argument("--question", help="the question for the user, for a question verdict or beside round notes")
     s.add_argument("--predicted", choices=["pass", "round"], help="the user's verdict as predicted; the first verdict only")
     s.add_argument("--predict", nargs=2, action="append", metavar=("TEXT", "CAUSE"), help="a note the user will make, with its cause; the first verdict only, repeat for each")
-    s.add_argument("--engine", choices=["claude", "codex"], help="the engine the judge runs on; the first verdict only")
+    s.add_argument("--engine", help="a nonblank single-line engine identifier; the first verdict only")
     s.add_argument("plan", help="the plan file")
     lp = top.add_parser("land", help="rewrite the branch into the shape's commits: `land PLAN` lands the shape file; `land draft|accept|revert` start it, keep a hook's change, or return to the backup")
     lsub = lp.add_subparsers(dest="command", metavar="[draft|accept|revert]")
@@ -3201,6 +3602,18 @@ def main():
     s.add_argument("--note", required=True, help="how to try it, in the author's words")
     s.add_argument("--message", help="the merge message, or the request's title; required unless the run ends in ff-only")
     s.add_argument("plan", help="the plan file")
+    s = top.add_parser("accept", help="record authorized acceptance of the current page and set passed")
+    s.add_argument("--by", required=True)
+    s.add_argument("--words", required=True)
+    s.add_argument("plan")
+    sp = top.add_parser("summary", help="explicit consent to the current linked planning summary")
+    s = sp.add_subparsers(dest="command", required=True).add_parser("approve")
+    s.add_argument("--file", required=True)
+    s.add_argument("--by", required=True)
+    s.add_argument("--words", required=True)
+    s.add_argument("--acceptor", default="user")
+    s.add_argument("--authority", help="the user's unchanged grant to a designated acceptor")
+    s.add_argument("plan")
     np_ = top.add_parser("note", help="the user's notes, in their words; code numbers them and renders the notes file")
     nsub = np_.add_subparsers(dest="command", required=True)
     s = nsub.add_parser("add", help="record a note: its words and its cause (task is a verdict: listed, never built)")
@@ -3237,8 +3650,17 @@ def main():
     rsub = rp.add_subparsers(dest="command", required=True)
     s = rsub.add_parser("new", help="copy the newest run file in the plan's directory, else the shipped example; refused if the file exists")
     s.add_argument("plan", help="the plan file, which need not exist")
+    ep = top.add_parser("executor", help="select the current provider's primary/secondary executors")
+    s = ep.add_subparsers(dest="command", required=True).add_parser("show", help="use AGENTS before run approval and the approved snapshot afterward")
+    s.add_argument("--provider", required=True, help="the current provider's opaque identifier")
+    s.add_argument("--json", action="store_true")
+    s.add_argument("plan", nargs="?", help="omit to read current AGENTS profiles for planning helpers")
     s = rsub.add_parser("check", help="print every problem of the run file, silent when it is sound")
     s.add_argument("plan", help="the plan file, which need not exist")
+    s = rsub.add_parser("approve", help="record explicit approval and snapshot the proposed run")
+    s.add_argument("--by", required=True)
+    s.add_argument("--words", required=True)
+    s.add_argument("plan")
     s = rsub.add_parser("show", help="the run file's values: the approved ones once the plan is approved, with any drift")
     s.add_argument("--json", action="store_true", help="print as JSON: run, approved, drift")
     s.add_argument("plan", help="the plan file, which need not exist")
@@ -3250,10 +3672,18 @@ def main():
         lp.error("a plan file, or draft|accept|revert|now and a plan file, is required")
     try:
         plan_arg = getattr(a, "plan", None)
-        if plan_arg and a.group not in ("run", "spec") and not os.path.isfile(plan_arg):
+        if plan_arg and a.group not in ("run", "spec", "executor") and not os.path.isfile(plan_arg):
             raise Refuse("no-plan", f"{plan_arg} does not exist", "pass an existing plan file")
+        if a.group == "run" and a.command == "approve":
+            return cmd_consent(a.plan, "run", a)
+        if a.group == "summary":
+            return cmd_consent(a.plan, "summary", a)
+        if a.group == "accept":
+            return cmd_accept(a.plan, a)
         if a.group == "run":
             return cmd_run(a.command, a.plan, getattr(a, "json", False))
+        if a.group == "executor":
+            return cmd_executor(a.plan, a.provider, a.json)
         if a.group == "approve":
             return cmd_approve(a.plan, a.json)
         if a.group == "status":
@@ -3292,7 +3722,7 @@ def main():
         if a.group == "decision":
             return cmd_decision(a.plan, a)
         if a.group == "brief":
-            return cmd_brief(a.plan, a.command, getattr(a, "n", None), a.note, [int(x) for x in getattr(a, "cases", "").split(",") if x.strip()])
+            return cmd_brief(a.plan, a.command, getattr(a, "n", None), a.note, [int(x) for x in getattr(a, "cases", "").split(",") if x.strip()], a.provider)
     except Refuse as e:
         for code, message, fix in e.diags:
             print(f"{code}: {message} — fix: {fix}")

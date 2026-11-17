@@ -1,9 +1,9 @@
 # dev-skills
 
-A plugin for Claude Code and Codex: skills and three agents for building a
+A provider-neutral workflow with Claude Code and Codex adapters: skills and three agents for building a
 change — discussion, a plan file, implementation by subagents, a review and an
-e2e check, and your approval before merge. The session you start remains your
-orchestrator; a separate build session coordinates implementation. Neither edits code.
+e2e check, and your approval before merge. The user or designated orchestrator coordinates the run;
+a chosen build session coordinates implementation. Neither edits code.
 
 ## The pipeline
 
@@ -12,7 +12,7 @@ is shorter; none is skipped, and every plan ends in a human gate.
 
 1. **Entry.** A grill when it is unclear what is being built, a discussion when
    it is lighter. Workers bring facts from the code; you make the decisions.
-   A bug adds its reproduction and its cause. A second Sonnet worker, the spec
+   A bug adds its reproduction and its cause. A second worker on secondary, the spec
    scout, brings the rules in `docs/spec/` that the task touches; you are asked
    about a rule only when the task leaves open whether it stays true, in product
    words, and the plan's writer records it.
@@ -30,11 +30,12 @@ is shorter; none is skipped, and every plan ends in a human gate.
    its notes, the judge's file and the gate page from it. Status runs `draft` →
    `approved` → `building` → `at the human gate` → `passed` → `merged`, via
    `a merge-request link` when finish opens one. The plan session sets
-   `approved` itself, only with a run file that passes its check. Compilation
-   alone starts nothing.
-4. **Build.** On your start instruction, including one already given, the
-   original session opens a new herdr tab in the same workspace and launches
-   an independent build session using the same host, Claude Code or Codex.
+   `approved` only after explicit run approval and approval of a linked summary
+   of at most 350 words. `approve` only validates; `run approve --by --words`
+   freezes the proposed run, and `summary approve --file --by --words` binds
+   consent to the current run, plan and Spec. Planning then stops.
+4. **Build.** Summary approval starts nothing. A subsequent instruction chooses
+   herdr, a native independent session or manual handoff.
    That session runs the graph and owns pipeline transitions. One branch and
    one working tree per plan: this one, or a
    worktree when another plan is building here. Every phase whose
@@ -46,7 +47,7 @@ is shorter; none is skipped, and every plan ends in a human gate.
    e2e over what you would not see by trying the app, at each width the plan
    names. Code records the findings and results; defects and failures make one
    list for one new implementer, then a targeted re-check. How many fixes and
-   rounds a gate allows is held in code, not here. Then a judge, a fresh Opus
+   rounds a gate allows is held in code, not here. Then a judge, a fresh primary
    context: it re-runs nothing, decides every open entry and every Convention
    (let through, one round with a cause, or a question to you), records its
    verdict and its prediction of your verdict, and lands the branch: the working commits
@@ -56,15 +57,16 @@ is shorter; none is skipped, and every plan ends in a human gate.
    open with the judge's report, the e2e (the use cases, each with its last
    result and the commit it ran on; the ones marked "you check" are yours),
    and the landed commits, each with a walkthrough. The build session reports
-   the gate and concrete review location, then waits. The original session
+   the gate and concrete review location, then waits. Your designated contact
    alerts you and opens the result. You try the running app
    and read the commits in one sitting. Each note you make gets a cause from
    seven and is matched against the judge's prediction; a note that changes
    the approach is listed as a task, not built. A round runs on your word,
-   then the judge again (it lands) and back to the gate. The original relays
+   then the judge again (it lands) and back to the gate. The contact relays
    your notes, round requests and approval unchanged to the same build session;
    notes alone start no round.
-7. **Finish.** On your word at the gate ("ок, в МР"), typed or plain. It asks
+7. **Finish.** `accept --by --words` records the user’s or authorized acceptor’s
+   approval of the current page; finish runs when instructed. It asks
    nothing: the run file says how it ends (a merge request, or local with
    `--no-ff` or `--ff-only`) and whether the plan's backups go; the message
    comes from the plan's Result. The branch stays.
@@ -85,38 +87,34 @@ The drawing: [docs/pipeline.html](docs/pipeline.html).
 | [`land`](skills/land/SKILL.md) | the commits a reviewer reads; the judge runs it |
 | [`finish`](skills/finish/SKILL.md) | on your word at the gate, merge it: a merge request, or local with `--no-ff` or `--ff-only` |
 
-Every build uses a separate session, regardless of size. The original watches
-and relays through that existing session, including after resume; it neither
-starts a duplicate nor approves the gate itself. The handoff and return contract:
-[`references/SESSIONS.md`](references/SESSIONS.md).
+The chosen handoff reuses the existing writer on resume. Questions and acceptance
+go to the user or designated orchestrator within granted authority; relayed
+words stay unchanged. The contract: [`references/SESSIONS.md`](references/SESSIONS.md).
 
 ## Who does what
 
 - **You** decide, and say at the gate whether it passes. A prototype, an epic, how to
   finish and a retro are your call.
-- **The orchestrator** is the model you started with, from the first pipeline
-  skill you enter. It talks, writes the plan, launches and watches the build,
-  handles routine questions from the agreed plan, and relays your words.
-- **The build session** coordinates native phase agents, runs the graph, sorts
-  findings and owns pipeline transitions. It reports questions and the human gate
-  to the original session and waits for your relayed instructions. Neither session edits code.
-- **Implementers** are the [`implementer`](agents/implementer.md) agent: Sonnet,
-  a clean context each, handed the whole plan, its phase, and what earlier
-  phases reported. When the plan and the code disagree, it rules, carries on,
-  and records the ruling with its cost if wrong.
-- **Workers** are Sonnet subagents for side jobs: facts from the code, the
-  rules the task touches (the spec scout), a prototype, e2e.
-- **The reviewer** is the [`reviewer`](agents/reviewer.md) agent: Opus for the
-  first review of a plan's branch and for a range you name, Sonnet for the
-  re-check and every later round.
-- **The judge** is the [`judge`](agents/judge.md) agent: Opus, a fresh context
-  after the E2E gate. It decides what the results mean for you, writes its
-  prediction of your verdict, and runs `land`.
+- **The orchestrator** plans using primary, handles routine questions from the
+  agreed plan, and relays your words within the authority you grant.
+- **The build session** coordinates using primary and owns pipeline transitions.
+  It reports to the designated contact. Coordinators never edit code.
+- **Implementers** use secondary in a clean context, handed their phase and
+  earlier reports. They record rulings with their cost if wrong.
+- **Workers** use secondary for research, prototypes and verify/E2E.
+- **The reviewer** uses primary for the first review, even at a small gate;
+  secondary for rechecks and round reviews.
+- **The judge** uses primary after every gate or round, decides what results
+  mean, records its prediction and runs `land`.
 
-In Codex the same roles are Codex subagents on the session's model, at
-reasoning effort `high` where Claude Code uses Sonnet and `ultra` for the first
-review and the judge. The skills name Claude Code's tools;
-[`references/CODEX.md`](references/CODEX.md) says what each one is in Codex.
+`AGENTS.md` is the shared source. Its Executors block defines each provider’s
+primary/secondary model and optional effort. `executor show --provider NAME`
+reads it before run approval; adding the plan selects the frozen snapshot
+afterward. New runs copy every provider. All new briefs require `--provider`
+and expose their assigned tier/model/effort; dispatch applies them explicitly.
+Provider and model names are open. A missing profile asks for configuration,
+never substitutes a provider. [`references/CODEX.md`](references/CODEX.md) is
+an optional host adapter.
 
 The state lives in code. `skills/build/pipeline.py` (the CLI) keeps each plan's
 state and the run file's approved values, renders the plan and the gate page,
@@ -135,7 +133,7 @@ no run: only the advice is lost.
 
 ## The project's side
 
-The plugin reads the project's `AGENTS.md` or `CLAUDE.md` and its style skills
+The plugin reads the project's shared `AGENTS.md` and its style skills
 as the bar for the build and the review: the plan names the skills each
 phase's code follows, the project's and the global ones that fit the work.
 It reads one block in that file for the commands a plan's Checks names:
@@ -221,7 +219,7 @@ share.
   another without a reason.
 - Where the work could go two ways, the user chooses, not the agent. During
   implementation the build session chooses from the agreed plan and the human gate shows
-  each choice; an irreversible one waits for the user through the original session.
+  each choice; an irreversible one waits for the authorized contact.
 
 ## Checking this repository
 
@@ -235,7 +233,7 @@ skills Codex shows its model: all of them
 
 `scripts/test` runs the behavioural tests on the maintainer scripts and the
 plugin's shape — TC-13 pins the shape itself (hooks that only advise, no `scripts/` under `skills/`,
-Sonnet implementers, an Opus reviewer and judge, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
+preset role assignments, shared rules and one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
 `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 
 `scripts/usage` reports wall and active hours, human messages, tokens and

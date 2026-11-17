@@ -1,49 +1,54 @@
 # Vocabulary
 
-The words shared by dev-skills, its models and users. A reference, not a skill.
+Words shared by dev-skills users.
+
+## Model profiles
+
+**Primary.** A provider's model and reasoning-effort preset for planning,
+coordination, first review and judgment.
+
+**Secondary.** A provider's model and reasoning-effort preset for research,
+prototypes, implementation, e2e and repeat reviews.
 
 ## Roles
 
-**Orchestrator (original session).** The user's conversation: discusses, plans,
-starts and watches builds, opens their results, and relays the user's words unchanged.
+**Orchestrator.** The user or agent assigned to coordinate a run and make
+decisions within the authority the user grants.
 
-**Build session.** An independent same-host root in a new tab of the same herdr
-workspace, started on the user's word. It runs the graph and CLI, reports
-questions and gates to the original, and waits. Neither session edits code:
-[SESSIONS.md](SESSIONS.md).
+**Build session.** The session executing an approved plan, communicating with
+the user or designated orchestrator.
 
-**Implementer.** Sonnet in a clean context, the `implementer` agent. It builds
+**Implementer.** A secondary agent in a clean context. It builds
 one phase, a list of findings, or a round's notes.
 
-**Worker.** A Sonnet subagent for a side job: facts from the code, a
+**Worker.** A secondary agent for a side job: facts from the code, a
 prototype, e2e. The **spec scout** reads `docs/spec/` at the start of
 the grill and returns the rules the task touches, with reasons and contradictions.
 
-**Reviewer.** The `reviewer` agent: Opus first, then Sonnet.
+**Reviewer.** The `reviewer` agent: primary first, secondary for rechecks.
 
 ## The work
 
 **Run file.** `<slug>.run.toml`, written before the plan with
 `dev-skills:run-file`: what the run may do, its checks and how it ends, asked
-once. `approve` needs it.
+once. `approve` validates; `run approve` records consent and freezes presets.
 
 **CLI.** `skills/build/pipeline.py`: keeps each plan's state, renders the plan,
 notes, judge file and gate page, runs the checks, holds the caps, lands and
 finishes as the run file says. Agents decide; it manages.
 
-**Plan.** The file a change is built from, always written, one screen: Result,
+**Plan.** The file a change is built from, one screen: Result,
 Approach, Out of scope, Phases, Checks, Done, Spec, and the prototype's link. Its
-result is a finished feature; nothing is deferred.
+result is a finished feature. Run and linked ≤350-word summary need explicit
+approval; summary approval launches nothing.
 
 **Phase.** One task in a plan, for one implementer: what to build and why, its
 territory, what it waits for, its status.
 
-**Territory.** The directories or files a phase changes. Its implementer reads
-anywhere and writes only there. Phases whose territories overlap never run side
+**Territory.** The directories or files a phase changes. Implementers read anywhere, write only there. Phases whose territories overlap never run side
 by side.
 
-**Graph.** Phases and dependencies; ready phases start at once. The plan is also
-the **registry**: phase statuses, `waiting`, `in progress` or `done`, kept through the CLI.
+**Graph.** Phases and dependencies; ready phases start at once. The **registry** holds phase statuses, `waiting`, `in progress` or `done`, kept through the CLI.
 
 **Ruling.** What an implementer decided alone where the plan and the code
 disagreed: what, why, the cost if wrong. The human gate page shows them.
@@ -66,20 +71,21 @@ on the phase's own territory while other phases run.
 **The E2E gate.** After the last phase, at the level the plan names, small or
 normal: the full checks, then a review and e2e over Done at once. Their
 findings make one list for one new implementer, then a targeted re-check. Code
-runs the checks and holds the caps. Before the gate and each re-check the build runs `pipeline.py spec write`
-and commits `docs/spec/` alone; the review reads the rules of the `Spec:` areas.
+runs the checks and holds the caps.
 
-**The judge.** The `judge` agent, Opus, after the E2E gate. It finds nothing
+**The judge.** The `judge` agent, primary, after the E2E gate. It finds nothing
 itself: it reads the gate's results and decides each Open entry and Convention
 (let through, a round with a cause, or a question), writes its prediction of
 the user's notes, and runs `land`.
 
-**The human gate.** The user's one gate, after the judge. The decisions made
+**The human gate.** Acceptance of the result, after the judge, by the user
+or designated acceptor within granted authority. The decisions made
 without them, the judge's report, the use cases with the machine's results and
 the landed commits: the user tries the app and reads the commits, and a
 **round**, on their word, builds the open **notes** in the plan's notes file.
 Each note carries a **cause** and, once done, its source against the judge's
-prediction. Approved, the plan is `passed`, and `finish` runs on the user's word.
+prediction. `accept --by --words` binds approval to the current page and sets `passed`;
+`finish` uses the approved ending when instructed.
 
 ## Review
 

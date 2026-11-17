@@ -2,29 +2,33 @@
 
 `.ai-workflow/plans/<slug>.run.toml`, written before the plan: what a run may do, its checks, its isolation and how it ends.
 
-### starts-from-last — A new run file starts as a copy of the project's latest one, or of the shipped example with an empty `[run]` when there is none
+### starts-from-last — A new run copies the latest run or the example, strips example credentials and snapshots all current AGENTS Executors profiles
 
-Why: the user is asked only what differs from the last run, and no sample login reaches a run
+Why: useful defaults are proposals while provider defaults come from one shared source
 
-- In a throwaway repo with no run file, run `run new <plan>` → the run file is a copy of the shipped example with an empty `[run]`, and the output names it; `run check` on it is silent. Add a newer run file, then run `run new` for another plan → it copies the newer one; run it again → refused, the file unchanged.
+- Dispatch grill helpers using current AGENTS Executors profiles, then draft a run for GPT, Qwen, Claude and another provider → all profiles are copied; malformed presets and unknown fixed fields identify their paths; model names have no vendor allowlist.
+- Approve a run, change AGENTS, then transfer planning from GPT to a Claude build → approved profiles stay frozen and Claude selects its own pair; missing profiles produce an actionable request.
 
-### contract-checked — A run file's fixed sections refuse an unknown or missing key and a value outside its type or list; its `[run]` section takes any key with a plain value
+### contract-checked — Fixed run fields and provider presets are validated; task values remain scalar and provider identifiers remain open
 
-Why: no agent invents a field, and code hands on what it cannot judge
+Why: malformed configuration fails without restricting supported providers
 
-- Give a run file `mode = "x"` and `how = "squash"` under `[finish]`, no `full` under `[checks]`, a `[deploy]` section, a table and a list under `[run]`, and `dev` using `{port}` with `port = false` → `run check` exits 1 with one line per problem, naming its section and key. `admin_pwd = "keychain:app/admin"`, `can_remove_tasks = false` and `quota = 20` under `[run]` pass.
+- Dispatch grill helpers using current AGENTS Executors profiles, then draft a run for GPT, Qwen, Claude and another provider → all profiles are copied; malformed presets and unknown fixed fields identify their paths; model names have no vendor allowlist.
+- Approve a run, change AGENTS, then transfer planning from GPT to a Claude build → approved profiles stay frozen and Claude selects its own pair; missing profiles produce an actionable request.
 
-### required-to-approve — A draft is approved only with a run file that passes its check
+### required-to-approve — Build requires explicit approval of the proposed run and a summary matching the current plan and Spec
 
-Why: what a run may do and how it ends is asked before the plan, not mid-run
+Why: successful validation does not establish consent
 
-- `approve` a draft with no run file → exit 1, a fix naming `dev-skills:run-file`, no JSON; with a bad one → exit 1 with `run check`'s lines; with a good one → approved. Change `delete_backups` in the file, or `quota = 1` to `quota = true` → `status` and `run show` report the drift and show the approved value; `approve` again → the new value, and `status` lists the changed keys in the plan's history. A pre-5.1 plan at `building` with no run file → adopted.
+- Validate a draft before consent → no approval; approve run then the current summary → build becomes eligible. Change run, plan or Spec → affected consent is stale; progress records survive reapproval.
 
-### changes-through-approve — After approval every reader uses the run file's approved values and reports a changed file until `approve` runs again, which records the changed keys in the plan's history
+### changes-through-approve — Readers use approved run snapshots; changed approved planning content requires renewed corresponding approval
 
-Why: a run cannot widen what it may do without it showing
+Why: configuration cannot silently widen authority or change reviewed behavior
 
-- `approve` a draft with no run file → exit 1, a fix naming `dev-skills:run-file`, no JSON; with a bad one → exit 1 with `run check`'s lines; with a good one → approved. Change `delete_backups` in the file, or `quota = 1` to `quota = true` → `status` and `run show` report the drift and show the approved value; `approve` again → the new value, and `status` lists the changed keys in the plan's history. A pre-5.1 plan at `building` with no run file → adopted.
+- Approve a run, change AGENTS, then transfer planning from GPT to a Claude build → approved profiles stay frozen and Claude selects its own pair; missing profiles produce an actionable request.
+- Validate a draft before consent → no approval; approve run then the current summary → build becomes eligible. Change run, plan or Spec → affected consent is stale; progress records survive reapproval.
+- Change the branch tree or approved planning content after a page/acceptance → stale stages are identified; passed and finish refuse until the required evidence and acceptance are current.
 
 ### isolated — Plans of one project being built get a port and an app data directory of their own from code
 
@@ -43,3 +47,11 @@ Why: a secret given by pointer stays out of the state and the briefs
 Why: nothing pulls the user in mid-run
 
 - Run `dev-skills:verify` on a plan whose use case needs a login its run file lacks → that case is `not reached: needs <the login>`, and the dev server it starts uses the run's port
+
+### executor-presets — The current provider selects primary/secondary from AGENTS before run approval and from the approved snapshot afterward
+
+Why: role caliber stays stable across providers and session transfers
+
+- Dispatch grill helpers using current AGENTS Executors profiles, then draft a run for GPT, Qwen, Claude and another provider → all profiles are copied; malformed presets and unknown fixed fields identify their paths; model names have no vendor allowlist.
+- Approve a run, change AGENTS, then transfer planning from GPT to a Claude build → approved profiles stay frozen and Claude selects its own pair; missing profiles produce an actionable request.
+- Read every core skill, role and generated brief → shared rules come from AGENTS; planning, build coordination, first review and judge use primary; helpers, code, E2E and rechecks use secondary; no fixed provider/model or herdr-only requirement remains.

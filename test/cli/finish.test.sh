@@ -10,6 +10,7 @@ pipeline="$repo_root/skills/build/pipeline.py"
 
 fail() { echo "finish.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 
 bin=$(cd "$(mktemp_dir)" && pwd -P)
@@ -18,7 +19,7 @@ cat > "$bin/gh" <<'GH'
 dir=$(dirname "$0")
 { echo "--call"; printf '%s\n' "$@"; } >> "$dir/gh.log"
 case "$1 $2" in
-  "pr create") echo "https://github.com/o/r/pull/7" ;;
+  "pr create") [ ! -f "$dir/create-fails" ] || { echo 'create unavailable' >&2; exit 1; }; echo "https://github.com/o/r/pull/7" ;;
   "pr view") echo "{\"state\":\"$(cat "$dir/state")\"}" ;;
 esac
 GH
@@ -109,7 +110,7 @@ s = re.sub(r'(?m)^delete_backups = .*$', f'delete_backups = {dele}', s)
 open(p, "w").write(s)
 PY
   [ "$tgt" = main ] || git branch "$tgt" v0
-  cli approve "$plan" >/dev/null || fail "approve"
+  approve_plan "$plan" >/dev/null || fail "approve"
   tree=$repo
   if [ "$wt" = yes ]; then
     wtdir=$(cd "$(mktemp_dir)" && pwd -P)/wt
@@ -130,13 +131,14 @@ PY
   write_shape "" src/a.txt $spec -- src/b.txt src/c.txt
   cli land "$plan" >/dev/null || fail "land 1"
   echo d > "$tree/src/d.txt"; git -C "$tree" add src/d.txt; git -C "$tree" commit -q -m round -- src/d.txt
+  cli gate start "$plan" >/dev/null || fail "recheck second land"
   cli verdict pass "$plan" --report again >/dev/null || fail "verdict 2"
   write_shape "d added" src/a.txt $spec -- src/b.txt src/c.txt src/d.txt
   cli land "$plan" >/dev/null || fail "land 2"
   git -C "$tree" branch backup/l-old; git -C "$tree" branch backup/other-1
   cli page "$plan" --note "run it" --message "feat: the merge" >/dev/null || fail "page"
 }
-passed() { cli plan status "$plan" passed >/dev/null || fail "plan status passed"; }
+passed() { cli accept "$plan" --by user --words 'Fixture acceptance' >/dev/null || fail "accept"; }
 status_is() { assert_contains "$(cli status "$plan" | sed -n 2p)" "Status: $1" "$2"; }
 backups() { git -C "$repo" branch --list 'backup/*' --format='%(refname:short)' | tr '\n' ' '; }
 
@@ -215,45 +217,45 @@ echo MERGED > "$bin/state"
 cli finish "$plan" >/dev/null || fail "finish merged"
 status_is merged "gh says merged" || exit 1
 
-# finish#request-by-forge: a request's link is the ending the page named: a run file changed since does not refuse the follow-up
+# finish#request-by-forge: a failed request creation retains the authorized manual handoff.
 newrepo merge-request false no
 passed
 bare=$(cd "$(mktemp_dir)" && pwd -P); git init -q --bare "$bare"
 git -C "$repo" remote add origin https://github.com/o/r.git
 git -C "$repo" config "url.$bare.pushInsteadOf" https://github.com/o/r.git
-cli finish "$plan" >/dev/null || fail "finish opens the request"
-sed -i.bak 's/^how = .*/how = "ff-only"/' "${plan%.md}.run.toml"; cli approve "$plan" >/dev/null || fail "approve the changed ending"
-status_is "https://github.com/o/r/pull/7" "the link survives approve" || exit 1
-echo OPEN > "$bin/state"
-out=$(cli finish "$plan") || fail "finish on a link after the ending changed: $out"
-case "$out" in *page-differs*) fail "page-differs fired on a request's link: $out";; esac
-assert_contains "$out" "open" "gh pr view is asked" || exit 1
-status_is "https://github.com/o/r/pull/7" "the link is kept" || exit 1
-cli finish --merged "$plan" >/dev/null || fail "finish --merged on the link"
-status_is merged "merged" || exit 1
+touch "$bin/create-fails"
+out=$(cli finish "$plan"); rc=$?
+assert_eq 1 "$rc" "request creation failure is reported" || exit 1
+assert_contains "$out" "gh-failed" "the push and request failure remain visible" || exit 1
+rm "$bin/create-fails"
+cli plan status "$plan" https://github.com/o/r/pull/8 >/dev/null || fail "record manual link after successful push"
+cli finish --merged "$plan" >/dev/null || fail "finish manual recovery"
 
-# finish#merge-needs-land: after land revert to no land the page record is gone and finish refuses before any push or merge
+# finish#merge-needs-land: a changed submitted contract needs renewed evidence too.
 newrepo merge-request false no
-cli land revert "$plan" >/dev/null || fail "land revert"
-cli land revert "$plan" >/dev/null || fail "land revert 2"
-python3 -c "import json,sys; assert 'page' not in json.load(open(sys.argv[1]))" "${plan%.md}.json" || fail "the page record is cleared with the last land"
 passed
 bare=$(cd "$(mktemp_dir)" && pwd -P); git init -q --bare "$bare"
 git -C "$repo" remote add origin https://github.com/o/r.git
 git -C "$repo" config "url.$bare.pushInsteadOf" https://github.com/o/r.git
-out=$(cli finish "$plan" 2>&1) && fail "finish after a reverted land should refuse"
-case "$out" in *Traceback*) fail "a crash after a reverted land: $out";; esac
-assert_contains "$out" "no-land" "refused as no-land" || exit 1
-assert_eq "" "$(git -C "$bare" branch --list --format='%(refname:short)' | tr -d ' \n')" "nothing was pushed" || exit 1
-for how in ff-only no-ff; do
-  newrepo $how false no
+cli finish "$plan" >/dev/null || fail "finish opens request"
+sed -i.bak 's/^how = .*/how = "ff-only"/' "${plan%.md}.run.toml"
+out=$(cli finish --merged "$plan"); rc=$?
+assert_eq 1 "$rc" "request follow-up refuses stale consent" || exit 1
+assert_contains "$out" "run-stale" "names stale consent" || exit 1
+status_is "https://github.com/o/r/pull/7" "request link remains readable" || exit 1
+
+# finish#merge-needs-land: reverting the last land blocks acceptance and finish.
+for how in merge-request ff-only no-ff; do
+  newrepo "$how" false no
   before=$(git -C "$repo" rev-parse main)
   cli land revert "$plan" >/dev/null && cli land revert "$plan" >/dev/null || fail "land revert ($how)"
-  passed
-  out=$(cli finish "$plan" 2>&1) && fail "a local $how merge of an unlanded branch should refuse"
-  assert_contains "$out" "no-land" "$how: refused as no-land" || exit 1
-  assert_eq "$before" "$(git -C "$repo" rev-parse main)" "$how: the target is unmoved" || exit 1
-  status_is passed "$how: Status stays passed" || exit 1
+  python3 -c "import json,sys; assert 'page' not in json.load(open(sys.argv[1]))" "${plan%.md}.json" || fail "page cleared"
+  out=$(cli accept "$plan" --by user --words yes); rc=$?
+  assert_eq 1 "$rc" "$how: acceptance without a land refuses" || exit 1
+  assert_contains "$out" "no-land" "$how: no land" || exit 1
+  cli plan status "$plan" passed --note shortcut >/dev/null && fail "status cannot replace land"
+  cli finish "$plan" >/dev/null && fail "finish cannot replace land"
+  assert_eq "$before" "$(git -C "$repo" rev-parse main)" "$how: target unmoved" || exit 1
 done
 
 # finish#request-by-forge, finish#push-only-for-request: GitLab: one push with the create, target and title options; its link is the Status
@@ -369,28 +371,31 @@ cli round done "$plan" >/dev/null || fail "round done"
 b=$(cli brief judge "$plan") || fail "brief judge"
 grep -q "main moved on src/a.txt" "$b" || fail "brief judge carries the conflict text: $(cat "$b")"
 
-# finish#by-run-file: an ending the page does not name is refused until the page names it
+# run#changes-through-approve: changed consent invalidates judge, page and acceptance.
 newrepo no-ff false no
 rf=${plan%.md}.run.toml
-sed -i.bak 's/^how = .*/how = "ff-only"/' "$rf"; cli approve "$plan" >/dev/null || fail "approve the changed ending"
-passed
+sed -i.bak 's/^how = .*/how = "ff-only"/' "$rf"
 before=$(git -C "$repo" rev-parse main)
-out=$(cli finish "$plan"); rc=$?
-assert_eq 1 "$rc" "an ending other than the page's is refused" || exit 1
-assert_contains "$out" "page-differs" "the code" || exit 1
-assert_contains "$out" "no-ff" "names the page's ending" || exit 1
-assert_eq "$before" "$(git -C "$repo" rev-parse main)" "main is as it was" || exit 1
-cli plan status "$plan" "at the human gate" >/dev/null || fail "back to the gate"
+out=$(cli accept "$plan" --by user --words yes); rc=$?
+assert_eq 1 "$rc" "stale run consent refuses acceptance" || exit 1
+assert_contains "$out" "run-stale" "names stale run" || exit 1
+approve_plan "$plan" >/dev/null || fail "approve changed ending"
+cli accept "$plan" --by user --words yes >/dev/null && fail "reapproval cannot replace fresh judge"
+cli gate start "$plan" >/dev/null || fail "recheck changed contract"
+cli verdict pass "$plan" --report "reviewed new ending" >/dev/null || fail "fresh judge"
 cli page "$plan" --note "run it" >/dev/null || fail "page again"
 passed
-out=$(cli finish "$plan") || fail "finish after the page names the ending: $out"
-assert_eq "$(git -C "$repo" rev-parse l)" "$(git -C "$repo" rev-parse main)" "main at the tip" || exit 1
+out=$(cli finish "$plan") || fail "finish after renewed consent: $out"
+assert_eq "$(git -C "$repo" rev-parse l)" "$(git -C "$repo" rev-parse main)" "main at tip" || exit 1
 
-# run#changes-through-approve: finish reports a run file changed after approval and keeps the approved values
+# run#changes-through-approve: changes after acceptance refuse without touching backups or target.
 newrepo ff-only false no
 passed
+before=$(git -C "$repo" rev-parse main)
 sed -i.bak 's/^delete_backups = .*/delete_backups = true/' "${plan%.md}.run.toml"
-out=$(cli finish "$plan") || fail "finish with drift: $out"
-assert_contains "$out" "differs from the approved values" "drift is reported" || exit 1
-assert_contains "$(backups)" "backup/l-1" "the approved values stand: backups kept" || exit 1
+out=$(cli finish "$plan"); rc=$?
+assert_eq 1 "$rc" "finish refuses changed run" || exit 1
+assert_contains "$out" "run-stale" "renewed consent is required" || exit 1
+assert_eq "$before" "$(git -C "$repo" rev-parse main)" "target untouched" || exit 1
+assert_contains "$(backups)" "backup/l-1" "backups kept" || exit 1
 echo "finish.test.sh: ok"

@@ -1,23 +1,24 @@
 ---
 name: finish
-description: Merge a plan's branch — a merge request, or local with --no-ff or --ff-only. Use only on the user's word at the human gate, typed or plain ("ок, в МР", "ок, локально"); never on its own.
+description: Merge a plan's branch — a merge request, or local with --no-ff or --ff-only. Use on authorized instruction after current human-gate acceptance; never on its own.
 ---
 
 # Finish
 
-The build session runs it on the plan's branch, on the user's approval at the
-human gate relayed unchanged by the original: [SESSIONS.md](../../references/SESSIONS.md).
-That word approves the page's ending; nothing is asked.
+The existing build writer runs it on the plan’s branch after current authorized
+acceptance: [SESSIONS.md](../../references/SESSIONS.md). If acceptance is missing, record
+`CLI accept <plan> --by <name> --words "<unchanged approval>"`.
+Use the approved run ending when instructed; do not ask it again.
 `CLI` is `python3 "<the build skill's directory>/pipeline.py"`.
 
 ## 1. Merge it
 
 `CLI finish <plan>`. It ends the run as the run file says, and refuses unless
-the plan is `passed` or a merge-request link. Read what it prints:
+the current judge, land, page and authorized acceptance match and the plan
+is `passed` or a merge-request link. Read the result:
 
 - A local merge sets Status to `merged`; the epic's row follows.
-- A merge request is opened and its link becomes Status. On a host code does not
-  know, open it yourself and record the link with `CLI plan status <plan>
+- A merge request is opened and its link becomes Status. On an unknown host, open it and record the link with `CLI plan status <plan>
   "<link>"`. The user merges it in the request's view; the button is the
   approval.
 - With the plan at a merge-request link, `CLI finish <plan>` asks the forge; where

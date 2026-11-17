@@ -9,6 +9,7 @@ pipeline="$repo_root/skills/build/pipeline.py"
 
 fail() { echo "land.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 
 # newrepo: a small plan with its phase done, the gate opened and a pass recorded.
@@ -74,7 +75,7 @@ s = open(p).read()
 s = re.sub(r'(?m)^full = .*$', 'full = ["true"]', s)
 open(p, "w").write(s)
 PY
-  cli approve "$plan" >/dev/null || fail "approve"
+  approve_plan "$plan" >/dev/null || fail "approve"
   cli build start "$plan" --base v0 >/dev/null || fail "build start"
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   echo 1 >> src/a.txt; git commit -q -m c1 -- src/a.txt
@@ -147,6 +148,8 @@ out=$(cli status "$plan") && cli phase start "$plan" 1 --note x >/dev/null || fa
 
 # re-land: the last shape, a new path apart, backup-2, one section with range-diff and since
 echo d > src/d.txt; git add src/d.txt; git commit -q -m round -- src/d.txt
+cli gate start "$plan" --note "fixture recheck of reopened phase" >/dev/null || fail "recheck"
+cli verdict pass "$plan" --report "reviewed added path" >/dev/null || fail "fresh judge"
 cli land draft "$plan" >/dev/null || fail "re-draft"
 python3 - "$shape" <<'PY' || fail "the re-draft: $(cat "$shape")"
 import tomllib, sys
@@ -301,6 +304,8 @@ rm untracked.txt
 newrepo
 echo '*.gen' >> .git/info/exclude
 echo g > src/x.gen; git add -f src/x.gen; git commit -q -m gen -- src/x.gen
+cli gate start "$plan" >/dev/null || fail "recheck generated file"
+cli verdict pass "$plan" --report "reviewed generated file" >/dev/null || fail "fresh judge"
 write_shape "" src/a.txt docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md -- src/b.txt src/c.txt src/x.gen
 out=$(cli land "$plan") || fail "land ignored: $out"
 git ls-tree -r --name-only HEAD | grep -qx src/x.gen || fail "the tip lacks the ignored tracked file"

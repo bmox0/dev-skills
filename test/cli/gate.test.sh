@@ -9,6 +9,7 @@ pipeline="$repo_root/skills/build/pipeline.py"
 
 fail() { echo "gate.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 
 repo=$(cd "$(mktemp_dir)" && pwd -P)
 cd "$repo" || exit 1
@@ -82,7 +83,7 @@ import re
 s = re.sub(r'(?m)^full = .*$', 'full = ["true", "echo boom; echo second line; exit 3", "echo x >> src/a.txt", "test -n {port}"]', s)
 open(p, "w").write(s)
 PY
-cli approve "$plan" >/dev/null || fail "approve"
+approve_plan "$plan" >/dev/null || fail "approve"
 cli build start "$plan" --base v0 >/dev/null || fail "build start"
 
 # build#checks-by-code: refused before every phase is done, unless given a note

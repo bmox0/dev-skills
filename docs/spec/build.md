@@ -2,12 +2,12 @@
 
 Building an approved plan: its phases, the E2E gate, the judge and the rounds, up to the human gate.
 
-### judge-after-every-round — Every round ends with the judge, on Opus, before the branch is landed and shown
+### judge-after-every-round — Every round ends with a primary judge before land and acceptance
 
-Why: only the judge decides whether a round left anything, and weaker models judged worse in earlier versions
+Why: judgment uses the approved provider preset
 
-- The same plan after the round: the note has its commit and the targeted re-check is green. Run the judge → it reads the judge file, the round's notes and the re-check's results, but not the plan's other Done results or captures. It returns `pass:` after `land`, and the judge file is unchanged.
-- The same plan at the human gate, after a round on one user note → the judge after it reads that note and the round's re-check, then lands.
+- Complete phases, gate, judge, land, page and authorized acceptance, including a feedback round → ff-only finish uses the agreed ending and retains backups; existing judge dispositions and explicit land-hook exceptions remain visible and supported.
+- Read every core skill, role and generated brief → shared rules come from AGENTS; planning, build coordination, first review and judge use primary; helpers, code, E2E and rechecks use secondary; no fixed provider/model or herdr-only requirement remains.
 
 ### judge-reads-the-round — After a round the judge reads only what the round was for and the re-check's results
 
@@ -16,19 +16,20 @@ Why: what the round did not touch should not have changed, and the re-check, not
 - The same plan after the round: the note has its commit and the targeted re-check is green. Run the judge → it reads the judge file, the round's notes and the re-check's results, but not the plan's other Done results or captures. It returns `pass:` after `land`, and the judge file is unchanged.
 - The same plan at the human gate, after a round on one user note → the judge after it reads that note and the round's re-check, then lands.
 
-### state-through-commands — After approval a plan's state changes only through the CLI, and a write refuses while the plan file differs from its last render
+### state-through-commands — CLI writes reject rendered drift and missing or stale prerequisites, including direct status changes
 
-Why: one writer per fact; a hand edit would vanish at the next render
+Why: a status cannot replace evidence or approval
 
-- Under a throwaway epic, run `build start --base <tag>` → the branch starts at the tag, and Status reads `building` with the tag's SHA. The epic's row reads `building`, and `status` shows phase 1 as ready.
-- Edit the Status line by hand, then run `phase start 1` → refused, naming the line and its command, and `status` still prints, showing the drift. Instead, edit a Done item and run `approve` → the plan is recompiled and every status is kept.
+- Validate a draft before consent → no approval; approve run then the current summary → build becomes eligible. Change run, plan or Spec → affected consent is stale; progress records survive reapproval.
+- Attempt passed, request-link or merged shortcuts without required current judge, land, page or acceptance records → refused without state or target changes; supported request-link recording still works after a valid finish flow.
+- Change the branch tree or approved planning content after a page/acceptance → stale stages are identified; passed and finish refuse until the required evidence and acceptance are current.
 
-### act-with-a-reason — An agent may act against a fact the CLI reports, with a reason the CLI records for the human gate
+### act-with-a-reason — Recorded operational overrides preserve judgment but cannot manufacture missing approval, judge, land or page stages
 
-Why: code states facts, agents keep the judgment
+Why: discretion does not authorize skipping the workflow
 
-- Phase 1 commits one path inside its territory and one outside, leaves one staged, and records its report. `phase done 1` → exit 1, naming both, and the phase stays `in progress`. Grant the outside path, commit the staged one and record the report again → `phase done 1` marks it `done` and prints phase 2 as ready.
-- Run `phase start 3` before phase 2 is done → refused; with `--note` → started, and `status` shows the note. Run `phase start 1` on the done phase with a note → back to `in progress`, with the note and HEAD's SHA.
+- Attempt passed, request-link or merged shortcuts without required current judge, land, page or acceptance records → refused without state or target changes; supported request-link recording still works after a valid finish flow.
+- Complete phases, gate, judge, land, page and authorized acceptance, including a feedback round → ff-only finish uses the agreed ending and retains backups; existing judge dispositions and explicit land-hook exceptions remain visible and supported.
 
 ### phase-done-checked — A phase is done once its reported commits are on the branch, inside its territory or grants, with nothing of its territory left uncommitted or staged
 
@@ -48,11 +49,11 @@ Why: the row was forgotten in 3 of 5 runs
 
 - Under a throwaway epic, run `build start --base <tag>` → the branch starts at the tag, and Status reads `building` with the tag's SHA. The epic's row reads `building`, and `status` shows phase 1 as ready.
 
-### pre-5-1-adopted — A plan without state is adopted by `approve` as its file stands; no other command but `spec` and `run` runs on it
+### pre-5-1-adopted — Adopting a plan preserves progress without inferring run, summary or acceptance approvals
 
-Why: no migration step to remember, and a plan mid-build goes on where it is; the run file is written and checked before the plan has state
+Why: historical progress is evidence rather than new authority
 
-- Take a pre-5.1 plan at `building` with phase 1 `done` and no JSON, and run `phase start 2` → refused, with a fix naming `approve`. Run `approve` → phase 1 is still `done`, and phase 2 is ready.
+- Read a completed old run and adopt an unfinished one → completed history is unchanged; unfinished progress survives, but missing new approvals are not inferred at protected transitions.
 
 ### brief-carries-spec — An implementer's brief lists every `## Spec` entry of the plan with its ID and Done items
 
@@ -92,11 +93,11 @@ Why: a number in prose becomes a quota
 - `fix start` takes the one list, and `brief fix` holds each item's `file:line` and text. After its commit and report, `fix done` → the full checks run at the new HEAD. Record Done 2 failed again, the first Defect as one the fix took, and a new Defect → the first two go to Open, and the next fix takes only the new one. At code's cap, `fix start` → refused. `status` shows each fix with its items and commits.
 - Order judge rounds in one gate → the one past code's cap is stopped: no round opens, and `status` shows the reason. In fresh gates, each sign stops a `verdict round` with its reason: rounds that leave no fewer new notes than they took, until code stops them; a check red, green after a fix, then red again; a cycle's fixes spent with a Defect standing. After a user's round at the human gate, the count starts afresh.
 
-### judge-file-by-code — `<slug>.judge.md` is written once, by code, from the first verdict, with HEAD, a UTC time and the engine
+### judge-file-by-code — Code writes the first judge file once with HEAD, UTC time and a supplied nonblank single-line engine identifier
 
-Why: written by hand, its format drifted: time zones, a slug without its date
+Why: provenance describes the executor without restricting providers
 
-- `verdict pass` with a decision for each Open entry and Convention and a Prediction → `.judge.md` names the slug, HEAD's SHA, a UTC time ending in `Z` and the engine; a later verdict leaves it byte for byte. A verdict leaving one undecided → refused, naming it.
+- Record first verdicts with `--engine qwen`, `pi` and `hermes` → names reach the judge header; empty/multiline identifiers and missing prediction are refused; later-verdict rules remain intact.
 
 ### notes-in-their-words — Each note keeps its author's words, the user's or the judge's, and code alone numbers notes and rounds
 
@@ -104,28 +105,23 @@ Why: the round's implementer reads the note as it was said
 
 - Record three user notes and mark one `task` → `<slug>.notes.md` lists two under Open and one under Tasks, in the words given, with their causes. `round start` takes the two; after one commit, `round done` → the heading reads ``## Round 1 · `<sha>` ``, and after two commits, `<first>..<last>`. `verdict round` → its notes are recorded with source `judge`, in the judge's words.
 
-### page-from-records — The human gate page is rendered from the records; Open holds only what is still open, and each result, check run and verdict not taken on the tip's tree is flagged with the paths changed since
+### page-from-records — The acceptance page describes current land and records, identifies evidence differences and binds acceptance to that result
 
-Why: hand-written pages carried a stale item and an Open already decided
+Why: acceptance must describe the result being finished
 
-- After a land, on a plan ending `no-ff`: `page --note "<…>"` without `--message` → refused; with one → Status `at the human gate`, and `## Human gate` holds in order the note, ending and message; Decided without you with costs; Open with each verdict and its decisions, no Prediction, a survivor, a case not reached with its need, an Observation; E2E with the level, the raising path, each Done case's result and commit, `you check` last; the commits. Before a land → refused.
-- A result taken before a later fix → flagged with its commit; one on the pre-land head → not flagged; one with no commit → flagged as unknown. A hand edit to the page → drift. A hand-written `## Human gate` with no land → byte for byte after `plan status`.
-- A gate whose Conventions a round closed, then a pass → `### Open` holds only what is undecided, let through, survived its fix or not reached, and the last verdict's report; each closed item shows once, under the fix or round that closed it; no verdict's decisions repeat as findings; `status` marks each finding with the cycle that closed it. A flagged result names the paths changed between its tree and the tip's.
+- Attempt passed, request-link or merged shortcuts without required current judge, land, page or acceptance records → refused without state or target changes; supported request-link recording still works after a valid finish flow.
+- Complete phases, gate, judge, land, page and authorized acceptance, including a feedback round → ff-only finish uses the agreed ending and retains backups; existing judge dispositions and explicit land-hook exceptions remain visible and supported.
+- Change the branch tree or approved planning content after a page/acceptance → stale stages are identified; passed and finish refuse until the required evidence and acceptance are current.
 
-### separate-build-session — On the user's start instruction, the original session launches build in a new herdr tab in the same workspace and remains the user's orchestrator
+### start-chosen — Summary approval starts nothing; a separate instruction chooses herdr, native independent session or manual handoff
 
-Why: the user's established workflow separates discussion context from execution without moving the conversation
+Why: planning does not choose a session topology
 
-- In either host, compile a plan without a start instruction, then give the instruction to start → compilation alone launches nothing; the original session creates a new tab in the same herdr workspace and starts an independent same-host build session from the plan and run file, without asking current versus new.
+- Follow planning through grill and the approved resume example → interview has no approval gate; the summary links the plan, explains phases, Spec, checks and limits within 350 words; approval alone starts nothing
+- Start build by explicit herdr/native/manual instruction; review directly and through a designated orchestrator → the chosen contact controls acceptance within granted authority; resume reuses the existing writer and relayed words stay unchanged
 
-### gate-through-original-session — The build session waits at the human gate while the original session alerts the user and opens the review location
+### acceptance-contact — Questions and acceptance go to the user or designated orchestrator within granted authority, with unchanged relayed words and one writer
 
-Why: the user reviews and responds in the original conversation
+Why: responsibility rather than conversation identity controls a run
 
-- The separate session reaches the human gate → it reports the gate and concrete review location to the original session and waits; the original alerts the user and opens what needs checking, without approving the result itself.
-
-### feedback-through-original-session — The original session relays the user's notes and approvals unchanged to the existing build session, which alone advances pipeline state
-
-Why: one conversation and one state writer prevent lost feedback and duplicate execution
-
-- The user gives review notes, then requests a round or approves finish in the original conversation → the same build session receives the words unchanged and performs the existing CLI flow only on that user instruction; neither a second build nor duplicate state writes are started.
+- Start build by explicit herdr/native/manual instruction; review directly and through a designated orchestrator → the chosen contact controls acceptance within granted authority; resume reuses the existing writer and relayed words stay unchanged

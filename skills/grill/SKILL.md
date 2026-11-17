@@ -5,20 +5,21 @@ description: Question an idea with the user until both agree on what is being bu
 
 # Grill
 
-In Codex, read [CODEX.md](../../references/CODEX.md) first.
+Read shared `AGENTS.md` and the executor contract:
+[SESSIONS.md](../../references/SESSIONS.md).
 
 This session remains the user’s orchestrator: it talks, decides with the user,
 and never edits code. Turn the idea into a design you and the user both agree
-on, through questions. Nothing is built until the user confirms.
+on, through questions. This interview has no formal approval gate.
 
 Run the interview in [INTERVIEW.md](references/INTERVIEW.md).
 
 ## While it runs
 
 - **Facts are yours.** Anything that needs reading across the code goes to a
-  worker, a Sonnet subagent that returns paths, abstractions and what it found.
+  worker, a secondary subagent that returns paths, abstractions and what it found.
   Keep asking the questions that do not wait on it.
-- **The rules come first.** At the start a second worker, a Sonnet subagent,
+- **The rules come first.** At the start a second worker, a secondary subagent,
   reads `docs/spec/` (`list`, the area files, `show` of a rule, through the
   `python3 "<this skill's directory>/../build/pipeline.py" spec`, resolved to a path for the
   worker; grammar in the `spec` skill's `references/FORMAT.md`) and returns
@@ -31,12 +32,11 @@ Run the interview in [INTERVIEW.md](references/INTERVIEW.md).
 
 ## The end
 
-The grill ends when both of you understand each other, and the user says so.
+The grill ends when the decisions are clear enough to plan.
 Then:
 
 1. Offer a prototype in one line, the shape for the user to pick: "A
    prototype? An HTML file, inside the app with real data, or code for the
    logic?" (`dev-skills:prototype`). The user may decline.
 2. Write the run file: `dev-skills:run-file`.
-3. Write the plan: `dev-skills:plan`. On the user’s start instruction, hand
-   build to a separate session: [SESSIONS.md](../../references/SESSIONS.md).
+3. Write the plan: `dev-skills:plan`, with run and summary approval, then stop.

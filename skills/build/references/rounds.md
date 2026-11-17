@@ -1,6 +1,6 @@
 # Notes and rounds
 
-The build session records feedback relayed unchanged by the original:
+The build writer records unchanged feedback from the designated contact:
 [SESSIONS.md](../../../references/SESSIONS.md).
 
 ## The notes file
@@ -28,25 +28,24 @@ the user wanted), `feel-ui` (it works as planned but feels or looks wrong),
 
 ## A round
 
-The user's word is a request to build the notes; a note given while they are
-still trying the app is not one. Name what the round takes; the user can
+A round needs an instruction to build notes; notes during review are not one. Name what the round takes; the user can
 overrule. `CLI round start <plan>` takes every open note, or the judge's notes
 when the last verdict ordered a round:
 
 1. A note that changes a rule changes `## Spec` along with Done first. Then a
-   new `dev-skills:implementer` handed `CLI brief round <plan>`; its territory
+   new `dev-skills:implementer` handed `CLI brief round --provider <provider> <plan>`; its territory
    is what the notes touch. Its checks, as for any phase.
 2. When it has reported, `CLI round done <plan>` writes the rules and runs the
-   full checks. Then at once: the reviewer on Sonnet handed `CLI brief
-   reviewer`, and the blast radius from the diff. Confined to what the notes
+   full checks. Then at once: the reviewer on secondary handed `CLI brief
+   reviewer --provider <provider>`, and the blast radius from the diff. Confined to what the notes
    name: tell the user what to look at, since they asked for it. Reaching shared
    code, logic or anything else: a fresh worker drives the Done use cases the
-   diff touches through `dev-skills:verify` handed `CLI brief verify --cases`.
+   diff touches through `dev-skills:verify` handed `CLI brief verify --provider <provider> --cases`.
    Say which, and why, in one line; the user can overrule.
 3. Defects and failed use cases go through `CLI fix`, as gate.md; what
    survives is under Open on the gate page. Conventions go to the judge.
 4. A new note taken adds its use case to Done. After a round at the human gate:
-   the judge, handed `CLI brief judge`, which lands, and `CLI page` again.
+   the judge, handed `CLI brief judge --provider <provider>`, which lands, and `CLI page` again.
 
 A round the judge ordered also runs `CLI round done`, then gate.md's targeted
 re-check instead of the blast radius in step 2, then the judge again.

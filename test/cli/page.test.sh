@@ -9,6 +9,7 @@ pipeline="$repo_root/skills/build/pipeline.py"
 
 fail() { echo "page.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 
 # newrepo: a small plan with its phase done, the gate opened and a pass recorded.
@@ -75,7 +76,7 @@ s = re.sub(r'(?m)^full = .*$', 'full = ["true"]', s)
 open(p, "w").write(s)
 PY
   sed -i.bak 's/^how = .*/how = "no-ff"/' "${plan%.md}.run.toml"
-  cli approve "$plan" >/dev/null || fail "approve"
+  approve_plan "$plan" >/dev/null || fail "approve"
   cli build start "$plan" --base v0 >/dev/null || fail "build start"
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   echo 1 >> src/a.txt; git commit -q -m c1 -- src/a.txt
@@ -113,6 +114,7 @@ cli decision "$plan" --question "Q1" --from plan --answer "A1" --why "W1" --cost
 cli phase start "$plan" 1 --note "restarted for the page" >/dev/null || fail "phase start note"
 cli result "$plan" --case 1 --outcome passed --capture out1 >/dev/null || fail "result"
 cli finding "$plan" --kind observation --where src/a.txt:1 --source plan --text "an observation" >/dev/null || fail "finding"
+cli verdict pass "$plan" --report "current records reviewed" >/dev/null || fail "fresh judge"
 land1
 out=$(cli page "$plan" --note "run it"); rc=$?
 assert_eq 1 "$rc" "no-ff needs a message" || exit 1
@@ -124,7 +126,7 @@ import sys, re
 t = open(sys.argv[1]).read()
 g = t[t.index("## Human gate"):]
 order = ["### How to try it", "open src and read", "### Ending", "a merge commit into `main`", "feat: the merge", "### Decided without you", "cost if wrong: C1", "restarted for the page",
-         "### Open", "Verdict 1: pass", "an observation", "### E2E", "Level: small", "1. a → b — passed", "### The commits"]
+         "### Open", "Verdict 2: pass", "an observation", "### E2E", "Level: small", "1. a → b — passed", "### The commits"]
 at = 0
 for w in order:
     i = g.find(w, at)
@@ -139,13 +141,14 @@ cli status "$plan" | grep -q Drift && fail "no drift after page"
 echo d > src/d.txt; git add src/d.txt; git commit -q -m round -- src/d.txt
 cli result "$plan" --case 1 --outcome passed --capture out2 >/dev/null || fail "result 2"
 cli finding "$plan" --kind observation --where src/a.txt:1 --source plan --text "second" >/dev/null
+cli gate start "$plan" --note "fixture recheck" >/dev/null || fail "recheck"
 out=$(cli verdict pass "$plan" --report again) || fail "verdict 2: $out"
 write_shape "d added" src/a.txt docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md -- src/b.txt src/c.txt src/d.txt
 cli land "$plan" >/dev/null || fail "re-land"
 g=$(sed -n '/^## Human gate/,$p' "$plan")
 assert_contains "$g" "1. a → b — passed — out2 — at" "the page draws the latest result" || exit 1
 case "$(echo "$g" | grep 'out2')" in *"[taken on"*) fail "a result on the pre-land head is flagged: $g";; esac
-assert_contains "$g" "Verdict 2: pass at" "the last verdict is listed" || exit 1
+assert_contains "$g" "Verdict 3: pass at" "the last verdict is listed" || exit 1
 case "$g" in *"Verdict 1"*) fail "an earlier verdict is not repeated: $g";; esac
 python3 - "${plan%.md}.json" <<'PY'
 import json, sys
@@ -153,7 +156,8 @@ st = json.load(open(sys.argv[1]))
 st["cycles"][0]["results"].append({**st["cycles"][0]["results"][0], "commit": None, "capture": "nocommit"})
 json.dump(st, open(sys.argv[1], "w"))
 PY
-cli plan status "$plan" "at the human gate" --note touch >/dev/null || fail "redraw"
+cli verdict pass "$plan" --report "reviewed unknown capture provenance" >/dev/null || fail "judge unknown capture"
+cli page "$plan" --note "open src and read" --message "feat: the merge" >/dev/null || fail "redraw"
 assert_contains "$(sed -n '/^## Human gate/,$p' "$plan")" "unknown commit" "a record with no commit is flagged" || exit 1
 first=$(git rev-parse backup/l-1)
 python3 - "${plan%.md}.json" "$first" <<'PY'
@@ -162,7 +166,8 @@ st = json.load(open(sys.argv[1]))
 st["cycles"][0]["results"].append({**st["cycles"][0]["results"][0], "commit": sys.argv[2], "capture": "old"})
 json.dump(st, open(sys.argv[1], "w"))
 PY
-cli plan status "$plan" "at the human gate" --note touch2 >/dev/null || fail "redraw 2"
+cli verdict pass "$plan" --report "reviewed older capture provenance" >/dev/null || fail "judge older capture"
+cli page "$plan" --note "open src and read" --message "feat: the merge" >/dev/null || fail "redraw 2"
 assert_contains "$(sed -n '/^## Human gate/,$p' "$plan")" "[taken on \`${first:0:7}\`, not the tip's tree]" "a result before a later fix is flagged with its commit" || exit 1
 # build#page-from-records: a hand edit is drift, and a plan with no land keeps its section
 echo "my edit" >> "$plan"
@@ -173,7 +178,7 @@ assert_contains "$(statuses)" "Drift" "status shows the drift" || exit 1
 
 newrepo
 printf '\n## Human gate\n\nhand written: keep\n' >> "$plan"
-cli plan status "$plan" "at the human gate" >/dev/null || fail "plan status"
+cli plan status "$plan" "at the human gate" >/dev/null && fail "a hand-written gate cannot replace land"
 python3 - "$plan" <<'PY' || fail "the hand-written section changed"
 t = open(__import__("sys").argv[1]).read()
 assert t.endswith("## Human gate\n\nhand written: keep\n"), t[-80:]
@@ -216,7 +221,7 @@ case "$(echo "$out" | grep 'C2 src')" in *closed*) fail "an open finding is not 
 newrepo
 land1
 sed -i.bak 's/^how = .*/how = "ff-only"/' "${plan%.md}.run.toml"
-out=$(cli page "$plan" --note "run it" --message "feat: m") || fail "page with drift: $out"
-assert_contains "$out" "differs from the approved values" "drift is reported" || exit 1
-assert_contains "$(sed -n '/^## Human gate/,$p' "$plan")" "a merge commit into" "the page names the approved ending" || exit 1
+out=$(cli page "$plan" --note "run it" --message "feat: m"); rc=$?
+assert_eq 1 "$rc" "page refuses stale run consent" || exit 1
+assert_contains "$out" "run-stale" "renewed consent is required" || exit 1
 echo "page.test.sh: ok"

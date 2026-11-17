@@ -5,17 +5,16 @@ description: Write the plan a change is built from — one screen, phases with t
 
 # Plan
 
-In Codex, read [CODEX.md](../../references/CODEX.md) first.
+Read shared `AGENTS.md` and the executor contract:
+[SESSIONS.md](../../references/SESSIONS.md).
 
-This session remains the user’s orchestrator: it plans and never edits code.
+Planning uses primary; research helpers use secondary. This session plans and never edits code.
 
-A plan is always a file, one screen, about 1000 words. It holds only what an
+A plan is always a file, about 1000 words. It holds only what an
 implementer cannot decide alone: the product decisions with a reason each, the
-interfaces where two phases meet, what is out, how it is checked. No file lists
-beyond territories, no code, no mechanisms: implementers explore the code
-themselves.
+interfaces where two phases meet, what is out, how it is checked. Implementers explore the code; omit mechanisms and file lists beyond territories.
 
-A plan is a finished thing: its Result is the feature, done, nothing deferred.
+Its Result is a finished feature.
 Work that does not fit one plan becomes an epic only on the user's word:
 propose it with the reason, and the user decides (`dev-skills:epic`).
 
@@ -26,7 +25,7 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
 - After a grill or a discussion, a prototype was offered. If not, offer one in a
   line: "A prototype? An HTML file, inside the app with real data, or code for
   the logic?" (`dev-skills:prototype`). The user may decline.
-- A worker reads the code the plan touches, a Sonnet subagent that returns
+- A worker reads the code the plan touches, a secondary subagent that returns
   paths and seams, so the territories are real, and for each territory the
   project's skills (`.agents/skills/`, `.claude/skills/`) whose rules its code
   follows, matched by description. The global ones come from this session's
@@ -36,12 +35,12 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   territory by the area's description, as skills are.
 - The run file exists, `.ai-workflow/plans/YYYY-MM-DD-<slug>.run.toml`
   (`dev-skills:run-file`); if not, write it first. The plan takes its name with
-  `.md`. `approve` refuses a draft without a sound one.
+  `.md`. `approve` validates without recording consent.
 - Checks takes its commands from the run file's `[checks]`, read with
   `python3 "<this skill's directory>/../build/pipeline.py" run show <plan>`;
-  the Environment block of `AGENTS.md` or `CLAUDE.md` fills only what the run
+  the Environment block of `AGENTS.md` fills only what the run
   file lacks: [environment-contract.md](references/environment-contract.md).
-- The plan is written in the project's language, found by the Language line in
+- The plan uses the Language line in
   [environment-contract.md](references/environment-contract.md). The conversation and the gate
   page stay in the user's language.
 
@@ -129,16 +128,23 @@ Before showing it:
   its look alone, is marked `you check`: the user checks it at the human gate.
   What e2e needs goes in the run file's `[run]` keys, through
   `dev-skills:run-file`; what the file lacks is `you check`.
-- **The gate level** goes into Checks, from the table in
+- **The gate level** follows
   [gate.md](../build/references/gate.md).
 
-Run `python3 "<this skill's directory>/../build/pipeline.py" approve <plan>` until
-it passes. It checks shape, sets Status to `approved` and names the branch
-(build writes the base), then prints overlapping plans from `building` to
-`passed`, the graph, level and word count. Show the path, Result and output
-(`1 → 2 ∥ 3 · normal · 1100 words`). Compilation alone launches nothing.
-A brief naming a command to run first: run it and build on its message.
-On the user’s start instruction, including one already supplied, launch
-`dev-skills:build <plan>` in a new herdr tab in the same workspace:
-[SESSIONS.md](../../references/SESSIONS.md). Remain the user’s orchestrator;
-watch and relay through that session.
+`CLI` is `python3 "<this skill's directory>/../build/pipeline.py"`.
+Run `CLI approve <plan>` until validation passes; compilation records no consent.
+Show the proposed run, including executor presets, and obtain explicit approval:
+`CLI run approve <plan> --by <name> --words "<unchanged approval>"`.
+Reuse recorded authorization; never invent consent or re-ask.
+
+Write a linked summary following [resume.example.md](references/resume.example.md),
+≤350 words in the conversation language: Result, phases, Spec, checks and limits.
+Ask approval of that summary and record it:
+`CLI summary approve <plan> --file <summary> --by <name> --words "<unchanged approval>"`.
+For a designated acceptor also supply `--acceptor <name> --authority "<granted scope>"`.
+This sets Status to `approved` only with both current approvals. Changed run,
+plan or Spec needs the affected consent renewed; progress survives.
+
+**STOP.** Summary approval launches nothing. A subsequent instruction chooses
+herdr, a native independent session or manual handoff through
+[SESSIONS.md](../../references/SESSIONS.md).

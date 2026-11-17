@@ -10,6 +10,7 @@ pipeline="$repo_root/skills/build/pipeline.py"
 
 fail() { echo "pipeline.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 # edit FILE OLD NEW: replace one exact string
 edit() { python3 -c 'import sys; p, a, b = sys.argv[1:]; s = open(p).read(); assert a in s, a; open(p, "w").write(s.replace(a, b, 1))' "$@"; }
 
@@ -84,7 +85,7 @@ P
 example="$repo_root/skills/run-file/references/example.run.toml"
 
 # build#state-through-commands: a broken plan gives one line per problem and no JSON
-out=$(cli approve "$plan"); rc=$?
+out=$(approve_plan "$plan"); rc=$?
 assert_eq 1 "$rc" "approve refuses a broken plan" || exit 1
 assert_eq 3 "$(printf '%s\n' "$out" | grep -c "^$plan:[0-9]*: ")" "one line per problem: $out" || exit 1
 assert_contains "$out" "phase 2 waits for phase 9" "names the missing phase" || exit 1
@@ -96,14 +97,14 @@ edit "$plan" 'Waits for: 9 — a thing' 'Waits for: 1 — a thing'
 edit "$plan" ', `skills/nope/SKILL.md`' ''
 
 # run#required-to-approve: a draft with no run file is refused, naming the skill, with no JSON
-out=$(cli approve "$plan"); rc=$?
+out=$(approve_plan "$plan"); rc=$?
 assert_eq 1 "$rc" "approve refuses a plan with no run file" || exit 1
 assert_contains "$out" "dev-skills:run-file" "the fix names the skill" || exit 1
 [ ! -e "${plan%.md}.json" ] || fail "no JSON after a refusal"
 
 cp "$example" "${plan%.md}.run.toml"
 draft=$(cat "$plan")
-out=$(cli approve "$plan"); rc=$?
+out=$(approve_plan "$plan"); rc=$?
 assert_eq 0 "$rc" "approve passes: $out" || exit 1
 last=$(printf '%s\n' "$out" | tail -1)
 [[ "$last" =~ ^"1 → 2 ∥ 3 · normal · "[0-9]+" words"$ ]] || fail "the last line: $last"
@@ -116,7 +117,7 @@ assert_eq "$(sed -n 1,6p .ai-workflow/epics/e.md)" "$(printf '%s\n' "$epic_befor
 assert_eq "| 2 | Two | 1 | |" "$(sed -n 8p .ai-workflow/epics/e.md)" "the other row is untouched" || exit 1
 
 # build#state-through-commands: status, base and the epic row
-cli plan status "$plan" building --note "start" >/dev/null || fail "plan status"
+cli build start "$plan" --base HEAD --note "start" >/dev/null || fail "plan status"
 cli plan base "$plan" HEAD >/dev/null || fail "plan base"
 sha=$(git rev-parse HEAD)
 grep -q "^Status: building · branch \`x\` · base \`$sha\`$" "$plan" || fail "the Status line follows the commands"
@@ -138,7 +139,7 @@ assert_contains "$out" "pipeline.py plan status" "names the command" || exit 1
 out=$(cli status "$plan"); rc=$?
 assert_eq 0 "$rc" "status prints on drift" || exit 1
 assert_contains "$out" "Drift:" "status shows the drift" || exit 1
-out=$(cli approve "$plan"); rc=$?
+out=$(approve_plan "$plan"); rc=$?
 assert_eq 1 "$rc" "approve refuses an edited code-owned line" || exit 1
 assert_contains "$out" "pipeline.py plan status" "approve names the command" || exit 1
 edit "$plan" 'Status: passed' 'Status: building'
@@ -149,10 +150,10 @@ edit "$plan" '1. a → b' '1. a → b
 out=$(cli plan status "$plan" passed); rc=$?
 assert_eq 1 "$rc" "a write refuses after a text edit" || exit 1
 assert_contains "$out" "pipeline.py approve" "names approve" || exit 1
-cli approve "$plan" >/dev/null || fail "approve recompiles"
+approve_plan "$plan" >/dev/null || fail "approve recompiles"
 grep -q '^Status: building · ' "$plan" || fail "the status is kept"
-cli plan status "$plan" passed >/dev/null || fail "writes work again"
-cli plan status "$plan" building >/dev/null
+cli plan status "$plan" passed >/dev/null && fail "compilation cannot replace acceptance"
+cli plan status "$plan" building >/dev/null || fail "approved progress remains writable"
 
 # the lock: parallel writers all land
 for i in 1 2 3 4 5 6; do git commit -q --allow-empty -m "c$i"; git tag "t$i"; done
@@ -180,7 +181,7 @@ python3 -c 'import sys; p=sys.argv[1]; s=open(p).read(); i=s.index("### 1."); j=
 edit "$plan" '### 2. Two' '### 1. Two'
 edit "$plan" '### 3. Three' '### 2. Three'
 edit "$plan" 'Waits for: 1 — a thing' 'Waits for: nothing'
-out=$(cli approve "$plan"); rc=$?
+out=$(approve_plan "$plan"); rc=$?
 assert_eq 1 "$rc" "approve refuses a renumbered started phase" || exit 1
 assert_contains "$out" "phase-gone:" "refused as gone: $out" || exit 1
 case "$out" in *"edited by hand"*) fail "not a hand-edit refusal: $out";; esac
@@ -243,7 +244,7 @@ P
 out=$(cli plan status "$old" passed); rc=$?
 assert_eq 1 "$rc" "a plan with no state is refused" || exit 1
 assert_contains "$out" "pipeline.py approve" "the fix names approve" || exit 1
-out=$(cli approve "$old"); rc=$?
+out=$(approve_plan "$old"); rc=$?
 assert_eq 0 "$rc" "approve adopts: $out" || exit 1
 assert_contains "$out" "overlaps 2026-11-16-x (building): src/" "names the overlapping plan" || exit 1
 grep -q '^### 1. First — `done`$' "$old" || fail "phase 1 stays done"
@@ -256,7 +257,9 @@ cli status | grep -q "2026-11-10-old — building" || fail "status of all plans"
 
 # the Human gate part of the file is not touched
 printf '\n## Human gate\n\nwritten by hand\n' >> "$old"
-cli plan status "$old" "at the human gate" >/dev/null || fail "a hand-written gate is not drift"
+out=$(cli plan status "$old" "at the human gate"); rc=$?
+assert_eq 1 "$rc" "legacy adoption does not infer approval" || exit 1
+assert_contains "$out" "run-unapproved" "a handwritten gate supplies no approval" || exit 1
 tail -2 "$old" | grep -q 'written by hand' || fail "the gate stays as written"
 
 # status lists plans only: no briefs or gate logs, and no approve fix for a merged plan without state
@@ -325,7 +328,7 @@ P
 
 # status without a plan lists building to passed; a named plan always shows
 mkp "$plans/2026-11-04-ap.md" ap ''
-cli approve "$plans/2026-11-04-ap.md" >/dev/null || fail "approve ap"
+approve_plan "$plans/2026-11-04-ap.md" >/dev/null || fail "approve ap"
 case "$(cli status)" in *2026-11-04-ap*) fail "status leaves out an approved plan";; esac
 assert_contains "$(cli status "$plans/2026-11-04-ap.md")" "approved" "a named plan shows" || exit 1
 assert_contains "$(cli status --help)" "building" "--help says which plans" || exit 1
@@ -349,12 +352,14 @@ E
 e2=.ai-workflow/epics/e2.md
 mkp "$plans/2026-11-05-p1.md" p1 'Epic: `.ai-workflow/epics/e2.md` · row 1'
 mkp "$plans/2026-11-05-p2.md" p2 'Epic: `.ai-workflow/epics/e2.md` · row 2'
-cli approve "$plans/2026-11-05-p1.md" >/dev/null || fail "approve p1"
-cli approve "$plans/2026-11-05-p2.md" >/dev/null || fail "approve p2"
+approve_plan "$plans/2026-11-05-p1.md" >/dev/null || fail "approve p1"
+approve_plan "$plans/2026-11-05-p2.md" >/dev/null || fail "approve p2"
 assert_contains "$(cat $e2)" '| 1 | not the plans table |' "a row outside the Plans table is untouched" || exit 1
 assert_contains "$(cat $e2)" '| 1 | One | — | approved · `.ai-workflow/plans/2026-11-05-p1.md` |' "an empty cell gets the epic's shape" || exit 1
 assert_contains "$(cat $e2)" '| 2 | Two | 1 | approved · `.ai-workflow/plans/2026-11-05-p2.md` |' "a filled cell keeps its shape" || exit 1
-for s in building "at the human gate" passed building "at the human gate" passed building passed; do
+cli build start "$plans/2026-11-05-p1.md" --base HEAD >/dev/null || fail "build p1"
+cli build start "$plans/2026-11-05-p2.md" --base HEAD >/dev/null || fail "build p2"
+for s in building approved building approved building; do
   cli plan status "$plans/2026-11-05-p1.md" "$s" >/dev/null &
   cli plan status "$plans/2026-11-05-p2.md" "$s" >/dev/null &
   wait
@@ -366,7 +371,7 @@ done
 link=$(mktemp_dir)/link
 ln -s "$(pwd -P)" "$link"
 mkp "$plans/2026-11-05-p3.md" p3 'Epic: `.ai-workflow/epics/e2.md` · row 3'
-cli approve "$link/.ai-workflow/plans/2026-11-05-p3.md" >/dev/null || fail "approve p3 through a link"
+approve_plan "$link/.ai-workflow/plans/2026-11-05-p3.md" >/dev/null || fail "approve p3 through a link"
 assert_contains "$(cat $e2)" '| 3 | Three | 2 | approved · `.ai-workflow/plans/2026-11-05-p3.md` |' "the row path is relative through a symlink" || exit 1
 
 # fenced blocks are text: a heading or Status line in one is neither parsed nor rewritten
@@ -378,7 +383,7 @@ Territory: `nowhere/`
 ```'
 pf="$plans/2026-11-06-pf.md"
 mkp "$pf" pf '' "$fence" "$fence"
-out=$(cli approve "$pf"); rc=$?
+out=$(approve_plan "$pf"); rc=$?
 assert_eq 0 "$rc" "approve ignores a fenced phase heading: $out" || exit 1
 python3 -B - "$pipeline" "$pf" <<'PY' || fail "set_phase"
 import sys; sys.path.insert(0, sys.argv[1].rsplit("/", 1)[0])
@@ -395,7 +400,7 @@ assert_contains "$out" "pipeline.py approve" "the fix is approve" || exit 1
 
 # run#starts-from-last: run new copies the newest run file, else the example, and never overwrites
 r=$(mktemp_dir)
-cd "$r" && git init -q && mkdir -p .ai-workflow/plans && cd .ai-workflow/plans || exit 1
+cd "$r" && git init -q && cp "$repo_root/AGENTS.md" AGENTS.md && mkdir -p .ai-workflow/plans && cd .ai-workflow/plans || exit 1
 out=$(cli run new 2026-11-20-a.md); rc=$?
 assert_eq 0 "$rc" "run new: $out" || exit 1
 assert_contains "$out" "2026-11-20-a.run.toml" "run new names the file" || exit 1
@@ -404,7 +409,7 @@ assert_contains "$out" "copied from" "run new names the source" || exit 1
 python3 - 2026-11-20-a.run.toml "$example" <<'P' || fail "a first run file is the example with an empty [run]"
 import sys, tomllib
 a, b = (tomllib.load(open(f, "rb")) for f in sys.argv[1:])
-assert a.pop("run") == {} and b.pop("run") and a == b
+assert a.pop("executors") and a.pop("run") == {} and b.pop("run") and a == b
 P
 printf 'quota = 33\n' >> 2026-11-20-a.run.toml
 touch -t 202611210000 2026-11-20-a.run.toml
@@ -453,7 +458,7 @@ cd "$repo" || exit 1
 # run#changes-through-approve: recorded at approve; a changed file is drift, the approved value stands, approve takes it
 pr="$plans/2026-11-24-r.md"
 mkp "$pr" r ''
-cli approve "$pr" >/dev/null || fail "approve r"
+approve_plan "$pr" >/dev/null || fail "approve r"
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["run"]["finish"]["delete_backups"] is True' "${pr%.md}.json" || fail "the state records the run file"
 edit "${pr%.md}.run.toml" 'delete_backups = true' 'delete_backups = false'
 out=$(cli status "$pr")
@@ -463,7 +468,7 @@ out=$(cli run show "$pr")
 assert_contains "$out" 'delete_backups = true' "run show gives the approved value" || exit 1
 assert_contains "$out" "Drift: " "run show reports the drift" || exit 1
 assert_eq true "$(cli run show --json "$pr" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["run"]["finish"]["delete_backups"]))')" "--json gives the approved value" || exit 1
-cli approve "$pr" >/dev/null || fail "approve r again"
+approve_plan "$pr" >/dev/null || fail "approve r again"
 assert_contains "$(cli run show "$pr")" 'delete_backups = false' "approve takes the new value" || exit 1
 case "$(cli status "$pr")" in *Drift:*) fail "no drift after approve";; esac
 # a changed value is a history entry naming section and key, and 1 -> true is a change
@@ -477,14 +482,14 @@ p = sys.argv[1]; t = open(p).read()
 t = re.sub(r"(?ms)^\[run\].*\Z", "", t) + "[run]\nquota = 1\n"
 open(p, "w").write(t)
 P
-cli approve "$pr" >/dev/null || fail "approve quota"
+approve_plan "$pr" >/dev/null || fail "approve quota"
 edit "${pr%.md}.run.toml" 'quota = 1' 'quota = true'
 assert_contains "$(cli status "$pr")" "[run] quota" "1 -> true is drift" || exit 1
-cli approve "$pr" >/dev/null || fail "approve quota true"
+approve_plan "$pr" >/dev/null || fail "approve quota true"
 assert_contains "$(cli status "$pr")" "run quota" "the history names run quota" || exit 1
 # a bad file is refused by approve with run check's lines
 edit "${pr%.md}.run.toml" 'how = "merge-request"' 'how = "squash"'
-out=$(cli approve "$pr"); rc=$?
+out=$(approve_plan "$pr"); rc=$?
 assert_eq 1 "$rc" "approve refuses a bad run file" || exit 1
 assert_contains "$out" "run-bad-value: [finish] how" "run check's line" || exit 1
 
@@ -493,7 +498,7 @@ po="$plans/2026-11-02-pre.md"
 mkp "$po" pre ''
 rm "${po%.md}.run.toml"
 sed -i.bak 's/^Status: draft/Status: building/' "$po"; rm "$po.bak"
-cli approve "$po" >/dev/null || fail "adopt a plan without a run file"
+approve_plan "$po" >/dev/null || fail "adopt a plan without a run file"
 python3 -c 'import json,sys; assert "run" not in json.load(open(sys.argv[1]))' "${po%.md}.json" || fail "no run recorded"
 
 echo "pipeline.test.sh: ok"

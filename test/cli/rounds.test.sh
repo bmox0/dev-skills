@@ -9,6 +9,7 @@ pipeline="$repo_root/skills/build/pipeline.py"
 
 fail() { echo "rounds.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 
 # newrepo: a repo with a normal-level plan at the opened gate; $1 = "red" starts with a red check.
@@ -76,7 +77,7 @@ s = open(p).read()
 s = re.sub(r'(?m)^full = .*$', 'full = ["test ! -e src/red.txt"]', s)
 open(p, "w").write(s)
 PY
-  cli approve "$plan" >/dev/null || fail "approve"
+  approve_plan "$plan" >/dev/null || fail "approve"
   cli build start "$plan" --base v0 >/dev/null || fail "build start"
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   if [ "${1:-}" = red ]; then echo r > src/red.txt; else echo r > src/p.txt; fi
@@ -84,13 +85,17 @@ PY
   cli phase report "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
   cli phase done "$plan" 1 >/dev/null || fail "phase done"
   cli gate start "$plan" >/dev/null || fail "gate start"
+  if [ "${1:-}" != missing ]; then
+    cli result "$plan" --case 1 --outcome passed --capture 'fixture output 1' >/dev/null || fail "fixture result 1"
+    cli result "$plan" --case 2 --outcome passed --capture 'fixture output 2' >/dev/null || fail "fixture result 2"
+  fi
 }
 json() { cli status --json "$plan" | python3 -c "import json,sys; c=json.load(sys.stdin); $1"; }
 commit() { echo "$1" >> src/a.txt; git commit -q -m "$1" -- src/a.txt; git rev-parse HEAD; }
 vfirst=(--predicted pass --predict n1 feel-ui --engine claude)
 
 # build#judge-file-by-code, build#notes-in-their-words
-newrepo
+newrepo missing
 out=$(cli brief judge "$plan"); rc=$?
 assert_eq 1 "$rc" "brief judge above small is refused while a case has no result" || exit 1
 assert_contains "$out" "result-missing" "the refusal's code" || exit 1
@@ -197,6 +202,16 @@ assert_contains "$(cli status "$plan")" "Stopped: judge rounds are past the cap"
 json "assert c['rounds'] == [], c['rounds']" || fail "a stopped verdict opens no round"
 grep -q "d1" "$repo/.ai-workflow/plans/2026-11-16-r.notes.md" && fail "build#caps-in-code: a stopped verdict's notes are not the user's open notes"
 assert_contains "$(cli status "$plan")" "d1" "the stopped verdict's notes stay visible in status" || exit 1
+cli land draft "$plan" >/dev/null || fail "stopped-round land draft"
+python3 - "${plan%.md}.shape.toml" <<'PYSHAPE'
+import sys
+path = sys.argv[1]
+text = open(path).read().replace('message = ""', 'message = "stopped round"').replace('walkthrough = ""', 'walkthrough = "keep stopped judgment visible"')
+open(path, "w").write(text)
+PYSHAPE
+cli land "$plan" >/dev/null || fail "stopped round remains landable"
+cli page "$plan" --note "review the stopped proposal" --message "stopped round" >/dev/null || fail "stopped round page"
+assert_contains "$(sed -n '/^## Human gate/,$p' "$plan")" "d1" "build#page-from-records: stopped notes stay visible at acceptance" || exit 1
 cli note add "$plan" --text "user round" --cause bug >/dev/null
 cli round start "$plan" | grep -q "(user)" || fail "after a stop the user's round is the user's"
 c=$(commit u1)

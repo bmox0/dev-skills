@@ -9,6 +9,7 @@ pipeline="$repo_root/skills/build/pipeline.py"
 
 fail() { echo "leftovers.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 
 # newrepo FULL [ISO_PORT]: a normal-level plan with one phase done, full = FULL (a TOML list body).
@@ -78,7 +79,7 @@ if port == 'false':
     s = re.sub(r'(?m)^(dev|url) = .*\n', '', s)
 open(p, "w").write(s)
 PY
-  cli approve "$plan" >/dev/null || fail "approve"
+  approve_plan "$plan" >/dev/null || fail "approve"
   cli build start "$plan" --base v0 >/dev/null || fail "build start"
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   echo r > src/p.txt
@@ -123,7 +124,7 @@ PY
 before=$(git rev-parse HEAD)
 out=$(cli gate start "$plan"); rc=$?
 assert_eq 1 "$rc" "gate start without run values is refused" || exit 1
-assert_contains "$out" "no-run-values" "the refusal's code" || exit 1
+assert_contains "$out" "run-stale" "the missing approved snapshot invalidates consent" || exit 1
 assert_eq "$before" "$(git rev-parse HEAD)" "nothing was committed" || exit 1
 json 'assert not c["cycles"]' || fail "no cycle was opened"
 
@@ -137,6 +138,8 @@ b2=$(cat "$repo/b2.out")
 [ "$b1" != "$b2" ] || fail "two verify briefs, two files"
 cmp -s "$b1" "$repo/b1.keep" || fail "the first brief is unchanged"
 grep -q '^2\. ' "$b2" || fail "the second brief holds case 2"
+cli result "$plan" --case 1 --outcome passed --capture 'fixture output 1' >/dev/null || fail "fixture result 1"
+cli result "$plan" --case 2 --outcome passed --capture 'fixture output 2' >/dev/null || fail "fixture result 2"
 cli verdict round "$plan" --report r1 --note "first" bug --predicted round --predict p bug --engine claude >/dev/null || fail "verdict 1"
 cli verdict round "$plan" --report r2 --note "second" feel-ui >/dev/null || fail "verdict 2"
 out=$(cli round start "$plan"); rc=$?
@@ -197,7 +200,7 @@ Waits for: nothing
   Done: 1
 P
   cp "$repo_root/skills/run-file/references/example.run.toml" .ai-workflow/plans/2026-11-16-$x.run.toml
-  cli approve .ai-workflow/plans/2026-11-16-$x.md >/dev/null || fail "approve $x"
+  approve_plan .ai-workflow/plans/2026-11-16-$x.md >/dev/null || fail "approve $x"
 done
 cli build start --base v0 --worktree "$repo/wa" .ai-workflow/plans/2026-11-16-a.md >/dev/null &
 p1=$!
@@ -209,9 +212,11 @@ pb=$(python3 -c 'import json; print(json.load(open(".ai-workflow/plans/2026-11-1
 [ -n "$pa" ] && [ "$pa" != "$pb" ] || fail "two plans started at once get two ports: $pa $pb"
 
 newrepo '"true"' false
-cli plan status "$plan" merged >/dev/null || fail "plan status merged"
+rm "${plan%.md}.json"
+sed -i.bak 's/^Status: building/Status: merged/' "$plan"; rm "$plan.bak"
+cli approve "$plan" >/dev/null || fail "adopt completed history"
 sed -i.bak 's/^port = false/port = true/' "${plan%.md}.run.toml"; rm -f "${plan%.md}.run.toml.bak"
-cli approve "$plan" >/dev/null || fail "approve on a merged plan"
+cli approve "$plan" >/dev/null || fail "compile completed history"
 json 'assert "port" not in (c["alloc"] or {}), c["alloc"]' || fail "a merged plan gets no port"
 
 # the docstring names every command --help lists

@@ -9,6 +9,7 @@ pipeline="$repo_root/skills/build/pipeline.py"
 
 fail() { echo "findings.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 
 repo=$(cd "$(mktemp_dir)" && pwd -P)
 cd "$repo" || exit 1
@@ -75,7 +76,7 @@ s = open(p).read()
 s = re.sub(r'(?m)^full = .*$', 'full = ["test ! -e src/red.txt"]', s)
 open(p, "w").write(s)
 PY
-cli approve "$plan" >/dev/null || fail "approve"
+approve_plan "$plan" >/dev/null || fail "approve"
 cli build start "$plan" --base v0 >/dev/null || fail "build start"
 cli phase start "$plan" 1 >/dev/null || fail "phase start"
 echo r > src/red.txt

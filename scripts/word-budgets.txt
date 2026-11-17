@@ -33,6 +33,7 @@ skills/land/SKILL.md 390
 skills/plan/SKILL.md 1095
 skills/plan/references/environment-contract.md 350
 skills/plan/references/example.md 532
+skills/plan/references/resume.example.md 350
 skills/prototype/SKILL.md 380
 skills/prototype/references/LOGIC.md 450
 skills/prototype/references/UI.md 400

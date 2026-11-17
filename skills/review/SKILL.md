@@ -5,11 +5,12 @@ description: Review a commit range from a fresh context against the project's ru
 
 # Review
 
-In Codex, read [CODEX.md](../../references/CODEX.md) first.
+Read shared `AGENTS.md` and the executor contract:
+[SESSIONS.md](../../references/SESSIONS.md).
 
 The session that asks for a review dispatches `dev-skills:reviewer`, a fresh
-context on Opus, and reads its lists; `build` sends its later reviews on
-Sonnet. The reviewer follows the steps below. Any range works.
+context using primary, and reads its lists; `build` uses secondary for
+rechecks and round reviews. Any range works.
 
 **Receives:** the range `BASE..HEAD`, the plan when there is one, where the
 project's rules live, and the

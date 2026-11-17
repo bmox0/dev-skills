@@ -11,6 +11,7 @@ hook="$repo_root/hooks/advise.py"
 
 fail() { echo "hooks.test.sh: $1" >&2; exit 1; }
 cli() { python3 -B "$pipeline" "$@"; }
+. "$repo_root/test/cli/lifecycle.sh"
 edit() { python3 -c 'import sys; p, a, b = sys.argv[1:]; s = open(p).read(); assert a in s, a; open(p, "w").write(s.replace(a, b, 1))' "$@"; }
 # fire JSON: the script's stdout for that stdin; $rc holds its exit code
 fire() { out=$(printf '%s' "$1" | python3 -B "$hook" 2>/dev/null); rc=$?; }
@@ -78,10 +79,14 @@ P
 for s in 2026-11-17-b 2026-11-17-a 2026-11-17-m 2026-11-17-d; do mkplan $s; done
 for s in b a m; do
   cp "$example" "$plans/2026-11-17-$s.run.toml"
-  cli approve "$plans/2026-11-17-$s.md" >/dev/null || fail "approve $s"
+  if [ "$s" = m ]; then
+    edit "$plans/2026-11-17-$s.md" 'Status: draft' 'Status: merged'
+    cli approve "$plans/2026-11-17-$s.md" >/dev/null || fail "adopt completed history"
+  else
+    approve_plan "$plans/2026-11-17-$s.md" >/dev/null || fail "approve $s"
+  fi
 done
-cli plan status "$plans/2026-11-17-b.md" building --note go >/dev/null || fail "building"
-cli plan status "$plans/2026-11-17-m.md" merged --note go >/dev/null || fail "merged"
+cli build start "$plans/2026-11-17-b.md" --base HEAD --note go >/dev/null || fail "building"
 b="$repo/$plans/2026-11-17-b.md"
 
 # hooks#status-at-start: every start source, both hosts, gives the building plan's status alone
@@ -100,7 +105,7 @@ fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"Sessio
 assert_contains "$(ctx)" "2026-11-17-b — " "Codex compact from a subdirectory" || exit 1
 
 # hooks#status-at-start: no plan from building to passed → nothing
-cli plan status "$plans/2026-11-17-b.md" merged --note go >/dev/null || fail "merge b"
+cli plan status "$plans/2026-11-17-b.md" approved --note waiting >/dev/null || fail "set b outside live statuses"
 fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"SessionStart","source":"startup","cwd":sys.argv[1]}))' "$repo")"
 assert_eq "" "$out" "no live plan: nothing" || exit 1
 assert_eq 0 "$rc" "no live plan: exit 0" || exit 1

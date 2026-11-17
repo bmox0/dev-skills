@@ -122,10 +122,24 @@ for f in "$repo_root"/skills/*/SKILL.md; do
     || fail "TC-9: skills/$skill/SKILL.md should carry no disable-model-invocation"
 done
 
-# --- TC-10: no mention of Haiku anywhere the model is documented -----------
+# --- TC-10: run#executor-presets and planning#summary-before-build ----------
 
-haiku_out=$(cd "$repo_root" && grep -ri haiku skills/ agents/ references/ README.md 2>/dev/null)
-[ -z "$haiku_out" ] || fail "TC-10: expected no match for haiku, found: $haiku_out"
+python3 - "$repo_root" <<'P' || fail "TC-10: shared executor and planning contracts"
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+for name in ('grill', 'plan', 'build', 'bug', 'prototype', 'review', 'verify', 'run-file', 'land'):
+    text = (root / 'skills' / name / 'SKILL.md').read_text()
+    assert 'CODEX.md' not in text, name
+    assert 'AGENTS.md' in text, name
+sessions = (root / 'references/SESSIONS.md').read_text()
+for term in ('primary', 'secondary', '--provider', 'model', 'effort', 'manual', 'native', 'herdr', 'unchanged'):
+    assert term in sessions, term
+plan = (root / 'skills/plan/SKILL.md').read_text()
+for term in ('run approve', 'summary approve', 'resume.example.md', 'STOP'):
+    assert term in plan, term
+assert plan.index('run approve') < plan.index('summary approve') < plan.index('STOP')
+P
 
 # --- TC-11: no retired 'Checkpoint N' or '| Segment |' outside the vocabulary
 
@@ -148,14 +162,14 @@ skill_scripts=$(cd "$repo_root" && find skills -type d -name scripts 2>/dev/null
 for f in "$repo_root"/agents/*.md; do
   ! frontmatter "$f" | grep -q '^tools:' || fail "TC-13: $(basename "$f") should carry no tools: line"
 done
-frontmatter "$repo_root/agents/implementer.md" | grep -qx 'model: sonnet' \
-  || fail "TC-13: the implementer should run on sonnet"
-frontmatter "$repo_root/agents/reviewer.md" | grep -qx 'model: opus' \
-  || fail "TC-13: the reviewer should run on opus"
-frontmatter "$repo_root/agents/judge.md" | grep -qx 'model: opus' \
-  || fail "TC-13: the judge should run on opus (build#judge-after-every-round)"
-grep -q '(reviewer on Sonnet)' "$repo_root/skills/build/SKILL.md" \
-  || fail "TC-13: build should send its later reviews on sonnet"
+for f in "$repo_root"/agents/*.md; do
+  ! frontmatter "$f" | grep -q '^model:' || fail "run#executor-presets: TC-13: role must use the selected preset"
+  grep -q 'AGENTS.md' "$f" || fail "TC-13: role must read shared rules"
+done
+grep -q '^| small |.*first reviewer.*primary' "$repo_root/skills/build/references/gate.md" \
+  || fail "TC-13: the first reviewer uses primary even at small gate"
+grep -q 'secondary' "$repo_root/skills/build/references/rounds.md" \
+  || fail "TC-13: round rechecks use secondary"
 for cmd in 'CLI gate start' 'CLI brief judge' 'CLI round start' 'CLI note add'; do
   grep -qF "$cmd" "$repo_root/skills/build/SKILL.md" || fail "TC-13: build should call \`$cmd\`"
 done
@@ -233,7 +247,7 @@ while IFS= read -r v; do
     approved)               grep -q 'Status to `approved`' "$plan_skill" ;;
     building)               grep -q '`building`' "$build_skill" ;;
     "at the human gate")    grep -q 'sets `at the human gate`' "$build_skill" ;;
-    passed)                 grep -q 'plan status <plan> passed' "$build_skill" ;;
+    passed)                 grep -q 'CLI accept <plan> --by' "$build_skill" ;;
     "a merge-request link") grep -q 'a merge-request link' "$finish_skill" ;;
     merged)                 grep -q 'Status to `merged`' "$finish_skill" ;;
     *) false ;;

@@ -5,7 +5,8 @@ description: Rewrite a plan's branch into the commits a reviewer reads and write
 
 # Land
 
-In Codex, read [CODEX.md](../../references/CODEX.md) first.
+Read shared `AGENTS.md` and the executor contract:
+[SESSIONS.md](../../references/SESSIONS.md).
 
 Run it on the plan's branch, in the tree where it is checked out (the
 worktree, when the plan has one). `CLI` is `python3 "<the build skill's

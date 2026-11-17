@@ -1,71 +1,77 @@
-# Original and build sessions
+# Executors and build handoff
 
-The original conversation remains the user’s orchestrator. Compilation alone
-launches nothing. On the user’s start instruction, including one already given,
-it starts an independent build session in a **new herdr tab in the same
-workspace**, for every build. Do not ask current versus new. Native phase
-agents keep their roles; a build session already handed this plan executes
-`dev-skills:build` without opening another build tab.
+Shared project rules come from `AGENTS.md`; host files only import or adapt
+those rules. Provider and model identifiers are open; no host implies a model.
+
+## Select executors
+
+Before run approval, `CLI executor show --provider <provider>` reads the
+current project's AGENTS Executors profiles. After approval, add `<plan>` to
+read that provider's frozen run snapshot. Missing profiles require the user
+to supply and approve them; never substitute another provider or inherit a model.
+`CLI` is `python3 "<build skill directory>/pipeline.py"`.
+
+Use primary for planning, coordination, the first review (including a
+small gate) and every judge. Use secondary for helpers, prototypes,
+implementation, fixes, verify/E2E, rechecks and round reviews. Every dispatch
+explicitly sets the selected model and effort when present; absent effort uses
+the provider default, never an inherited role override. If the host cannot
+apply a preset, surface the limitation before dispatch.
+
+Every new brief uses `CLI brief <role> --provider <provider> <plan> …`; its
+Executor headers give the assigned tier/model/effort. Hand a clean context
+its role file or worker skill and absolute brief path. Role agents report to
+the build writer; they dispatch no further agents. Use the host's native
+message tool for questions and idle-agent continuation. Ready independent
+phases can run concurrently within available slots.
 
 ## Start once
 
-Read the installed herdr skill and `herdr --skill`; check command help where
-needed. Use the CLI’s current flags, not a helper that defaults to Claude.
-Before creating anything, look for the existing build session recorded beside
-the plan. On resume, inspect and watch that session; do not launch a duplicate
-or take over its pipeline writes. If it exited, report that before restarting.
+Planning compiles, obtains explicit run approval, then approval of a linked
+summary of at most 350 words, and stops. Summary approval launches nothing.
+A subsequent instruction chooses **herdr**, a **native independent session**,
+or **manual handoff**; there is no required host or topology.
 
-Write a brief beside the plan with absolute plan, run-file and local build
-`SKILL.md` paths, verified decisions, working tree, same host, and original
-workspace/tab/pane as the return destination. Say that this is the build root,
-that its native agents report to it, and that it must report questions and the
-human gate back, then wait for relayed user instructions.
+Record the choice, absolute plan/run/local build skill paths, working tree,
+provider, selected primary preset, designated contact and their acceptance
+authority beside the plan. The contact is the user or their designated
+orchestrator within granted authority. Build coordinates; implementers edit.
+The existing build session is the single pipeline writer after handoff;
+role agents keep their reporting commands. A controller only relays unless
+explicitly granted acceptance authority; it cannot approve its own result.
 
-Create the tab, keeping the user’s focus:
+On resume inspect the recorded writer's state and recent output, then reuse
+it. If it exited, report that before arranging a restart. A timeout or unknown
+state proves neither completion nor failed submission: inspect before resend.
+Never start a duplicate writer or blindly replay a prompt.
+
+## Conditional herdr mechanics
+
+Only when herdr is chosen, read its installed skill and `herdr --skill`.
+Create a tab in the selected workspace, preserving focus:
 
 ```sh
 herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$PWD" --label "Build" --no-focus
 ```
 
-Read the tab ID and root pane ID from `.result.tab` and `.result.root_pane`.
-Start the **same host** in that pane: `--kind codex` for Codex, `--kind claude`
-for Claude Code; choose a unique live name. For Codex:
+Read the returned tab/root-pane IDs, start the chosen host with explicit
+primary model/effort using its supported flags, and prompt it with the absolute
+handoff brief. Record IDs and agent name. Inspect `herdr agent get` and
+`herdr agent read` after a settled-state wait; idle alone is not the gate.
+Native independent or manual handoffs preserve the same contract using their
+own session identifiers and communication channel.
 
-```sh
-herdr agent start <name> --kind codex --pane <root-pane-id>
-herdr agent prompt <name> "Read <absolute-brief-path> and execute the local build skill." --wait --timeout 60000
-```
+## Questions and acceptance
 
-Keep the returned IDs, agent name, host and brief path beside the plan so a
-resumed original can find them. A fresh root can dispatch its native phase
-agents; it is not a native child. The build session owns pipeline transitions,
-including notes, rounds, approval and finish; native roles keep their existing
-reporting commands. The original never writes pipeline state after handoff.
+Surface actual questions and permission prompts to the designated contact;
+answer routine questions from existing authorization. At the human gate,
+report the current gate page, concrete app/artifact location, how to try it,
+checks and limits, then wait. The contact opens the review location.
 
-## Watch and relay
-
-Run settled-state waits in the background; let completion wake the original
-session. `herdr agent wait <name> --timeout 60000` matches idle, done or blocked;
-read `herdr agent get <name>` and
-`herdr agent read <name> --source recent-unwrapped --lines 120` afterward.
-While working, use `--source visible` if history is unavailable. Read the
-response: a settled state alone does not mean the build reached its gate.
-
-A timeout, stalled prompt or unknown state is not completion or proof of failed
-submission. Inspect before retrying. Never blindly resend. A blocked state
-needs its actual question or permission prompt read and surfaced; answer only
-from existing authorization or the user’s answer. Handle routine questions
-from the agreed plan and relay the answer; bring unresolved product calls to
-the user. Do not silently approve permissions or a human gate.
-
-At the human gate, the build session reports the plan’s gate page, concrete
-app or artifact location, how to try it, checks and limits, and waits. The
-original alerts the user and opens that review location. It never approves
-its own result.
-
-Relay the user’s notes, round requests and approval **unchanged** to the same
-build session. Send only when it is settled and inspected; retain incoming
-words while it works. Notes alone do not start a round. The build session
-records them and advances through the existing CLI only on the user’s word.
-Continue watching through rounds and finish; never start a second build for
-feedback or write duplicate state from the original.
+Relay notes, round requests and approval **unchanged** to the same inspected
+writer; retain incoming words while it works. Notes alone start no round.
+Only the user or designated acceptor within granted authority may accept:
+`CLI accept <plan> --by <name> --words "<unchanged approval>"` binds the words
+to the current judge, land and page. Then finish as configured when instructed,
+without asking again for existing authorization. Continue watching through
+rounds and finish.
