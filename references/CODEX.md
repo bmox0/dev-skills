@@ -18,7 +18,7 @@ Leave `model` unset; the child keeps the session's model. The role files'
 | The skills say | `reasoning_effort` |
 |---|---|
 | an implementer, a worker, the reviewer on Sonnet | `high` |
-| `dev-skills:reviewer`, the first review of a range; the judge | `xhigh` |
+| `dev-skills:reviewer`, the first review of a range; the judge | `ultra` |
 
 All at once, in the background: spawn every ready one, up to the session's
 concurrency slots; the rest start as slots free. Close a child with

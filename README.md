@@ -104,7 +104,7 @@ written, with no "go".
   prediction of your verdict, and runs `land`.
 
 In Codex the same roles are Codex subagents on the session's model, at
-reasoning effort `high` where Claude Code uses Sonnet and `xhigh` for the first
+reasoning effort `high` where Claude Code uses Sonnet and `ultra` for the first
 review and the judge. The skills name Claude Code's tools;
 [`references/CODEX.md`](references/CODEX.md) says what each one is in Codex.
 
