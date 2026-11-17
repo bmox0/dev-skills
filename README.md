@@ -2,8 +2,8 @@
 
 A plugin for Claude Code and Codex: skills and three agents for building a
 change — discussion, a plan file, implementation by subagents, a review and an
-e2e check, and your approval before merge. The session you start coordinates
-the work and does not edit code.
+e2e check, and your approval before merge. The session you start remains your
+orchestrator; a separate build session coordinates implementation. Neither edits code.
 
 ## The pipeline
 
@@ -30,9 +30,13 @@ is shorter; none is skipped, and every plan ends in a human gate.
    its notes, the judge's file and the gate page from it. Status runs `draft` →
    `approved` → `building` → `at the human gate` → `passed` → `merged`, via
    `a merge-request link` when finish opens one. The plan session sets
-   `approved` itself, only with a run file that passes its check, and starts
-   the build at once, unless the session's brief names a command to run first.
-4. **Build.** One branch and one working tree per plan: this one, or a
+   `approved` itself, only with a run file that passes its check. Compilation
+   alone starts nothing.
+4. **Build.** On your start instruction, including one already given, the
+   original session opens a new herdr tab in the same workspace and launches
+   an independent build session using the same host, Claude Code or Codex.
+   That session runs the graph and owns pipeline transitions. One branch and
+   one working tree per plan: this one, or a
    worktree when another plan is building here. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it. Before the gate and
@@ -51,11 +55,15 @@ is shorter; none is skipped, and every plan ends in a human gate.
 6. **The human gate.** One page: what was decided without you, what is still
    open with the judge's report, the e2e (the use cases, each with its last
    result and the commit it ran on; the ones marked "you check" are yours),
-   and the landed commits, each with a walkthrough. You try the running app
+   and the landed commits, each with a walkthrough. The build session reports
+   the gate and concrete review location, then waits. The original session
+   alerts you and opens the result. You try the running app
    and read the commits in one sitting. Each note you make gets a cause from
    seven and is matched against the judge's prediction; a note that changes
    the approach is listed as a task, not built. A round runs on your word,
-   then the judge again (it lands) and back to the gate.
+   then the judge again (it lands) and back to the gate. The original relays
+   your notes, round requests and approval unchanged to the same build session;
+   notes alone start no round.
 7. **Finish.** On your word at the gate ("ок, в МР"), typed or plain. It asks
    nothing: the run file says how it ends (a merge request, or local with
    `--no-ff` or `--ff-only`) and whether the plan's backups go; the message
@@ -77,19 +85,21 @@ The drawing: [docs/pipeline.html](docs/pipeline.html).
 | [`land`](skills/land/SKILL.md) | the commits a reviewer reads; the judge runs it |
 | [`finish`](skills/finish/SKILL.md) | on your word at the gate, merge it: a merge request, or local with `--no-ff` or `--ff-only` |
 
-A small task is built by the session that discussed it; anything bigger by a
-new session started from the plan file. The build starts when the plan is
-written, with no "go".
+Every build uses a separate session, regardless of size. The original watches
+and relays through that existing session, including after resume; it neither
+starts a duplicate nor approves the gate itself. The handoff and return contract:
+[`references/SESSIONS.md`](references/SESSIONS.md).
 
 ## Who does what
 
 - **You** decide, and say at the gate whether it passes. A prototype, an epic, how to
   finish and a retro are your call.
 - **The orchestrator** is the model you started with, from the first pipeline
-  skill you enter. It talks, writes the plan, runs the graph, relays messages
-  and sorts findings. During a build it answers product questions itself,
-  except an irreversible one, and shows each answer at the human gate. It never
-  edits code.
+  skill you enter. It talks, writes the plan, launches and watches the build,
+  handles routine questions from the agreed plan, and relays your words.
+- **The build session** coordinates native phase agents, runs the graph, sorts
+  findings and owns pipeline transitions. It reports questions and the human gate
+  to the original session and waits for your relayed instructions. Neither session edits code.
 - **Implementers** are the [`implementer`](agents/implementer.md) agent: Sonnet,
   a clean context each, handed the whole plan, its phase, and what earlier
   phases reported. When the plan and the code disagree, it rules, carries on,
@@ -209,9 +219,9 @@ share.
 - A stage stays only if it saves more time than it takes.
 - The skills do not restrict the models or make them work one step after
   another without a reason.
-- Where the work could go two ways, the user chooses, not the agent. During a
-  build the orchestrator chooses and the human gate shows each choice; an
-  irreversible one waits for the user.
+- Where the work could go two ways, the user chooses, not the agent. During
+  implementation the build session chooses from the agreed plan and the human gate shows
+  each choice; an irreversible one waits for the user through the original session.
 
 ## Checking this repository
 

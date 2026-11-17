@@ -7,17 +7,17 @@ description: Build an approved plan — its branch, implementers run by the plan
 
 In Codex, read [CODEX.md](../../references/CODEX.md) first.
 
-`build <plan>`. This session is the orchestrator: it runs the graph, relays
-messages and sorts findings. It never edits code: implementers write it,
-Sonnet workers check it.
+`build <plan>`. In the original conversation, hand off through
+[SESSIONS.md](../../references/SESSIONS.md) and watch. The independent build
+session executes below; it never edits code or launches another build tab.
+It coordinates native implementers and Sonnet workers; they write and check code.
 
 ## 1. The branch
 
 Read the plan, its epic, and the project's `AGENTS.md` or `CLAUDE.md`.
 `CLI` is `python3 "<this skill's directory>/pipeline.py"`; every status, the
 base and the epic's row change through it, never by hand. `CLI status` lists
-the other plans from `building` to `passed`: a territory this plan shares with
-one is named to the user in a line.
+other plans from `building` to `passed`: report shared territories to the original session.
 
 Run `CLI build start --base <ref> [--worktree <path>] <plan>`. You name the
 base, which is not always the default branch. It reports the checked-out
@@ -44,9 +44,9 @@ goes back to the implementer as printed.
   meanwhile. `CLI owner <plan> <path>` names who holds a path: when no one
   does, `CLI grant <plan> <n> <path>`; otherwise pass the question to that
   phase. Answer a product call yourself, from the plan, its epic and what the
-  user said, and tell the user in a line; only an irreversible one, deleting
-  data, sending outside, production, waits for the user, whose answer goes on
-  in their words. Answer with `SendMessage`, and record it with `CLI decision`.
+  user said, and report to the original session; irreversible calls, deleting
+  data, sending outside, production, wait for the user through the original
+  session; relay their words. Answer with `SendMessage`, and record it with `CLI decision`.
   No git running: clear a stuck `index.lock`.
 - **Decided without you**: rulings and calls are `CLI decision` records, which
   `CLI status <plan>` lists for the human gate page.
@@ -89,12 +89,12 @@ Run `CLI page --note "<how to try it>" [--message "<merge message or request
 title>"] <plan>`: it sets `at the human gate` and draws `## Human gate` from the
 records, which you never edit. The note says how to try the running app, from
 a worktree how to run it there. The message is needed unless the run ends
-`ff-only`; draft it from the plan's Result by `dev-skills:commit-work`. Put the
-page in front of the user, who tries the app and reads the commits. A flagged
-result was not taken on the tip's tree: say whether the change touched it.
+`ff-only`; draft it from the plan's Result by `dev-skills:commit-work`. Report
+the page and concrete review location to the original session, then wait: [SESSIONS.md](../../references/SESSIONS.md). For a flagged result, say
+whether later changes touched it.
 
-The user's word of approval: `CLI plan status <plan> passed`; `dev-skills:finish` runs
-on that word, or on the next.
+On the user’s approval relayed unchanged by the original session:
+`CLI plan status <plan> passed`; `dev-skills:finish` runs on that word, or the next.
 
 ## 5. Notes and rounds
 
@@ -103,8 +103,8 @@ From the first phase on, record the user's notes in their words:
 running agent hears of it. The notes file is code's. At the gate, give each note
 a cause from the seven in [rounds.md](references/rounds.md), propose it, let the
 user correct it (`CLI note edit`), and mark its source against
-`<slug>.judge.md`'s Prediction when its round is done. A note that changes
-the approach or leaves the plan's territories is proposed as `task`; once the
-user confirms, it is listed, not built. A round, on the user's word, builds
+`<slug>.judge.md`'s Prediction when its round is done. A note changing
+the approach or leaving the territories is proposed as `task`; on the user’s
+confirmation, list it without building it. A round, on the user's word, builds
 every open note or a conflict at `finish` like a phase (reviewer on Sonnet),
 then the judge, dispatched through `CLI brief judge` like every judge, which lands, and back to the gate.

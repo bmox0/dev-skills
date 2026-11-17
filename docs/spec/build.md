@@ -111,3 +111,21 @@ Why: hand-written pages carried a stale item and an Open already decided
 - After a land, on a plan ending `no-ff`: `page --note "<…>"` without `--message` → refused; with one → Status `at the human gate`, and `## Human gate` holds in order the note, ending and message; Decided without you with costs; Open with each verdict and its decisions, no Prediction, a survivor, a case not reached with its need, an Observation; E2E with the level, the raising path, each Done case's result and commit, `you check` last; the commits. Before a land → refused.
 - A result taken before a later fix → flagged with its commit; one on the pre-land head → not flagged; one with no commit → flagged as unknown. A hand edit to the page → drift. A hand-written `## Human gate` with no land → byte for byte after `plan status`.
 - A gate whose Conventions a round closed, then a pass → `### Open` holds only what is undecided, let through, survived its fix or not reached, and the last verdict's report; each closed item shows once, under the fix or round that closed it; no verdict's decisions repeat as findings; `status` marks each finding with the cycle that closed it. A flagged result names the paths changed between its tree and the tip's.
+
+### separate-build-session — On the user's start instruction, the original session launches build in a new herdr tab in the same workspace and remains the user's orchestrator
+
+Why: the user's established workflow separates discussion context from execution without moving the conversation
+
+- In either host, compile a plan without a start instruction, then give the instruction to start → compilation alone launches nothing; the original session creates a new tab in the same herdr workspace and starts an independent same-host build session from the plan and run file, without asking current versus new.
+
+### gate-through-original-session — The build session waits at the human gate while the original session alerts the user and opens the review location
+
+Why: the user reviews and responds in the original conversation
+
+- The separate session reaches the human gate → it reports the gate and concrete review location to the original session and waits; the original alerts the user and opens what needs checking, without approving the result itself.
+
+### feedback-through-original-session — The original session relays the user's notes and approvals unchanged to the existing build session, which alone advances pipeline state
+
+Why: one conversation and one state writer prevent lost feedback and duplicate execution
+
+- The user gives review notes, then requests a round or approves finish in the original conversation → the same build session receives the words unchanged and performs the existing CLI flow only on that user instruction; neither a second build nor duplicate state writes are started.

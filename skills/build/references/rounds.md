@@ -1,12 +1,13 @@
 # Notes and rounds
 
-How `dev-skills:build` keeps what the user says, and builds it in rounds.
+The build session records feedback relayed unchanged by the original:
+[SESSIONS.md](../../../references/SESSIONS.md).
 
 ## The notes file
 
 `.ai-workflow/plans/<slug>.notes.md`, beside the plan, which code renders from
 `CLI note`: each note numbered, in the user's words, with its cause. The
-session proposes the cause; the user corrects it.
+build session proposes the cause; the user corrects it.
 
 Causes: `bug` (the code misses the plan), `off-plan` (it departs from the
 plan or a written rule), `proto-mismatch` (it departs from the chosen
@@ -15,7 +16,7 @@ the user wanted), `feel-ui` (it works as planned but feels or looks wrong),
 `code-taste` (the code reads wrong to the user).
 
 - **`task`** is not a cause but a verdict: the note changes the approach or
-  leaves the plan's territories. The session proposes it, the user confirms,
+  leaves the plan's territories. The build session proposes it, the user confirms,
   it is listed and never built: its own task. Anything inside the plan's
   intent is a round now.
 - An answer to an implementer's question is not a note: relay it.
@@ -59,4 +60,4 @@ Notes given during a round wait under Open.
 default branch; run `CLI plan base <plan> $(git merge-base <default> <branch>)`
 before the gates. A conflict inside `docs/spec/` is not merged by hand: it goes back to the
 default branch's state, this plan's record in the archive removed too, and the
-orchestrator runs `CLI gate start` once the base is rewritten. If it refuses, two plans disagree about a rule: the user's call.
+build session runs `CLI gate start` once the base is rewritten. If it refuses, two plans disagree about a rule: the user's call.

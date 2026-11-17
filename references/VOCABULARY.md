@@ -1,14 +1,16 @@
 # Vocabulary
 
-The words the dev-skills skills use, so that a human and a model reading any of
-them mean the same thing. A plain reference file, not a skill.
+The words shared by dev-skills, its models and users. A reference, not a skill.
 
 ## Roles
 
-**Orchestrator.** The model the user started with, from the first pipeline
-skill the user enters. It talks, decides with the user, writes the plan, runs
-the graph, relays messages and sorts findings. It holds conclusions, not raw
-code, and never edits code.
+**Orchestrator (original session).** The user's conversation: discusses, plans,
+starts and watches builds, opens their results, and relays the user's words unchanged.
+
+**Build session.** An independent same-host root in a new tab of the same herdr
+workspace, started on the user's word. It runs the graph and CLI, reports
+questions and gates to the original, and waits. Neither session edits code:
+[SESSIONS.md](SESSIONS.md).
 
 **Implementer.** Sonnet in a clean context, the `implementer` agent. It builds
 one phase, a list of findings, or a round's notes.
@@ -40,9 +42,8 @@ territory, what it waits for, its status.
 anywhere and writes only there. Phases whose territories overlap never run side
 by side.
 
-**Graph.** The phases and what each waits for; every phase whose dependencies
-are met starts at once. The plan file is also the **registry**: each phase
-carries its status, `waiting`, `in progress` or `done`, kept through the CLI.
+**Graph.** Phases and dependencies; ready phases start at once. The plan is also
+the **registry**: phase statuses, `waiting`, `in progress` or `done`, kept through the CLI.
 
 **Ruling.** What an implementer decided alone where the plan and the code
 disagreed: what, why, the cost if wrong. The human gate page shows them.

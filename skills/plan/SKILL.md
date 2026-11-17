@@ -7,7 +7,7 @@ description: Write the plan a change is built from — one screen, phases with t
 
 In Codex, read [CODEX.md](../../references/CODEX.md) first.
 
-This session is the orchestrator: it writes the plan and never edits code.
+This session remains the user’s orchestrator: it plans and never edits code.
 
 A plan is always a file, one screen, about 1000 words. It holds only what an
 implementer cannot decide alone: the product decisions with a reason each, the
@@ -133,11 +133,12 @@ Before showing it:
   [gate.md](../build/references/gate.md).
 
 Run `python3 "<this skill's directory>/../build/pipeline.py" approve <plan>` until
-it passes. It checks the shape, sets Status to `approved` with the branch named
-(build writes the base when it cuts it) and prints the plans from `building` to
-`passed` whose territories overlap this one's, then the graph, the level and the
-word count. Show the path, the Result and what `approve` printed (`1 → 2 ∥ 3 ·
-normal · 1100 words`). Then start `dev-skills:build
-<plan>` at once: here for a small task, a new session for anything bigger, as the
-user chooses. A brief that names a command to
-run first: run it, build on the message it brings.
+it passes. It checks shape, sets Status to `approved` and names the branch
+(build writes the base), then prints overlapping plans from `building` to
+`passed`, the graph, level and word count. Show the path, Result and output
+(`1 → 2 ∥ 3 · normal · 1100 words`). Compilation alone launches nothing.
+A brief naming a command to run first: run it and build on its message.
+On the user’s start instruction, including one already supplied, launch
+`dev-skills:build <plan>` in a new herdr tab in the same workspace:
+[SESSIONS.md](../../references/SESSIONS.md). Remain the user’s orchestrator;
+watch and relay through that session.

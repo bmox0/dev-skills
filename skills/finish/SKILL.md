@@ -5,8 +5,9 @@ description: Merge a plan's branch — a merge request, or local with --no-ff or
 
 # Finish
 
-Run it on the user's word of approval at the human gate, on the plan's branch.
-The page names the ending, so the word approves it and nothing is asked.
+The build session runs it on the plan's branch, on the user's approval at the
+human gate relayed unchanged by the original: [SESSIONS.md](../../references/SESSIONS.md).
+That word approves the page's ending; nothing is asked.
 `CLI` is `python3 "<the build skill's directory>/pipeline.py"`.
 
 ## 1. Merge it

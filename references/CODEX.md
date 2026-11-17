@@ -31,7 +31,9 @@ tools).
 
 ## A child
 
-If your task name is not `/root`, you are a child, and you dispatch no one.
+An independent herdr build session is a new root, not a native child:
+[SESSIONS.md](SESSIONS.md). If your task name is not `/root`, you are a native
+child and dispatch no one.
 Where a skill says the session that asks dispatches someone to follow its
 steps, you are that someone: follow them yourself.
 
