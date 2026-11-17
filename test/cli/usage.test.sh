@@ -96,4 +96,76 @@ pipe_err="$root/pipe.err"
 "$usage" --root "$root" --json 2>"$pipe_err" | true
 [ ! -s "$pipe_err" ] || fail "TC-5: a closed pipe prints nothing on stderr: $(cat "$pipe_err")"
 
+codex_home="$root/codex"
+python3 - "$codex_home/sessions" <<'PYFIXTURE'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1]) / "2026/09/25"
+root.mkdir(parents=True)
+
+def event(kind, payload, minute=0):
+    return {"timestamp": f"2026-09-25T10:{minute:02}:00Z", "type": kind, "payload": payload}
+
+def meta(sid, **extra):
+    return event("session_meta", {"id": sid, "timestamp": "2026-09-25T10:00:00Z", "cwd": "/work/demo", **extra})
+
+def message(mid, text, kind="user.text", minute=1):
+    return event("response_item", {"type": "message", "role": "user", "id": mid,
+        "content": [{"type": "input_text", "text": text}],
+        "internal_chat_message_metadata_passthrough": {"turn_id": "turn-a", "content_item_kinds": [kind]}}, minute)
+
+def tokens(input_tokens, output_tokens, minute=2):
+    usage = {"input_tokens": input_tokens, "cached_input_tokens": input_tokens // 2,
+             "output_tokens": output_tokens, "reasoning_output_tokens": output_tokens // 2}
+    return event("event_msg", {"type": "token_count", "info": {
+        "total_token_usage": usage, "last_token_usage": usage}}, minute)
+
+def write(name, rows):
+    (root / (name + ".jsonl")).write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+
+call = event("response_item", {"type": "function_call", "name": "spawn_agent", "namespace": "collaboration",
+    "call_id": "call-a", "arguments": '{"agent_type":"explorer"}'}, 3)
+write("root", [meta("root-001"), event("event_msg", {"type": "task_started", "turn_id": "turn-a"}),
+    message("instructions", "injected instructions", "agents_md.instructions"),
+    message("user-a", "/grill a change"), message("user-a", "/grill a change"),
+    event("event_msg", {"type": "user_message", "message": "/grill a change"}, 1),
+    tokens(200000, 1000), call, call, tokens(800000, 4000, 4), tokens(800000, 4000, 4),
+    event("event_msg", {"type": "token_count", "info": None}, 5),
+    message("user-b", "response-only followup", minute=6),
+    event("event_msg", {"type": "turn_aborted"}, 7)])
+write("child", [meta("child-01", source={"subagent": {"thread_spawn": {"parent_thread_id": "root-001"}}}),
+    message("child-task", "child task"), tokens(300000, 2500, 6)])
+write("grandchild", [meta("grand-01", parent_thread_id="child-01", cwd="/work/elsewhere"), tokens(100000, 1500, 3)])
+write("orphan", [meta("orphan01", parent_thread_id="missing-parent"), tokens(900000, 9000)])
+write("guardian", [meta("guardian", source={"subagent": {"other": "guardian"}}), tokens(900000, 9000)])
+# Forks repeat parent metadata and messages; the ordinal starts their own history.
+inherited = [meta("root-001"), message("user-a", "inherited prompt"), tokens(9000000, 90000)]
+write("fork", [meta("fork-001", forked_from_id="root-001", parent_thread_id="root-001",
+    history_mode="paginated", subagent_history_start_ordinal=1 + len(inherited)), *inherited,
+    message("fork-task", "fork task"), tokens(200000, 3000, 9)])
+write("other", [meta("other-01", cwd="/work/other"), message("other-user", "other project")])
+PYFIXTURE
+
+out=$(CODEX_HOME="$codex_home" "$usage" --source codex --project demo --since 2026-09-25 --json --messages "$msgs")
+assert_exit 0 "TC-6: Codex reads CODEX_HOME/sessions" || fail "TC-6"
+assert_eq 1 "$(field count)" "TC-6: child, orphan and internal sessions are not human roots" || fail "TC-6: $out"
+assert_eq root-001 "$(field sid)" "TC-6: identity uses the first metadata record" || fail "TC-6"
+assert_eq 2 "$(field nuser)" "TC-6: user events and response messages count once, injected content excluded" || fail "TC-6"
+assert_eq 4 "$(field out_k)" "TC-6: cumulative snapshots count once, reasoning is a subset" || fail "TC-6"
+assert_eq 0.8 "$(field in_M)" "TC-6: cached input is a subset" || fail "TC-6"
+assert_eq 1 "$(field interrupts)" "TC-6: turn aborts" || fail "TC-6"
+assert_eq "{'grill': 1}" "$(field cmds)" "TC-6: commands in human messages" || fail "TC-6"
+assert_eq "{'explorer': 1}" "$(field agents)" "TC-6: direct spawn calls deduplicated by call id" || fail "TC-6"
+assert_eq 3 "$(field nsubs)" "TC-6: descendants follow parent metadata across projects" || fail "TC-6"
+assert_eq 7 "$(field sub_out_k)" "TC-6: child snapshots exclude inherited fork counters" || fail "TC-6"
+assert_eq 0.3 "$(field sub_h)" "TC-6: own child durations sum" || fail "TC-6"
+body=$(cat "$msgs")
+assert_contains "$body" "response-only followup" "TC-6: response-only user messages are exported" || fail "TC-6"
+for skipped in "injected instructions" "child task" "fork task" "inherited prompt"; do
+  ! printf '%s' "$body" | grep -qF "$skipped" || fail "TC-6: '$skipped' should not be a human message"
+done
+out=$("$usage" --source codex --root "$codex_home/sessions" --project demo)
+assert_contains "$out" "/work/demo	1	0.1	0.1	2	4	3	0.3" "TC-7: Codex table and explicit root" || fail "TC-7: $out"
+out=$("$usage" --source codex --root "$codex_home/sessions" --since 2026-09-26 --json)
+assert_eq '[]' "$out" "TC-7: Codex date filter" || fail "TC-7"
+
 exit 0

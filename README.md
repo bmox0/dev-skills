@@ -228,9 +228,16 @@ plugin's shape — TC-13 pins the shape itself (hooks that only advise, no `scri
 Sonnet implementers, an Opus reviewer and judge, one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
 `finish`, `epic` and the implementer; one file is `scripts/test <path>`.
 
-`scripts/usage` measures sessions from Claude Code's transcripts: wall and
-active hours, human messages, tokens, subagents, per project or per session
-(`--json`, `--project`, `--since`).
+`scripts/usage` reports wall and active hours, human messages, tokens and
+subagents from Claude Code transcripts by default. Use `--source codex` for
+native Codex JSONL rollouts in `$CODEX_HOME/sessions` (default `~/.codex/sessions`),
+or `--root DIR` to override either location. `--json`, `--project` and `--since`
+select session output, project (Codex's initial cwd) and start date. Codex tokens
+use cumulative snapshots without adding cached input again; descendants are
+aggregated separately under their root. Forks with `subagent_history_start_ordinal`
+exclude inherited history. Missing token snapshots report zero observed usage;
+orphan child threads are omitted. Codex skill counts are not inferred, and
+encrypted message text or tool arguments are not recovered.
 
 Working on this repository with the installed plugin also active runs the
 pipeline twice; turn it off first: `claude --settings
