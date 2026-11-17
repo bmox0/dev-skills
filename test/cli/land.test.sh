@@ -306,6 +306,92 @@ out=$(cli land "$plan") || fail "land ignored: $out"
 git ls-tree -r --name-only HEAD | grep -qx src/x.gen || fail "the tip lacks the ignored tracked file"
 case "$out" in *differs*) fail "no difference expected: $out";; esac
 
+# land#backup-first: a backup namespace collision stops before a hook or rewrite runs.
+newrepo
+pre=$(git rev-parse HEAD)
+git branch backup || fail "reserve the backup namespace"
+hook
+write_shape "" src/a.txt docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md -- src/b.txt src/c.txt
+out=$(cli land "$plan" 2>&1); rc=$?
+assert_eq 1 "$rc" "a failed backup refuses land" || exit 1
+assert_contains "$out" "git-failed:" "backup failure is a normal diagnostic" || exit 1
+assert_contains "$out" "backup/l-1" "the failed backup is named" || exit 1
+assert_eq "$pre" "$(git rev-parse HEAD)" "backup failure leaves the branch unchanged" || exit 1
+git diff --quiet HEAD || fail "backup failure leaves the tree unchanged"
+grep -q fmt src/a.txt && fail "the hook must not run without a backup"
+python3 - "${plan%.md}.json" <<'PY' || fail "backup failure records no land"
+import json, sys
+assert not json.load(open(sys.argv[1])).get("lands")
+PY
+
+git_bin=$(mktemp_dir)
+export LAND_REAL_GIT=$(command -v git)
+cat > "$git_bin/git" <<'GIT'
+#!/bin/sh
+case "$*" in
+  "$LAND_FAIL_GIT"*) echo "injected Git failure: $LAND_FAIL_GIT" >&2; exit 128 ;;
+esac
+if [ "${LAND_FAIL_ROLLBACK:-}" = 1 ] && [ "$1 $2 $3" = 'reset -q --hard' ]; then
+  echo 'injected rollback failure' >&2
+  exit 128
+fi
+exec "$LAND_REAL_GIT" "$@"
+GIT
+chmod +x "$git_bin/git"
+
+# land#checked-tree: failed reads and writes never become a successful land.
+for command in 'status --porcelain' 'diff --name-only -z --no-renames' 'branch --list' reset 'add -A' commit 'diff --name-only -z backup/'; do
+  newrepo
+  pre=$(git rev-parse HEAD)
+  [ "$command" != reset ] || command="reset -q $(git rev-parse v0)"
+  hook
+  write_shape "" src/a.txt docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md -- src/b.txt src/c.txt
+  cp "${plan%.md}.json" "$git_bin/state"
+  cp "$plan" "$git_bin/plan"
+  out=$(PATH="$git_bin:$PATH" LAND_FAIL_GIT="$command" cli land "$plan" 2>&1); rc=$?
+  assert_eq 1 "$rc" "$command failure refuses land" || exit 1
+  assert_contains "$out" "git-failed:" "$command failure uses Refuse" || exit 1
+  assert_contains "$out" "injected Git failure: $command" "$command failure preserves the cause" || exit 1
+  case "$out" in *Traceback*|*"the tip's tree is the backup's"*) fail "false success or traceback: $out";; esac
+  assert_eq "$pre" "$(git rev-parse HEAD)" "$command failure preserves or restores HEAD" || exit 1
+  git diff --quiet HEAD || fail "$command failure preserves or restores the tree"
+  cmp -s "$git_bin/state" "${plan%.md}.json" && cmp -s "$git_bin/plan" "$plan" || fail "$command failure changes no record"
+  case "$command" in
+    reset*|add*|commit*|'diff --name-only -z backup/'*)
+      assert_eq "$pre" "$(git rev-parse backup/l-1)" "the backup survives $command failure" || exit 1
+      assert_contains "$out" "land-restored:" "successful rollback is reported" || exit 1 ;;
+    *) [ -z "$(git branch --list 'backup/*')" ] || fail "$command failure must precede the backup" ;;
+  esac
+done
+
+# land#backup-first: a failed rollback retains the recovery ref and the original state.
+newrepo
+pre=$(git rev-parse HEAD)
+write_shape "" src/a.txt docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md -- src/b.txt src/c.txt
+cp "${plan%.md}.json" "$git_bin/state"
+out=$(PATH="$git_bin:$PATH" LAND_FAIL_GIT=commit LAND_FAIL_ROLLBACK=1 cli land "$plan" 2>&1); rc=$?
+assert_eq 1 "$rc" "failed commit and rollback refuse land" || exit 1
+assert_contains "$out" "injected Git failure: commit" "the original error survives" || exit 1
+assert_contains "$out" "rollback-failed: injected rollback failure" "rollback failure is explicit" || exit 1
+assert_contains "$out" 'git reset --hard backup/l-1' "recovery names the usable backup" || exit 1
+case "$out" in *land-restored*|*Traceback*) fail "rollback did not succeed: $out";; esac
+assert_eq "$pre" "$(git rev-parse backup/l-1)" "failed rollback keeps the backup" || exit 1
+assert_eq "$(git rev-parse v0)" "$(git rev-parse HEAD)" "failed rollback is not silently restored" || exit 1
+cmp -s "$git_bin/state" "${plan%.md}.json" || fail "failed rollback changes no record"
+git reset -q --hard backup/l-1 || fail "the backup permits recovery"
+
+# land#recorded: failed revert keeps its land record and backup, with no traceback.
+cli land "$plan" >/dev/null || fail "land after recovery"
+tip=$(git rev-parse HEAD)
+cp "${plan%.md}.json" "$git_bin/state"
+out=$(PATH="$git_bin:$PATH" LAND_FAIL_GIT='reset -q --hard' cli land revert "$plan" 2>&1); rc=$?
+assert_eq 1 "$rc" "failed revert refuses" || exit 1
+assert_contains "$out" "git-failed:" "failed revert uses Refuse" || exit 1
+case "$out" in *"land reverted"*|*Traceback*) fail "failed revert must not claim success: $out";; esac
+assert_eq "$tip" "$(git rev-parse HEAD)" "failed revert leaves HEAD" || exit 1
+assert_eq "$pre" "$(git rev-parse backup/l-2)" "failed revert keeps its backup" || exit 1
+cmp -s "$git_bin/state" "${plan%.md}.json" || fail "failed revert keeps the land record"
+
 # the epic's Interfaces: `land` with no arguments is a usage error
 out=$(cli land 2>&1); rc=$?
 assert_eq 2 "$rc" "land with no arguments exits 2" || exit 1

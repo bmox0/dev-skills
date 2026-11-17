@@ -2507,8 +2507,15 @@ def land_stops(st):
     return [s for s in st.get("land_stops", []) if s["lands"] == len(st.get("lands", []))]
 
 
+def land_git(tree, *args):
+    r = git(*args, check=False, cwd=tree)
+    if r.returncode:
+        raise Refuse("git-failed", r.stderr.strip() or r.stdout.strip() or f"git {args[0]} failed", "fix the Git error and run it again")
+    return r
+
+
 def changed_paths(st, tree):
-    r = git("diff", "--name-only", "-z", "--no-renames", f"{st['base']}..HEAD", check=False, cwd=tree)
+    r = land_git(tree, "diff", "--name-only", "-z", "--no-renames", f"{st['base']}..HEAD")
     return sorted(p for p in r.stdout.split("\0") if p)
 
 
@@ -2580,17 +2587,17 @@ def land_stop(st, tree, kind, message):
 
 def next_backup(branch, tree):
     mine = re.compile(re.escape(f"backup/{branch}-") + r"(\d+)")
-    names = git("branch", "--list", f"backup/{branch}-*", "--format=%(refname:short)", check=False, cwd=tree).stdout.split()
+    names = land_git(tree, "branch", "--list", f"backup/{branch}-*", "--format=%(refname:short)").stdout.split()
     return f"backup/{branch}-{1 + max([int(m[1]) for b in names if (m := mine.fullmatch(b))], default=0)}"
 
 
 def dirty_lines(tree):
-    return git("status", "--porcelain", "--untracked-files=all", "--", ".", NOT_MINE, check=False, cwd=tree).stdout.splitlines()
+    return land_git(tree, "status", "--porcelain", "--untracked-files=all", "--", ".", NOT_MINE).stdout.splitlines()
 
 
 def do_land(plan, st, tree):
     """-> a refusal to raise once the state is saved, or None."""
-    g = lambda *a: git(*a, check=False, cwd=tree)
+    g = lambda *a: land_git(tree, *a)
     lands = st.setdefault("lands", [])
     v = (st.get("verdicts") or [None])[-1]
     if not v or not (v["kind"] == "pass" or v.get("stop")):
@@ -2615,24 +2622,31 @@ def do_land(plan, st, tree):
     if probs:
         raise refuse_all(probs)
     pre, backup = g("rev-parse", "HEAD").stdout.strip(), next_backup(st["branch"], tree)
-    g("branch", backup, pre)
     stash = g("stash", "list").stdout.splitlines()
-    g("reset", "-q", st["base"])
-    done = []
-    for c in shape["commit"]:
-        g("add", "-A", "-f", "--", *map(norm, c["paths"]))
-        r = g("commit", "-q", "-m", c["message"])
-        if r.returncode:
+    g("branch", backup, pre)
+    try:
+        g("reset", "-q", st["base"])
+        done = []
+        for c in shape["commit"]:
+            g("add", "-A", "-f", "--", *map(norm, c["paths"]))
+            g("commit", "-q", "-m", c["message"])
+            done.append({"paths": [norm(x) for x in c["paths"]], "message": c["message"], "walkthrough": c["walkthrough"], "sha": g("rev-parse", "HEAD").stdout.strip()})
+        tip = done[-1]["sha"]
+        held = set(map(norm, (p for c in shape["commit"] for p in c["paths"])))
+        dirty = dirty_lines(tree)
+        diff = {p for p in g("diff", "--name-only", "-z", backup, "HEAD").stdout.split("\0") if p and (p in held or not inside(p, [".ai-workflow"]))} | {l[3:] for l in dirty}
+        stat = g("diff", "--stat", backup, "HEAD").stdout.rstrip() if diff else None
+        new_stash = g("stash", "list").stdout.splitlines()
+        left = new_stash[:len(new_stash) - len(stash)]
+        rd = g("range-diff", st["base"], prev["tip"], tip).stdout.rstrip() if prev else None
+    except Refuse as error:
+        try:
             g("reset", "-q", "--hard", pre)
-            g("branch", "-D", backup)
-            raise Refuse("commit-failed", (r.stderr.strip() or r.stdout.strip()), "a hook refused a commit; the branch is as it was. Fix the cause and land again")
-        done.append({"paths": [norm(x) for x in c["paths"]], "message": c["message"], "walkthrough": c["walkthrough"], "sha": g("rev-parse", "HEAD").stdout.strip()})
-    tip = done[-1]["sha"]
-    held = set(map(norm, (p for c in shape["commit"] for p in c["paths"])))
-    diff = {p for p in g("diff", "--name-only", "-z", backup, "HEAD").stdout.split("\0") if p and (p in held or not inside(p, [".ai-workflow"]))} | {l[3:] for l in dirty_lines(tree)}
-    new_stash = g("stash", "list").stdout.splitlines()
-    left = new_stash[:len(new_stash) - len(stash)]
-    rd = g("range-diff", st["base"], prev["tip"], tip).stdout.rstrip() if prev else None
+        except Refuse as rollback:
+            error.diags.append(("rollback-failed", str(rollback), f"the backup is {backup} at {pre}; fix the Git error, then restore it with `git reset --hard {backup}` in {tree}"))
+        else:
+            error.diags.append(("land-restored", f"the branch is restored to {pre}; backup {backup} is kept", "fix the Git error and land again"))
+        raise
     lands.append({"n": len(lands) + 1, "at": now(), "backup": backup, "pre": pre, "tip": tip, "shape": done,
                   "since": str(shape.get("since", "")).strip() or None, "range_diff": rd, "difference": sorted(diff), "stash": left, "accepted": None})
     print(f"land {len(lands)}: tip {tip[:7]} on {st['branch']}, {len(done)} commit(s), backup {backup} at {pre[:7]}")
@@ -2640,8 +2654,8 @@ def do_land(plan, st, tree):
         print("the tip's tree is the backup's")
     else:
         print("the tip's tree differs from the backup's, which the checks passed:")
-        print(g("diff", "--stat", backup, "HEAD").stdout.rstrip())
-        for l in dirty_lines(tree):
+        print(stat)
+        for l in dirty:
             print(f"  uncommitted: {l[3:]}")
         print("keep it with `land accept --note <why>`, or `land revert`")
     for s in left:
@@ -2665,17 +2679,17 @@ def cmd_land(plan, action, note):
                 raise Refuse("no-note", "accepting a difference needs the reason", "pass --note: why the hook's change stays")
             if dirty_lines(tree):
                 raise Refuse("dirty-tree", "the hook left uncommitted changes", "commit them, or `land revert`")
+            lands[-1]["tip"] = land_git(tree, "rev-parse", "HEAD").stdout.strip()
             lands[-1]["accepted"] = {"at": now(), "note": note}
-            lands[-1]["tip"] = head_sha(None, tree)
             print(f"land {lands[-1]['n']}: the difference is kept; the page says the tip is not the tree the checks passed")
         else:
             last = lands[-1]
             if mine := [l for l in dirty_lines(tree) if l[3:] not in last["difference"]]:
                 raise Refuse("dirty-tree", "the tree has uncommitted paths: " + ", ".join(l[3:] for l in mine), "commit them to the branch or move them away, then revert; a reset would destroy them")
+            land_git(tree, "reset", "-q", "--hard", last["backup"])
             lands.pop()
             if not lands:
                 st.pop("page", None)
-            git("reset", "-q", "--hard", last["backup"], cwd=tree)
             why = f"land reverted to {last['backup']}" + (f": the hooks changed {', '.join(last['difference'])}" if last["difference"] else "") + (f" ({note})" if note else "")
             print(land_stop(st, tree, "revert", why))
     if refusal:
