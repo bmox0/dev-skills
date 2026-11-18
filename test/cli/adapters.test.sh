@@ -16,7 +16,7 @@ elif sys.argv[1:3] == ['plugin', 'list']:
     from pathlib import Path
     root = Path(sys.argv[-1])
     print(json.dumps([{'name': 'dev-skills', 'enabled': True,
-                      'installPath': str(root), 'version': '5.1.3',
+                      'installPath': str(root), 'version': json.loads((root/'.qoder-plugin/plugin.json').read_text())['version'],
                       'resources': {'skills': [{'name': p.parent.name} for p in (root/'skills').glob('*/SKILL.md')],
                                     'agents': [{'name': 'dev-skills:'+p.stem} for p in (root/'agents').glob('*.md')],
                                     'hooks': [{'event': 'SessionStart'}, {'event': 'PostToolUse'}]}}]))
