@@ -103,6 +103,10 @@ with tempfile.TemporaryDirectory() as directory:
     assert not missing.with_suffix('.run.toml').exists()
     agents.write_text('## Environment\n')
     cli('run', 'new', missing, ok=False, code='Executors')
+    # run#executor-presets: host imports cannot replace literal project-root profiles.
+    (root / 'profiles.md').write_text(presets)
+    agents.write_text('@profiles.md\n')
+    cli('executor', 'show', '--provider', 'GPT', ok=False, code='executors-missing')
     agents.write_text(presets)
     # run#changes-through-approve: selection freezes on consent, even after AGENTS changes.
     plan.write_text('''# Plan: executors
@@ -176,6 +180,16 @@ none
         assert 'Executor model: gpt-custom' in text, text
         assert f'Executor effort: {"ultra" if tier == "primary" else "high"}' in text, text
         assert 'AGENTS.md' in text and 'CLAUDE.md' not in text
+        # build#worker-role-bound: every brief binds its authoritative role and protocol.
+        package = pathlib.Path(os.environ['PIPELINE']).resolve().parents[2]
+        role = 'implementer' if kind in ('implementer', 'fix', 'round') else kind
+        source = package / ('skills/verify/SKILL.md' if role == 'verify' else f'agents/{role}.md')
+        assert f'Role: {role}' in text, text
+        assert f'Role source: {source}' in text, text
+        assert f'Protocol: {package / "references/SESSIONS.md"}' in text, text
+        assert 'Initialization evidence:' in text and 'Continuation:' in text, text
+        assert 'confirmed stopped' in text and 'write-capable jobs' in text, text
+        assert 'Return contact: dispatching build coordinator' in text, text
         return text
     cli('brief', 'implementer', plan, '1', ok=False, code='--provider')
     brief('implementer', 'secondary', '1')

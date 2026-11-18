@@ -2034,6 +2034,19 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
            f"Plan: {md}", f"Tree: {tree}", f"CLI: {cli}",
            f"Branch: {st['branch']}", f"Base: {st['base']}", f"HEAD: {head}",
            "Rules: " + (", ".join(x for x in (os.path.join(tree, "docs", "spec"), os.path.join(tree, "AGENTS.md")) if os.path.exists(x)) or "none"), ""]
+    package = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+    role = "implementer" if kind in ("implementer", "fix", "round") else kind
+    source = os.path.join(package, "skills", "verify", "SKILL.md") if role == "verify" else os.path.join(package, "agents", role + ".md")
+    out += [f"Role: {role}", f"Role source: {source}", f"Protocol: {os.path.join(package, 'references', 'SESSIONS.md')}",
+            f"Assignment: {kind}" + (f" phase {n}" if n is not None else ""),
+            "Return contact: dispatching build coordinator; use native messages or the agreed result/artifact channel.", "",
+            "Initialization evidence: read the role source and protocol before work; return their loaded paths, brief path, "
+            "requested/effective executor settings when exposed, cwd/branch, scope and reporting boundaries. "
+            "Report a conflicting higher-priority instruction before acting.",
+            "Continuation: retain this role, assignment, approved executor, tree, return contact and report commands. "
+            "Read current CLI reports and Git facts before resuming; do not replay completed commands or duplicate reports. "
+            "A replacement requires the old attempt and its write-capable jobs confirmed stopped; unknown or still-writing attempts block replacement. "
+            "Only the coordinator advances phase/build/gate transitions; retain this role's prescribed reporting, verdict and land commands. Follow the protocol for questions, recovery and approval.", ""]
     if provider is None and "executors" in st.get("run", {}):
         raise Refuse("provider-required", "a brief with executor presets requires --provider", "supply the current provider; no provider is inferred from a model")
     if provider is not None:

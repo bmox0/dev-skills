@@ -120,8 +120,26 @@ Why: planning does not choose a session topology
 - Follow planning through grill and the approved resume example → interview has no approval gate; the summary links the plan, explains phases, Spec, checks and limits within 350 words; approval alone starts nothing
 - Start build by explicit herdr/native/manual instruction; review directly and through a designated orchestrator → the chosen contact controls acceptance within granted authority; resume reuses the existing writer and relayed words stay unchanged
 
-### acceptance-contact — Questions and acceptance go to the user or designated orchestrator within granted authority, with unchanged relayed words and one writer
+### acceptance-contact — Questions, results and acceptance reach the user or designated orchestrator within authority, with unchanged relays and one coordinator advancing transitions
 
-Why: responsibility rather than conversation identity controls a run
+Why: communication mechanisms confer no approval or change of responsibility
 
-- Start build by explicit herdr/native/manual instruction; review directly and through a designated orchestrator → the chosen contact controls acceptance within granted authority; resume reuses the existing writer and relayed words stay unchanged
+- Remove native messaging → actionable question/error/result reaches the coordinator through the agreed result/artifact channel; no idle state, timeout or permission prompt approves/completes work.
+- Replace an unresumable, confirmed-stopped attempt → the same role uses current reports/Git facts without phase restart, duplicate reports or replay; an unknown/still-writing old attempt blocks replacement.
+- Complete consent → build → gate/judge → land → page → acceptance → configured finish without hooks → existing safeguards, reasoned dispositions, hook exceptions and cleanup remain correct.
+- Drive a complete Qoder temporary-repository workflow, including question/recovery and authorized finish → captured evidence meets the same contract; fixtures cannot satisfy this required live case
+
+### worker-role-bound — Workers preserve authoritative role instructions, assignment, approved executor and reporting obligations through initialization and continuation
+
+Why: a native dispatch label does not establish role identity
+
+- Initialize and continue roles with captured instruction sources and bounded behavior checks → identity, executor, scope and reports persist; generic mode requires equivalence, and implementer context never becomes independent review.
+- After login, load the package in real Qoder and dispatch all three roles → capture loaded sources, role identity, requested/reported settings and result delivery; unavailable settings or authentication are not passed
+
+### replacement-preserves-progress — Replace an unresumable worker only after its attempt and write-capable jobs stop, retaining role and verified progress
+
+Why: CLI locking cannot prevent delayed old-worker reports or commits
+
+- Remove native messaging → actionable question/error/result reaches the coordinator through the agreed result/artifact channel; no idle state, timeout or permission prompt approves/completes work.
+- Replace an unresumable, confirmed-stopped attempt → the same role uses current reports/Git facts without phase restart, duplicate reports or replay; an unknown/still-writing old attempt blocks replacement.
+- Drive a complete Qoder temporary-repository workflow, including question/recovery and authorized finish → captured evidence meets the same contract; fixtures cannot satisfy this required live case

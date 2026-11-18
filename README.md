@@ -1,6 +1,6 @@
 # dev-skills
 
-A provider-neutral workflow with Claude Code and Codex adapters: skills and three agents for building a
+A provider-neutral workflow with optional Claude Code, Codex and Qoder adapters: skills and three agents for building a
 change — discussion, a plan file, implementation by subagents, a review and an
 e2e check, and your approval before merge. The user or designated orchestrator coordinates the run;
 a chosen build session coordinates implementation. Neither edits code.
@@ -123,13 +123,15 @@ the skills and agents decide what to do with what it reports. The other tool is
 `skills/browser-test/tab.mjs`; the level-1 checks are the project's own tests,
 linters and typechecks.
 
-The plugin's hooks only advise, in both hosts: none blocks a tool or reads a
-shell command. When a session starts, resumes or is compacted, the agent gets
+Native hooks only advise: none blocks a tool or interprets a shell command.
+Each host manifest selects its registration under `adapters/`; native payloads
+reach the normalized handler in `hooks/advise.py`. When a session starts, resumes or is compacted, the agent gets
 `status` of each plan from `building` to `passed`. After an edit of a compiled
 plan's rendered or state file, it is told which `pipeline.py` command makes that
 change. In Claude Code the hooks run once the plugin is enabled. In Codex you
 trust them, and again after every plugin update. Untrusted or off, they change
-no run: only the advice is lost.
+no run: only the advice is lost. Qoder uses its own `QODER_PLUGIN_ROOT`
+registration. Host permissions and trust remain the user’s decision.
 
 ## The project's side
 
@@ -162,8 +164,7 @@ In Claude Code:
 /plugin install dev-skills@dev-skills
 ```
 
-Then restart the session. Installing also brings the agents `implementer` and
-`reviewer`.
+Then restart the session. Installing also brings the agents `implementer`, `reviewer` and `judge`.
 
 In Codex:
 
@@ -179,11 +180,30 @@ this plugin's. To update, `codex plugin marketplace upgrade dev-skills`, then
 `workspace-write` sandbox `.git` is read-only, so the first `git add` and
 `git commit` of a build ask for approval; approve each kind once.
 
+In Qoder CLI, load the complete checkout for local testing:
+
+```sh
+qodercli --plugin-dir /absolute/path/to/dev-skills --add-dir /absolute/path/to/dev-skills
+```
+
+For a native installation, use `qodercli plugin install /absolute/path/to/dev-skills`
+and start a new session. The package’s `.qoder-plugin/plugin.json` names the same
+skills and three role sources. Use the native names `dev-skills:implementer`,
+`dev-skills:reviewer` and `dev-skills:judge`; pass the approved model and optional
+effort explicitly. `--add-dir` grants the selected session access to package
+resources outside the target cwd; loading metadata alone does not grant tool
+access. Honor any remaining native permission prompt. A loader inventory alone
+does not establish role execution.
+
 The repository is a marketplace holding exactly one plugin, itself:
 [`.claude-plugin/`](.claude-plugin/marketplace.json) for Claude Code,
 [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) and
-[`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) for Codex. Both hosts
-install the same skills.
+[`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) for Codex;
+[`.qoder-plugin/plugin.json`](.qoder-plugin/plugin.json) is Qoder’s native manifest.
+Keep the complete repository layout when installing: skills read sibling roles,
+references and the CLI. Project `AGENTS.md`, worktrees and workflow artifacts
+stay in the target project. Native version and loaded revision must be checked
+separately. [Adapter contracts and host limits](adapters/README.md) describe coverage.
 
 ## Every skill
 
@@ -223,29 +243,39 @@ share.
 
 ## Checking this repository
 
-`scripts/check` asks whether the tree is sound: every link resolves, every
-`dev-skills:` name exists, no retired name comes back, every markdown file is
-within its budget in [`scripts/word-budgets.txt`](scripts/word-budgets.txt),
-and the manifests and every frontmatter parse (`claude plugin validate`).
-It also installs the plugin into a throwaway Codex home and reads back the
-skills Codex shows its model: all of them
-([`scripts/check-codex.py`](scripts/check-codex.py)).
+`scripts/check` runs shared resource checks: links, `dev-skills:` names,
+retired names, frontmatter and [word budgets](scripts/word-budgets.txt).
+It requires Python 3.11+ and calls no AI client. Select native checks explicitly:
 
-`scripts/test` runs the behavioural tests on the maintainer scripts and the
-plugin's shape — TC-13 pins the shape itself (hooks that only advise, no `scripts/` under `skills/`,
-preset role assignments, shared rules and one version in every manifest), TC-14 pins the plan's statuses across `plan`, `build`,
-`finish`, `epic` and the implementer; one file is `scripts/test <path>`.
+```sh
+scripts/check --host claude --host codex --host qoder
+```
 
-`scripts/usage` reports wall and active hours, human messages, tokens and
-subagents from Claude Code transcripts by default. Use `--source codex` for
-native Codex JSONL rollouts in `$CODEX_HOME/sessions` (default `~/.codex/sessions`),
-or `--root DIR` to override either location. `--json`, `--project` and `--since`
-select session output, project (Codex's initial cwd) and start date. Codex tokens
-use cumulative snapshots without adding cached input again; descendants are
-aggregated separately under their root. Forks with `subagent_history_start_ordinal`
-exclude inherited history. Missing token snapshots report zero observed usage;
-orphan child threads are omitted. Codex skill counts are not inferred, and
-encrypted message text or tool arguments are not recovered.
+Each selected adapter names the actual native version and evidence scope.
+Claude validates manifests; Codex installs into a temporary home and reads the
+model-visible skills; Qoder validates its manifest and inventories loaded
+skills, roles and hooks. None of those checks calls a model or certifies live
+role execution. Missing or failed selected checks fail. Nonselected hosts are
+outside that run’s coverage.
+
+`scripts/test` runs offline behavioural tests with Bash, Python 3.11+, Node,
+Git and standard shell tools; installed AI clients are unnecessary. Native
+adapter tests use executable fixtures. One file is `scripts/test <path>`.
+Relocation fixtures check complete resources, executable modes, target-project
+profiles and each declared advisory launcher; they are fixture coverage.
+
+`scripts/usage --source claude` or `scripts/usage --source codex` reports wall
+and active hours, human messages, tokens and descendants. The source is required;
+unknown sources fail. Readers own native transcript roots: `~/.claude/projects`
+and `$CODEX_HOME/sessions` (default `~/.codex/sessions`), respectively; `--root DIR`
+overrides them. `--json`, `--project` and `--since` select session output, project
+and start date. Codex uses the initial cwd, cumulative token snapshots without
+adding cached input again, and separate descendant totals. Forks exclude inherited
+history where an ordinal is available. Missing snapshots report zero observed
+usage; orphan children are omitted. Codex skill counts are not inferred, and
+encrypted messages or tool arguments are not recovered. No Qoder transcript
+reader is claimed. [Adapter interfaces](adapters/README.md) remain open to explicit
+additional validators and readers without a common host catalogue.
 
 Working on this repository with the installed plugin also active runs the
 pipeline twice; turn it off first: `claude --settings

@@ -48,10 +48,9 @@ Why: nothing pulls the user in mid-run
 
 - Run `dev-skills:verify` on a plan whose use case needs a login its run file lacks → that case is `not reached: needs <the login>`, and the dev server it starts uses the run's port
 
-### executor-presets — The current provider selects primary/secondary from AGENTS before run approval and from the approved snapshot afterward
+### executor-presets — Literal project-root AGENTS model/effort pairs select primary/secondary before approval and remain frozen in the approved run
 
-Why: role caliber stays stable across providers and session transfers
+Why: explicit project choices supersede native execution presets or inferred vendor defaults
 
-- Dispatch grill helpers using current AGENTS Executors profiles, then draft a run for GPT, Qwen, Claude and another provider → all profiles are copied; malformed presets and unknown fixed fields identify their paths; model names have no vendor allowlist.
-- Approve a run, change AGENTS, then transfer planning from GPT to a Claude build → approved profiles stay frozen and Claude selects its own pair; missing profiles produce an actionable request.
-- Read every core skill, role and generated brief → shared rules come from AGENTS; planning, build coordination, first review and judge use primary; helpers, code, E2E and rechecks use secondary; no fixed provider/model or herdr-only requirement remains.
+- Read literal project AGENTS, approve run, then change AGENTS → explicit pairs stay frozen; import-only configuration and unavailable choices fail clearly; no external native-preset alternative appears.
+- Initialize and continue roles with captured instruction sources and bounded behavior checks → identity, executor, scope and reports persist; generic mode requires equivalence, and implementer context never becomes independent review.

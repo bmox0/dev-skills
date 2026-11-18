@@ -111,9 +111,83 @@ frontmatter() {
 
 # --- TC-9: scripts/check passes; no skill carries disable-model-invocation
 
-check_out=$("$repo_root/scripts/check" 2>&1)
+portable=$(mktemp_dir)
+mkdir -p "$portable/scripts" "$portable/adapters" "$portable/bin"
+cp "$repo_root/scripts/check" "$repo_root/scripts/adapter.py" "$portable/scripts/"
+printf 'print("CORE fixture passed")\n' > "$portable/scripts/check-links.py"
+ln -s "$(command -v python3)" "$portable/bin/python3"
+# Poison client names to catch accidental execution.
+for client in claude codex qoder; do
+  printf '#!/bin/sh\necho unexpected-client >> "%s"\nexit 99\n' "$portable/client-calls" > "$portable/bin/$client"
+  chmod +x "$portable/bin/$client"
+done
+check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" 2>&1)
 check_rc=$?
-[ "$check_rc" -eq 0 ] || fail "TC-9: scripts/check should pass, got exit $check_rc: $check_out"
+[ "$check_rc" -eq 0 ] || fail "validation#portable-default: default core check failed: $check_out"
+[ ! -e "$portable/client-calls" ] || fail "validation#portable-default: default check called a client"
+rm "$portable/bin/claude" "$portable/bin/codex" "$portable/bin/qoder"
+check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" 2>&1)
+[ "$?" -eq 0 ] || fail "validation#portable-default: missing clients: $check_out"
+check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$repo_root/scripts/check" 2>&1)
+[ "$?" -eq 0 ] || fail "validation#portable-default: real shared checks without clients: $check_out"
+[ ! -d "$portable/scripts/__pycache__" ] || fail "validation#portable-default: check leaves no bytecode artifacts"
+
+mkdir -p "$portable/adapters/fixture-host" "$portable/adapters/missing"
+cat > "$portable/adapters/fixture-host/validate.py" <<'PYVALIDATOR'
+import os, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+with (root / "selected-calls").open("a") as out:
+    out.write("fixture-host\n")
+print("HOST fixture-host: fixture validator 1.2.3; loader/live not checked")
+sys.exit(int(os.environ.get("FIXTURE_RC", "0")))
+PYVALIDATOR
+check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host fixture-host --host fixture-host 2>&1)
+[ "$?" -eq 0 ] || fail "validation#selected-host-checks: discovered adapter: $check_out"
+assert_contains "$check_out" "fixture validator 1.2.3" "validation#coverage-is-named: selected evidence" || fail "$check_out"
+assert_eq 2 "$(wc -l < "$portable/selected-calls" | tr -d ' ')" "validation#selected-host-checks: repeated selection executes" || fail "$check_out"
+check_out=$(PATH="$portable/bin" FIXTURE_RC=7 "$portable/bin/python3" "$portable/scripts/check" --host fixture-host 2>&1)
+[ "$?" -ne 0 ] || fail "validation#selected-host-checks: failed validator must fail"
+for selector in unknown missing ../fixture-host /tmp/fixture-host 'fixture-host/name'; do
+  check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host "$selector" 2>&1)
+  [ "$?" -ne 0 ] || fail "validation#selected-host-checks: $selector must refuse"
+  assert_contains "$check_out" "$selector" "validation#selected-host-checks: error names selector" || fail "$check_out"
+done
+outside=$(mktemp_dir)
+cp "$portable/adapters/fixture-host/validate.py" "$outside/validate.py"
+ln -s "$outside" "$portable/adapters/escape"
+check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host escape 2>&1)
+[ "$?" -ne 0 ] || fail "validation#selected-host-checks: escaping symlink refuses"
+assert_contains "$check_out" "outside adapters/" "validation#selected-host-checks: containment error" || fail "$check_out"
+check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host 2>&1)
+[ "$?" -ne 0 ] || fail "validation#selected-host-checks: missing selector refuses"
+
+cp -R "$repo_root/adapters/claude" "$portable/adapters/"
+cat > "$portable/bin/claude" <<'PYCLAUDE'
+#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+root = Path.cwd()
+with (root / "claude-calls").open("a") as out:
+    out.write(" ".join(sys.argv[1:]) + "\n")
+if sys.argv[1:] == ["--version"]:
+    print("Claude fixture-2.3")
+    sys.exit(0)
+sys.exit(int(os.environ.get("CLAUDE_FIXTURE_RC", "0")))
+PYCLAUDE
+chmod +x "$portable/bin/claude"
+check_out=$(cd "$portable" && PATH="$portable/bin" "$portable/bin/python3" scripts/check --host claude 2>&1)
+[ "$?" -eq 0 ] || fail "validation#selected-host-checks: Claude validator: $check_out"
+assert_contains "$check_out" "Claude fixture-2.3" "validation#coverage-is-named: Claude version" || fail "$check_out"
+assert_eq "--version
+plugin validate . --strict
+plugin validate .claude-plugin/plugin.json --strict" "$(cat "$portable/claude-calls")" "validation#selected-host-checks: both manifests validated" || fail "$check_out"
+check_out=$(cd "$portable" && PATH="$portable/bin" CLAUDE_FIXTURE_RC=1 "$portable/bin/python3" scripts/check --host claude 2>&1)
+[ "$?" -ne 0 ] || fail "validation#selected-host-checks: failed Claude validation refuses"
+rm "$portable/bin/claude"
+check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host claude 2>&1)
+[ "$?" -ne 0 ] || fail "validation#selected-host-checks: missing selected Claude refuses"
+assert_contains "$check_out" "not on PATH" "validation#selected-host-checks: unavailable client named" || fail "$check_out"
 
 for f in "$repo_root"/skills/*/SKILL.md; do
   skill=$(basename "$(dirname "$f")")
@@ -151,7 +225,7 @@ segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
 
 # --- TC-13: advisory hooks only, no scripts/ under skills/, no tool limits, models, one version --
 
-python3 - "$repo_root/hooks/hooks.json" <<'P' || fail "TC-13: hooks/hooks.json should declare only SessionStart and PostToolUse"
+python3 - "$repo_root/adapters/claude/hooks.json" <<'P' || fail "TC-13: adapter hooks should declare only SessionStart and PostToolUse"
 import json, sys
 assert sorted(json.load(open(sys.argv[1]))["hooks"]) == ["PostToolUse", "SessionStart"]
 P
@@ -182,6 +256,8 @@ market_versions=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); p
 assert_eq "$plugin_version $plugin_version" "$market_versions" "TC-13: both manifests carry one version" || fail "TC-13"
 codex_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.codex-plugin/plugin.json")
 assert_eq "$plugin_version" "$codex_version" "TC-13: the Codex manifest carries the same version" || fail "TC-13"
+qoder_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.qoder-plugin/plugin.json")
+assert_eq "$plugin_version" "$qoder_version" "distribution#shared-resources: the Qoder manifest carries the same version" || fail "TC-13"
 
 # --- TC-12: every other test file is green on its own ------------------------
 

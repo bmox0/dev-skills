@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pins scripts/check-codex.py against a stub codex, so the suite needs no
 # Codex install: what the stub lists is what the check must judge. The real
-# codex runs in scripts/check.
+# codex runs only in scripts/check --host codex.
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,6 +26,9 @@ cat > "$stub_bin/codex" <<'PY'
 import json, os, sys
 from pathlib import Path
 args = sys.argv[1:]
+if args == ["--version"]:
+    print("codex-cli fixture-0.1")
+    sys.exit(int(os.environ.get("STUB_VERSION_RC", "0")))
 if args[:3] == ["plugin", "marketplace", "add"]:
     sys.exit(int(os.environ.get("STUB_ADD_RC", "0")))
 if args[:2] == ["plugin", "add"]:
@@ -48,6 +51,10 @@ check() {
 
 check env STUB_SKILLS="plan"
 assert_eq 0 "$rc" "a listed skill and a hidden explicit-only one pass" || fail "$out"
+assert_contains "$out" "codex-cli fixture-0.1" "validation#coverage-is-named: actual Codex version" || fail "$out"
+assert_contains "$out" "loader" "validation#coverage-is-named: loader coverage" || fail "$out"
+check env STUB_SKILLS="plan" STUB_VERSION_RC=1
+assert_eq 1 "$rc" "validation#selected-host-checks: version unavailable refuses" || fail "$out"
 
 check env STUB_SKILLS="plan finish"
 assert_eq 1 "$rc" "an explicit-only skill in the list fails" || fail "$out"
@@ -71,5 +78,14 @@ out=$(PATH="$no_codex" "$no_codex/python3" "$repo_root/scripts/check-codex.py" "
 rc=$?
 assert_eq 1 "$rc" "a check that cannot reach codex fails, never passes" || fail "$out"
 assert_contains "$out" "'codex' is not on PATH" "the finding says codex is missing" || fail "$out"
+
+mkdir -p "$tree/scripts" "$tree/adapters/codex"
+cp "$repo_root/scripts/check" "$repo_root/scripts/adapter.py" "$tree/scripts/"
+cp "$repo_root/adapters/codex/validate.py" "$tree/adapters/codex/"
+printf 'print("CORE fixture passed")\n' > "$tree/scripts/check-links.py"
+out=$(PATH="$stub_bin:$PATH" STUB_SKILLS=plan python3 "$tree/scripts/check" --host codex 2>&1)
+assert_exit 0 "validation#selected-host-checks: explicit Codex adapter selection" || fail "$out"
+assert_contains "$out" "codex-cli fixture-0.1" "validation#coverage-is-named: selected Codex version" || fail "$out"
+assert_contains "$out" "CODEX: 0 findings" "validation#selected-host-checks: selected loader passed" || fail "$out"
 
 exit 0

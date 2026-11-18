@@ -47,7 +47,7 @@ goes back to the implementer as printed.
   phase. Answer a product call yourself, from the plan, its epic and what the
   user said, and report to the designated contact; irreversible calls, deleting
   data, sending outside, production, wait for the user through the designated
-  contact; relay their words. Answer through the host’s message tool, and record it with `CLI decision`.
+  contact; relay their words. Answer through the agreed channel; record it with `CLI decision`.
   Report persistent `index.lock`; never delete it blindly.
 - **Decided without you**: rulings and calls are `CLI decision` records, which
   `CLI status <plan>` lists for the human gate page.

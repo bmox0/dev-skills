@@ -27,7 +27,7 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   the logic?" (`dev-skills:prototype`). The user may decline.
 - A worker reads the code the plan touches, a secondary subagent that returns
   paths and seams, so the territories are real, and for each territory the
-  project's skills (`.agents/skills/`, `.claude/skills/`) whose rules its code
+  project's skills from the supplied catalogue/paths whose rules its code
   follows, matched by description. The global ones come from this session's
   skill list by the same test: a Vue territory gets no SwiftUI skill. Code
   outside this repository that a decision points at gets its path. The same

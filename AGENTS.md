@@ -6,7 +6,8 @@
 **Tests.** `scripts/test`
 **Single test file.** `scripts/test <path>`
 **Dev server.** none
-**E2E.** none
+**E2E.** explicitly selected native host checks; default tests use fixtures
+**Dependencies.** Bash, Python 3.11+, Node, Git and standard shell tools; AI clients are optional
 **Language.** English
 **Runtime.** a CLI invocation — `scripts/check`, `scripts/test`, `scripts/usage`, `skills/build/pipeline.py`
 and `skills/browser-test/tab.mjs` are run directly from a shell, never through

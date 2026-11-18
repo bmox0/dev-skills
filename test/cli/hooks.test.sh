@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# hooks/advise.py: both hosts' recorded hook input, fed to the script in
+# Normalized advice and native hook input, fed to the scripts in
 # throwaway repos with plans set up through pipeline.py.
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
 pipeline="$repo_root/skills/build/pipeline.py"
-hook="$repo_root/hooks/advise.py"
+hook="$repo_root/adapters/hooks.py"
+advice="$repo_root/hooks/advise.py"
 . "$repo_root/test/lib/harness.sh"
 
 fail() { echo "hooks.test.sh: $1" >&2; exit 1; }
@@ -89,6 +90,17 @@ done
 cli build start "$plans/2026-11-17-b.md" --base HEAD --note go >/dev/null || fail "building"
 b="$repo/$plans/2026-11-17-b.md"
 
+# hooks#status-at-start: normalized input returns plain advice without a native envelope.
+out=$(python3 -c 'import json,sys; print(json.dumps({"event":"session_start","cwd":sys.argv[1]}))' "$repo" | python3 -B "$advice")
+assert_contains "$out" "Status: building" "normalized lifecycle advice" || exit 1
+case "$out" in *hookSpecificOutput*) fail "common advice must not wrap native output" ;; esac
+# hooks#advise-only: malformed normalized input stays quiet.
+for payload in '{"event":"unknown","paths":[]}' '{"event":"edit","paths":"bad"}' '[]' 'not json'; do
+  out=$(printf '%s' "$payload" | python3 -B "$advice")
+  assert_eq 0 "$?" "malformed normalized advice exits 0" || exit 1
+  assert_eq "" "$out" "malformed normalized advice is quiet" || exit 1
+done
+
 # hooks#status-at-start: every start source, both hosts, gives the building plan's status alone
 for src in startup resume compact; do
   fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"SessionStart","source":sys.argv[1],"cwd":sys.argv[2]}))' "$src" "$repo")"
@@ -139,6 +151,16 @@ edit "$b" 'Approach changed.' 'A.'
 fire "$(claude_edit Edit "$b" "$repo")"
 assert_eq "" "$out" "no drift: nothing" || exit 1
 
+# hooks#edit-names-command: normalized paths are relative to the event's cwd.
+out=$(python3 -c 'import json,sys; print(json.dumps({"event":"edit","cwd":sys.argv[1],"paths":[".ai-workflow/plans/2026-11-17-b.notes.md"]}))' "$repo" | python3 -B "$advice")
+assert_contains "$out" "note add|edit|drop" "normalized relative edit" || exit 1
+# hooks#advise-only: an unrelated event cannot interpret otherwise valid edit paths.
+out=$(python3 -c 'import json,sys; print(json.dumps({"event":"unknown","cwd":sys.argv[1],"paths":[".ai-workflow/plans/2026-11-17-b.notes.md"]}))' "$repo" | python3 -B "$advice")
+assert_eq "" "$out" "unrelated normalized event is quiet" || exit 1
+# hooks#advise-only: unrelated native tools cannot become edit advice.
+fire "$(claude_edit Bash "$repo/$plans/2026-11-17-b.json" "$repo")"
+assert_eq "" "$out" "unrelated native tool is quiet" || exit 1
+
 # hooks#edit-names-command: Codex apply_patch on notes, judge and state files
 for k in notes judge; do
   : > "$plans/2026-11-17-b.$k.md"
@@ -174,6 +196,7 @@ assert_eq "" "$out" "malformed JSON: nothing" || exit 1
 assert_eq 0 "$rc" "malformed JSON: exit 0" || exit 1
 fire '{"hook_event_name":"PostToolUse","tool_input":"x"}'
 assert_eq 0 "$rc" "tool_input of the wrong shape: exit 0" || exit 1
+cp "$plans/2026-11-17-b.json" "$repo/state-backup.json"
 printf '{broken' > "$plans/2026-11-17-b.json"
 fire "$(claude_edit Edit "$b" "$repo")"
 assert_eq "" "$out" "corrupt state, plan edit: nothing" || exit 1
@@ -181,13 +204,38 @@ assert_eq 0 "$rc" "corrupt state, plan edit: exit 0" || exit 1
 fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"SessionStart","source":"startup","cwd":sys.argv[1]}))' "$repo")"
 assert_eq 0 "$rc" "corrupt state, session start: exit 0" || exit 1
 
-# hooks#advise-only: hooks.json declares the two events only, no blocking
-python3 - "$repo_root/hooks/hooks.json" <<'P' || fail "hooks.json shape"
-import json, sys
-h = json.load(open(sys.argv[1]))["hooks"]
-assert sorted(h) == ["PostToolUse", "SessionStart"], sorted(h)
-assert h["SessionStart"][0]["matcher"] == "startup|resume|compact"
-assert h["PostToolUse"][0]["matcher"].split("|") == ["Write", "Edit", "MultiEdit", "apply_patch"]
+mv "$repo/state-backup.json" "$plans/2026-11-17-b.json"
+
+# hooks#edit-names-command: each declared registration resolves with only its native root.
+python3 -B - "$repo_root" "$repo" <<'P' || fail "native registration fixtures"
+import json, os, pathlib, subprocess, sys
+root, cwd = map(pathlib.Path, sys.argv[1:])
+variables = ('CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT', 'QODER_PLUGIN_ROOT')
+base_env = {k: v for k, v in os.environ.items() if k not in variables}
+for host, variable in zip(('claude', 'codex', 'qoder'), variables):
+    manifest = json.loads((root / f'.{host}-plugin/plugin.json').read_text())
+    hooks = json.loads((root / manifest['hooks']).read_text())['hooks']
+    assert sorted(hooks) == ['PostToolUse', 'SessionStart']
+    assert hooks['SessionStart'][0]['matcher'] == 'startup|resume|compact'
+    assert hooks['PostToolUse'][0]['matcher'].split('|') == ['Write', 'Edit', 'MultiEdit', 'apply_patch']
+    payloads = [
+        ({'hook_event_name': 'PostToolUse', 'tool_name': 'Write', 'cwd': str(cwd),
+          'tool_input': {'file_path': '.ai-workflow/plans/2026-11-17-b.notes.md'}}, 'note add|edit|drop'),
+        ({'hook_event_name': 'SessionStart', 'source': 'startup', 'cwd': str(cwd)}, '2026-11-17-b'),
+    ]
+    for payload, expected in payloads:
+        command = hooks[payload['hook_event_name']][0]['hooks'][0]['command']
+        result = subprocess.run(['bash', '-c', command], input=json.dumps(payload), cwd=cwd,
+                                env=dict(base_env, **{variable: str(root)}), text=True, capture_output=True)
+        assert result.returncode == 0 and not result.stderr, (host, result)
+        assert expected in json.loads(result.stdout)['hookSpecificOutput']['additionalContext'], (host, result)
+        for bad in ('not json', '[]', '{"hook_event_name":"unrelated"}'):
+            result = subprocess.run(['bash', '-c', command], input=bad, cwd=cwd,
+                                    env=dict(base_env, **{variable: str(root)}), text=True, capture_output=True)
+            assert result.returncode == 0 and not result.stdout and not result.stderr, (host, result)
+        result = subprocess.run(['bash', '-c', command], input=json.dumps(payload), cwd=cwd,
+                                env=dict(base_env, **{variable: str(root / 'missing')}), text=True, capture_output=True)
+        assert result.returncode == 0 and not result.stdout and not result.stderr, (host, result)
 P
 
 echo ok

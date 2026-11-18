@@ -1,33 +1,33 @@
-#!/usr/bin/env bash
-# The one command that stands for "the tree is sound": the reference layer,
-# the word budgets and every SKILL.md's frontmatter (scripts/check-links.py),
-# both Claude Code manifests (claude plugin validate --strict, where a warning
-# fails), and the plugin as Codex loads it (scripts/check-codex.py).
-#
-# Every check runs regardless of whether an earlier one fails, so one call
-# surfaces everything wrong at once. If `claude` or `codex` is not on PATH,
-# its half cannot run at all; that is a failure of this check, not something
-# to skip past — a check that could not run is not a check that passed.
-#
-# Usage: scripts/check
-# Exit:  0 every check passed · 1 any failed, or could not run
-set -uo pipefail
+#!/usr/bin/env python3
+"""Check shared resources; select optional native validators with --host NAME."""
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/.." && pwd)"
+import argparse
+import subprocess
+import sys
 
-status=0
+sys.dont_write_bytecode = True
 
-python3 "$script_dir/check-links.py" || status=1
+from adapter import ROOT, adapter_path
 
-if ! command -v claude >/dev/null 2>&1; then
-  echo "scripts/check: 'claude' is not on PATH — cannot run 'claude plugin validate'" >&2
-  status=1
-else
-  (cd "$repo_root" && claude plugin validate . --strict) || status=1
-  (cd "$repo_root" && claude plugin validate .claude-plugin/plugin.json --strict) || status=1
-fi
 
-python3 "$script_dir/check-codex.py" "$repo_root" || status=1
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", action="append", default=[], help="native adapter to validate (repeatable)")
+    args = parser.parse_args()
+    status = subprocess.run([sys.executable, str(ROOT / "scripts/check-links.py")]).returncode != 0
+    print("CORE: shared resource checks; native validators run only with --host", flush=True)
+    for name in args.host:
+        try:
+            path = adapter_path(name, "validate.py")
+            result = subprocess.run([sys.executable, str(path), str(ROOT)])
+            if result.returncode:
+                print(f"HOST {name}: validator failed (exit {result.returncode})", file=sys.stderr)
+                status = True
+        except (ValueError, OSError) as exc:
+            print(f"scripts/check: --host {name!r}: {exc}", file=sys.stderr)
+            status = True
+    return int(status)
 
-exit "$status"
+
+if __name__ == "__main__":
+    sys.exit(main())

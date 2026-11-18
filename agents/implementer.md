@@ -26,7 +26,7 @@ there; the plan stays where its path says.
   ruling with the brief's `decision` command (`--by implementer`; a phase's adds `--phase N`); with
   no brief, put it in your final message for the orchestrator to record. A decision in the Approach is not
   yours to rule on: when the code does not allow it, ask the orchestrator.
-- **Ask the orchestrator** through native messages for a file outside your
+- **Ask the orchestrator** through agreed channels for a file outside your
   territory, or a product call the plan does not hold, and carry on with what
   does not wait on the answer. Stop only when nothing is left: say what is done
   and what you need.

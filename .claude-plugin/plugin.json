@@ -13,5 +13,6 @@
     "tdd",
     "code-review",
     "skills"
-  ]
+  ],
+  "hooks": "./adapters/claude/hooks.json"
 }
