@@ -71,8 +71,6 @@ is shorter; none is skipped, and every plan ends in a human gate.
    `--no-ff` or `--ff-only`) and whether the plan's backups go; the message
    comes from the plan's Result. The branch stays.
 
-The drawing: [docs/pipeline.html](docs/pipeline.html).
-
 ## What you type
 
 | You type | It does |
