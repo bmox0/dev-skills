@@ -16,6 +16,10 @@ def requires(text, terms, rule):
 requires(protocol, ('native custom-role', 'generic', 'higher-priority', 'Initialization evidence',
                     'loaded', 'role', 'brief', 'executor', 'report', 'implementer', 'reviewer', 'judge'),
          'build#worker-role-bound')
+assert 'adapters/<host>/workers.md' in protocol
+binding = (root / 'adapters/antigravity/workers.md').read_text()
+requires(binding, ('define_subagent', 'EnableWriteTools: true', 'SystemPrompt',
+                   'EnableSubagentTools: false', 'TypeName', 'approved executor'), 'build#worker-role-bound')
 for role in ('implementer', 'reviewer', 'judge'):
     source = (root / f'agents/{role}.md').read_text()
     requires(source, ('SESSIONS.md', 'AGENTS.md', 'brief'), 'build#worker-role-bound')

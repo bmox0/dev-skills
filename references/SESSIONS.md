@@ -19,19 +19,19 @@ dispatch; never inherit, substitute or translate a preset.
 
 ## Bind workers
 
-Generate `CLI brief <role> --provider <provider> <plan> …`. Use native custom-role
-instructions where supported. A generic worker requires verified equivalent
-role priority and behavior without conflicting higher-priority instructions;
-otherwise report unavailable. Never implement inline in the coordinator or
-reuse an implementer as independent reviewer or judge.
+Generate `CLI brief <role> --provider <provider> <plan> …`. Follow the host CLI's
+`adapters/<host>/workers.md` when present. Bind tools for the assignment and
+its report commands. Prefer native custom-role instructions. A generic worker
+requires verified equivalent role priority and behavior without conflicting
+higher-priority instructions; otherwise report unavailable. Coordinators never
+implement. Never reuse an implementer as independent reviewer or judge.
 
-Before work, give a clean context its authoritative role source, absolute
-brief/protocol paths, assignment/territory or range, approved executor, cwd,
-return contact/channel and reporting commands. Initialization evidence records
-loaded sources, requested/effective settings when exposed, cwd/branch and
-boundaries; a role label alone proves nothing. Report instruction conflicts
-before acting. Workers dispatch nobody. Independent ready phases may run
-concurrently within available slots.
+Give each clean context its authoritative role source, absolute brief/protocol paths,
+assignment/territory or range, approved executor, cwd, return channel and
+reporting commands. Initialization evidence records loaded sources,
+requested/effective settings when exposed, cwd/branch and boundaries. Report
+missing tools and instruction conflicts before acting. Workers dispatch nobody.
+Independent ready phases may run concurrently within available slots.
 
 Use native messages and continuation when available. Otherwise return an
 actionable question, error or result through the host's result channel or an
