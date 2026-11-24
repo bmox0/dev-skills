@@ -138,8 +138,9 @@ PY
   write_shape "d added" src/a.txt $spec -- src/b.txt src/c.txt src/d.txt
   cli land "$plan" >/dev/null || fail "land 2"
   git -C "$tree" branch backup/l-old; git -C "$tree" branch backup/other-1
-  cli page "$plan" --note "run it" --message "feat: the merge" >/dev/null || fail "page"
+  cli page "$plan" --guide "$finish_guide" --message "feat: the merge" >/dev/null || fail "page"
 }
+finish_guide=$'Open src/a.txt.\n\n#### Checks\n\n- **Done 1** Read the last line → It is 1.\n\n#### Decisions\n\n- —'
 passed() { cli accept "$plan" --by user --words 'Fixture acceptance' >/dev/null || fail "accept"; }
 status_is() { assert_contains "$(cli status "$plan" | sed -n 2p)" "Status: $1" "$2"; }
 backups() { git -C "$repo" branch --list 'backup/*' --format='%(refname:short)' | tr '\n' ' '; }
@@ -387,7 +388,7 @@ cli accept "$plan" --by user --words yes >/dev/null && fail "reapproval cannot r
 cli gate start "$plan" >/dev/null || fail "recheck changed contract"
 complete_review "$plan" || fail "complete review"
 cli verdict pass "$plan" --report "reviewed new ending" >/dev/null || fail "fresh judge"
-cli page "$plan" --note "run it" >/dev/null || fail "page again"
+cli page "$plan" --guide "$finish_guide" >/dev/null || fail "page again"
 passed
 out=$(cli finish "$plan") || fail "finish after renewed consent: $out"
 assert_eq "$(git -C "$repo" rev-parse l)" "$(git -C "$repo" rev-parse main)" "main at tip" || exit 1

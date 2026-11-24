@@ -35,7 +35,9 @@ assert [s["id"] for s in route.get("stages", [])] == [
     "grill", "prototype", "plan", "build", "build-verification", "judge", "human-review", "finish"
 ], route
 assert route.get("actions", [])[0]["owner"] == "user and planner", route
-' || fail "build#workflow-progress: explicit entry shows all eight stages"
+step = route["actions"][0]
+assert step.get("kind") == "work" and step.get("role") == "planner" and "argv" not in step, step
+' || fail "build#typed-workflow-actions: explicit entry describes planning work across the eight-stage route"
 assert_contains "$(cli workflow)" "Grill (optional)" "build#workflow-progress: text entry names optional grill" || exit 1
 assert_contains "$(cli workflow)" "Prototype (optional)" "build#workflow-progress: text entry names optional prototype" || exit 1
 [ ! -e .ai-workflow ] || fail "build#workflow-progress: entry creates no workflow files"
@@ -106,6 +108,38 @@ P
 
 example="$repo_root/skills/run-file/references/example.run.toml"
 
+typed_action() {
+  local action_plan="$1" stage="$2" kind="$3" owner="$4" phrase="$5" expected="${6:-}" mode="${7:-inspect}"
+  shift "$(( $# < 7 ? $# : 7 ))"
+  local view status result
+  view=$(cli status "$action_plan" --json "$@") || fail 'read typed status'
+  status=$(cli status "$action_plan" "$@") || fail 'read text status'
+  result=$(printf '%s\n' "$view" | python3 -c '
+import json, os, subprocess, sys
+stage, kind, owner, phrase, expected, mode = sys.argv[1:]
+view = json.load(sys.stdin)["workflow"]
+assert view["stage"] == stage, view
+for action in view["actions"]:
+    assert action.get("kind") in {"run", "work", "wait", "ask"}, action
+    assert ("argv" in action) == (action["kind"] == "run"), action
+    if action["kind"] == "work":
+        assert action.get("role") and isinstance(action.get("assignment"), dict), action
+    if action["kind"] == "run":
+        argv = action["argv"]
+        assert len(argv) >= 4 and os.path.isabs(argv[0]) and os.path.isabs(argv[1]), action
+        assert view["plan"] in argv and all(isinstance(arg, str) for arg in argv), action
+matching = [a for a in view["actions"] if a["kind"] == kind and a["owner"] == owner and phrase in a["action"]]
+assert matching, view
+action = matching[0]
+for key, value in json.loads(expected or "{}").items():
+    assert action.get(key) == value, action
+if mode == "run":
+    subprocess.run(action["argv"], cwd="/", check=True, stdout=subprocess.DEVNULL)
+print(f"{owner} — " + action["action"])
+' "$stage" "$kind" "$owner" "$phrase" "$expected" "$mode") || fail "build#typed-workflow-actions: $stage $kind $owner $phrase"
+  assert_contains "$status" "$result" 'build#typed-workflow-actions: the text presents the same action' || exit 1
+}
+
 # build#state-through-commands: a broken plan gives one line per problem and no JSON
 out=$(approve_plan "$plan"); rc=$?
 assert_eq 1 "$rc" "approve refuses a broken plan" || exit 1
@@ -142,10 +176,12 @@ assert [(s["id"], s["state"]) for s in view["stages"][:2]] == [("grill", "done")
 assert "approve" in view["actions"][0]["action"], view
 ' "$plan" || fail "build#workflow-progress: the draft shows recorded optional history"
 [ ! -e "${plan%.md}.json" ] || fail "build#workflow-progress: inspection compiles nothing"
-cli approve "$plan" >/dev/null || fail "validate without approving"
+typed_action "$plan" plan run Planner 'Validate the draft' '{}' run
 assert_contains "$(cli status "$plan")" 'run approve' "build#workflow-progress: the validated draft awaits run approval" || exit 1
+typed_action "$plan" plan ask 'User and planner' 'run approve'
 cli run approve "$plan" --by user --words 'Fixture run approved' >/dev/null || fail "approve run"
 assert_contains "$(cli status "$plan")" 'summary approve' "build#workflow-progress: a run approval leaves the summary pending" || exit 1
+typed_action "$plan" plan ask 'User and planner' 'summary approve'
 [ "$(git branch --show-current)" != x ] || fail "build#workflow-progress: run consent does not start the build"
 
 out=$(approve_plan "$plan"); rc=$?
@@ -160,6 +196,7 @@ assert_eq "approved · \`.ai-workflow/plans/2026-11-16-x.md\`" "$(sed -n 7p .ai-
 assert_eq "$(sed -n 1,6p .ai-workflow/epics/e.md)" "$(printf '%s\n' "$epic_before" | sed -n 1,6p)" "the epic is otherwise untouched" || exit 1
 assert_eq "| 2 | Two | 1 | |" "$(sed -n 8p .ai-workflow/epics/e.md)" "the other row is untouched" || exit 1
 assert_contains "$(cli status "$plan")" 'separate start instruction' "build#workflow-progress: summary approval awaits a start instruction" || exit 1
+typed_action "$plan" plan wait Coordinator 'separate start instruction'
 [ "$(git branch --show-current)" != x ] || fail "build#workflow-progress: summary consent does not start the build"
 
 # build#state-through-commands: status, base and the epic row
@@ -241,6 +278,8 @@ for n in 2 3; do cli phase start "$plan" "$n" >/dev/null || fail "start phase $n
 out=$(cli status "$plan")
 assert_contains "$out" 'Implementer for phase 2' "build#workflow-progress: phase 2 runs independently" || exit 1
 assert_contains "$out" 'Implementer for phase 3' "build#workflow-progress: phase 3 has its own parallel owner" || exit 1
+typed_action "$plan" build work 'Implementer for phase 2' 'Work from the phase brief' '{"role":"implementer","assignment":{"phase":2,"kind":"phase"}}'
+typed_action "$plan" build work 'Implementer for phase 3' 'Work from the phase brief' '{"role":"implementer","assignment":{"phase":3,"kind":"phase"}}'
 
 # build#pre-5-1-adopted: a plan with no state is adopted as its file stands
 old=.ai-workflow/plans/2026-11-10-old.md
@@ -565,7 +604,8 @@ approve_plan "$po" >/dev/null || fail "adopt a plan without a run file"
 python3 -c 'import json,sys; assert "run" not in json.load(open(sys.argv[1]))' "${po%.md}.json" || fail "no run recorded"
 
 # build#workflow-progress: the same view follows gate, judge, land, review and finish
-cd "$(mktemp_dir)" || exit 1
+route_repo="$(mktemp_dir)/repository with spaces"
+mkdir -p "$route_repo" && cd "$route_repo" || exit 1
 git init -q -b main
 mkdir -p "$plans" src
 echo base > src/a
@@ -579,7 +619,7 @@ approve_plan "$route" >/dev/null || fail "approve route"
 assert_contains "$(cli status "$route")" 'Grill (optional) — skipped' "build#workflow-progress: the plan can record a skipped grill" || exit 1
 assert_contains "$(cli status "$route")" 'Prototype (optional) — done' "build#workflow-progress: the prototype field records a choice" || exit 1
 cli build start "$route" --base main >/dev/null || fail "start route"
-cli phase start "$route" 1 >/dev/null || fail "open route phase"
+typed_action "$route" build run Coordinator 'Start phase 1' '{}' run
 brief=$(cli brief implementer "$route" 1) || fail "brief route"
 [[ -f "$brief" && "$brief" != *$'\n'* ]] || fail "build#workflow-progress: brief stdout is its one path"
 echo route > src/a
@@ -609,13 +649,16 @@ assert any(a["owner"] == owner and text in a["action"] for a in view["actions"])
 ' "$@" || fail "build#workflow-progress: $1 should show $2 and $3"
 }
 route_step build-verification Coordinator 'gate start'
-cli gate start "$route" >/dev/null || fail "open route gate"
+typed_action "$route" build-verification run Coordinator 'Open build verification' '{}' run
 route_step build-verification Reviewer 'brief reviewer'
 route_step build-verification Verify 'Done 1'
+first_range="$(git rev-parse main)..$(git rev-parse HEAD)"
+typed_action "$route" build-verification work Reviewer 'brief reviewer' "{\"role\":\"reviewer\",\"assignment\":{\"kind\":\"review\",\"cycle\":\"gate\",\"id\":\"gate\",\"range\":\"$first_range\"}}"
+typed_action "$route" build-verification work Verify 'Done 1' "{\"role\":\"verify\",\"assignment\":{\"kind\":\"verify\",\"cycle\":\"gate\",\"id\":\"gate\",\"head\":\"$(git rev-parse HEAD)\",\"cases\":[1,2,3]}}"
+assert_eq "[$(cli status "$route" --json)]" "$(cli status --current --json)" 'build#typed-workflow-actions: current JSON exposes the same route' || exit 1
 out=$(cli brief judge "$route" --note 'Fixture permits missing E2E'); rc=$?
 assert_eq 1 "$rc" "build#review-completion: E2E exceptions do not complete review" || exit 1
 assert_contains "$out" 'review-missing' "build#review-completion: the refusal names the missing review" || exit 1
-first_range="$(git rev-parse main)..$(git rev-parse HEAD)"
 cli review complete "$route" --assignment gate --range "$first_range" >/dev/null || fail "complete clean review"
 assert_contains "$(cli status "$route")" 'Review complete (0 findings in cycle)' "build#review-completion: clean review is visible even while E2E is pending" || exit 1
 before=$(cli status "$route" --json)
@@ -665,25 +708,33 @@ cli brief judge "$route" --note 'Fixture cannot drive Done 2 yet' >/dev/null || 
 cli verdict question "$route" --report 'Needs input' --question 'Keep the title?' --predicted pass --engine fixture --evidence-note 'Fixture cannot drive Done 2 yet' >/dev/null || fail "record route question"
 assert_contains "$(cli status "$route")" 'evidence exception: Fixture cannot drive Done 2 yet' "build#review-completion: status preserves the judge's reason for missing E2E evidence" || exit 1
 route_step judge User 'Keep the title?'
+typed_action "$route" judge ask User 'Keep the title?'
 cli result "$route" --case 2 --outcome passed --capture 'resolved fixture output' >/dev/null || fail "complete targeted second case"
+cli brief judge "$route" --note 'Keep the current title' >/dev/null || fail "relay the user's answer"
+typed_action "$route" judge run Coordinator 'brief judge' '{}' run
 cli verdict pass "$route" --report 'Question answered' >/dev/null || fail "pass route"
 route_step judge Judge 'land draft'
-cli land draft "$route" >/dev/null || fail "draft route shape"
+typed_action "$route" judge run Judge 'land draft' '{}' run
+typed_action "$route" judge work Judge 'message and a walkthrough'
 edit "${route%.md}.shape.toml" 'message = ""' 'message = "feat: route"'
 edit "${route%.md}.shape.toml" 'walkthrough = ""' 'walkthrough = "See src/a"'
-cli land "$route" >/dev/null || fail "land route"
+typed_action "$route" judge run Judge 'Use the current commit shape' '{}' run
 route_step judge Coordinator 'page'
-cli page "$route" --note 'Read src/a' --message 'feat: route' >/dev/null || fail "render route page"
+typed_action "$route" judge work Coordinator 'page'
+route_guide=$'\n\n#### Checks\n\n- —\n\n#### Decisions\n\n- —'
+cli page "$route" --guide "Read src/a$route_guide" --message 'feat: route' >/dev/null || fail "render route page"
 route_step human-review user 'accept'
+typed_action "$route" human-review ask user 'accept'
 cli note add "$route" --text 'Change the line' --cause bug >/dev/null || fail "add route note"
 route_step human-review User 'authorize a round'
 cli round start "$route" >/dev/null || fail "open route round"
 route_step build 'Round implementer' 'round report'
 echo revised > src/a
 git commit -q -m revise -- src/a || fail "commit route round"
-cli note edit "$route" 1 --source missed >/dev/null || fail "record note source"
 cli round report "$route" --became revised --commit "$(git rev-parse HEAD)" >/dev/null || fail "report route round"
-cli round done "$route" >/dev/null || fail "close route round"
+typed_action "$route" build work Coordinator 'Record the note sources'
+cli note edit "$route" 1 --source missed >/dev/null || fail "record note source"
+typed_action "$route" build run Coordinator 'round done' '{}' run
 route_step build-verification Reviewer 'brief reviewer'
 git commit -q --allow-empty -m 'Same checked tree' || fail "commit on checked round tree"
 route_step build-verification Reviewer 'brief reviewer'
@@ -697,16 +748,18 @@ route_step judge Judge 'land draft'
 cli land draft "$route" >/dev/null || fail "draft new route shape"
 edit "${route%.md}.shape.toml" 'since = ""' 'since = "Revised the line"'
 cli land "$route" >/dev/null || fail "land route round"
-cli page "$route" --note 'Read the revised src/a' --message 'feat: route' >/dev/null || fail "render revised route page"
+cli page "$route" --guide "Read the revised src/a$route_guide" --message 'feat: route' >/dev/null || fail "render revised route page"
 route_step human-review user 'accept'
 cli accept "$route" --by user --words 'Looks good' >/dev/null || fail "accept route"
 route_step finish Coordinator 'finish'
+typed_action "$route" finish work Coordinator 'Configure the request'
 git remote add origin https://example.invalid/route.git || fail "configure fixture remote"
-cli finish "$route" >/dev/null || fail "prepare manual fixture request"
+typed_action "$route" finish run Coordinator 'approved ending' '{}' run
 route_step finish Coordinator 'plan status'
 request=https://example.invalid/route/requests/1
 cli plan status "$route" "$request" >/dev/null || fail "record fixture request"
 route_step finish Coordinator "$request"
+typed_action "$route" finish wait Coordinator "$request"
 assert_contains "$(cli status --current)" "Wait for $request to merge" "build#workflow-progress: resume shows the outstanding merge" || exit 1
 cli finish --merged "$route" >/dev/null || fail "record route merge"
 assert_eq "" "$(cli status --current)" "build#workflow-progress: a merged plan no longer appears on resume" || exit 1
@@ -805,11 +858,18 @@ failed=0
   actions=$(next_actions)
   assert_contains "$actions" 'brief reviewer --provider PROVIDER <plan>' 'build#workflow-progress: status binds the reviewer provider' || exit 1
   assert_contains "$actions" 'brief verify --provider PROVIDER <plan>' 'build#workflow-progress: status binds the Verify provider' || exit 1
+  typed_action "$route" build-verification work Reviewer 'brief reviewer' '{"executor":{"provider":"fixture","source":"approved run snapshot","tier":"primary","model":"first"}}' inspect --provider fixture
+  typed_action "$route" build-verification work Verify 'brief verify' '{"executor":{"provider":"fixture","source":"approved run snapshot","tier":"secondary","model":"followup"}}' inspect --provider fixture
+  typed_action "$route" build-verification run Coordinator 'brief reviewer' '{}' run --provider fixture
+  typed_action "$route" build-verification run Coordinator 'brief verify' '{}' run --provider fixture
   complete_review "$route" --provider fixture || fail 'complete provider fixture review'
   assert_contains "$(next_actions)" 'brief judge --provider PROVIDER <plan> --note REASON' 'build#workflow-progress: E2E exception includes a provider' || exit 1
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'record first case'
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'record second case'
   assert_contains "$(next_actions)" 'brief judge --provider PROVIDER <plan>' 'build#workflow-progress: ready judge includes a provider' || exit 1
+  typed_action "$route" build-verification ask Coordinator 'provider'
+  typed_action "$route" build-verification run Coordinator 'brief judge' '{}' run --provider fixture
+  typed_action "$route" build-verification ask Coordinator 'approved run snapshot' '{}' inspect --provider missing
   cli verdict question "$route" --predicted pass --engine fixture --report 'need input' --question 'Is this right?' >/dev/null || fail 'ask fixture question'
   assert_contains "$(next_actions)" 'brief judge --provider PROVIDER <plan> --note ANSWER' 'build#workflow-progress: judge question includes a provider' || exit 1
 ) || failed=1

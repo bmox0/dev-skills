@@ -9,7 +9,7 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py run approve PLAN --by NAME --words TEXT
        pipeline.py summary approve PLAN --file PATH --by NAME --words TEXT [--acceptor NAME --authority TEXT]
        pipeline.py accept PLAN --by NAME --words TEXT
-       pipeline.py status [--json] [--current | PLAN]
+       pipeline.py status [--json] [--provider NAME] [--current | PLAN]
        pipeline.py workflow [--json]
        pipeline.py plan status [--note TEXT] PLAN VALUE
        pipeline.py plan base [--note TEXT] PLAN REF
@@ -28,7 +28,8 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py verdict pass|round|question PLAN --report T [--decide ID ACTION REASON] [--note T CAUSE] [--evidence-note TEXT]
        pipeline.py verdict evidence-owed PLAN --owed reviewer|verify [--case N ...] --report T
        pipeline.py land draft PLAN | land [now] PLAN | land accept --note T PLAN | land revert [--note T] PLAN
-       pipeline.py page --note T [--message T] PLAN
+       pipeline.py page (--guide TEXT | --guide-file PATH) [--message TEXT] PLAN
+       pipeline.py page --show PLAN
        pipeline.py note add|edit|drop PLAN ...
        pipeline.py round start [--conflict T] PLAN | round report --became T [--commit SHA ...] PLAN | round done PLAN
        pipeline.py finish [--merged] PLAN
@@ -48,9 +49,9 @@ writes the archive record. A bad argument is exit 2.
 
 gate start, fix done and round done run the plan's `[checks].full` outside the plan
 lock, recording each command's result as it ends in a run that is unfinished until
-the last one; other commands work meanwhile. A run whose call is gone stays
-unfinished and runs again at the next of these commands; fix start, verdict and
-the reviewer, fix and judge briefs refuse while the selected run is unfinished.
+the last one; other commands work meanwhile. Status names the owning transition
+and whether to wait, confirm ownership, or retry it. A retry after the prior work
+stops runs the whole suite, or reuses matching completed checks before closure.
 build start, compilation and run approval pick a port under one project-wide lock.
 
 run new copies the newest run file beside the plan (else the shipped example) to
@@ -94,13 +95,18 @@ import io
 import json
 import os
 import re
+import secrets
 import shlex
 import subprocess
 import sys
 import shutil
 import socket
+import stat
 import tempfile
 import tomllib
+from urllib.parse import unquote
+
+sys.dont_write_bytecode = True
 
 HISTORY = "This is history; the rules that hold now are in `docs/spec/`."
 README = (
@@ -278,7 +284,7 @@ def done_raw(body):
         if m:
             last = int(m[1])
             items[last] = m[2]
-        elif last and line.startswith((" ", "\t")) and line.strip():
+        elif last is not None and line.startswith((" ", "\t")) and line.strip():
             items[last] += " " + line.strip()
     return items
 
@@ -447,12 +453,12 @@ def run(command, plan, given_base):
     except Fail:
         print("pipeline.py spec: not inside a git repository", file=sys.stderr)
         return 1
-    try:
-        with open(plan, encoding="utf-8") as f:
-            plan_lines = f.read().splitlines()
-    except OSError as e:
-        print(f"pipeline.py spec: {e}", file=sys.stderr)
+    fix = "restore the plan Markdown or pass its correct path"
+    text = read_required(plan, "no-plan", fix, optional=True)
+    if text is None:
+        print(f"no-plan: {plan} does not exist — fix: {fix}", file=sys.stderr)
         return 2
+    plan_lines = text.splitlines()
     name = os.path.basename(plan)
     base_rev = base_of(plan_lines, given_base)
     try:
@@ -604,6 +610,29 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def read_required(path, code, fix, *, optional=False, newline=None):
+    try:
+        with open(path, encoding="utf-8", newline=newline, opener=lambda name, flags: os.open(name, flags | os.O_NONBLOCK)) as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                raise Refuse(code, f"{path} must be a readable regular file", fix)
+            text = f.read()
+    except FileNotFoundError:
+        if optional and not os.path.lexists(path):
+            return None
+        raise Refuse(code, f"{path} does not exist", fix)
+    except IsADirectoryError:
+        raise Refuse(code, f"{path} must be a readable regular file", fix)
+    except UnicodeDecodeError as e:
+        raise Refuse(code, f"{path} is not valid UTF-8 ({e.reason})", fix)
+    except (OSError, ValueError) as e:
+        raise Refuse(code, f"cannot read {path} ({e})", fix)
+    if not text.strip():
+        raise Refuse(code, f"{path} is empty", fix)
+    if "\0" in text:
+        raise Refuse(code, f"{path} contains a NUL character", fix)
+    return text
+
+
 def plan_paths(plan):
     """-> (plan .md, state .json, lock), all absolute."""
     md = os.path.abspath(plan)
@@ -613,8 +642,8 @@ def plan_paths(plan):
 
 
 def is_plan_file(fn):
-    """A plan's own .md: not its notes, judge file, gate log or briefs."""
-    return fn.endswith(".md") and not re.search(r"\.(notes|judge|gate-log|brief-[\w-]+)\.md$", fn)
+    """A plan's own .md, excluding its companion files."""
+    return fn.endswith(".md") and not re.search(r"\.(notes|judge|summary|guide|gate-log|brief-[\w-]+)\.md$", fn)
 
 
 def plan_root(md):
@@ -641,15 +670,16 @@ def split_gate(lines):
 
 
 def read_plan(md):
-    try:
-        text = open(md, encoding="utf-8").read()
-    except OSError as e:
-        raise Refuse("no-plan", str(e), "pass an existing plan file")
+    text = read_required(md, "no-plan", "restore the plan Markdown or pass its correct path")
     return split_gate(text.split("\n"))
 
 
 def head_hash(head):
-    return hashlib.sha256("\n".join(head).encode()).hexdigest()
+    return hashlib.sha256(markdown_newlines("\n".join(head)).encode()).hexdigest()
+
+
+def markdown_newlines(text):
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def norm(path):
@@ -673,26 +703,36 @@ def header_of(lines):
     return lines[:n]
 
 
+def was_compiled(head):
+    header = header_of(head)
+    return any(line.startswith("Rendered from `") and not masked for line, masked in zip(header, fenced(header)))
+
+
 def epic_row(root, path, row):
-    """-> (lines of the epic file, index of its row in the `## Plans` table or None), or (None, None) without the file."""
-    try:
-        lines = open(os.path.join(root, path), encoding="utf-8").read().split("\n")
-    except OSError:
-        return None, None
+    """-> (lines of the epic file, index of its row in the `## Plans` table or None)."""
+    full = os.path.join(root, path)
+    lines = read_required(full, "bad-epic", "restore the linked epic Markdown and its Plans table").split("\n")
     start, body = sections(lines).get("Plans", (0, []))
     mask = fenced(body)
     at = next((k for k, l in enumerate(body) if not mask[k] and re.match(rf"^\|\s*{row}\s*\|", l)), None)
     return lines, None if at is None else start - 1 + at
 
 
-def parse_plan(lines, root):
+def check_epic(root, path, row):
+    lines, i = epic_row(root, path, row)
+    if i is None or not lines[i].rstrip().endswith("|") or lines[i].count("|") < 5:
+        raise Refuse("bad-epic", f"{os.path.join(root, path)} has no complete Plans table row {row}",
+                     "restore the linked epic and its numbered row")
+
+
+def parse_plan(lines, root, *, check_references=True):
     """The plan's lines (as far as the CLI reads them) -> (plan dict, problems [(line, message)])."""
     problems = []
     bad = lambda n, m: problems.append((n, m))
     P = {"title": None, "status": None, "branch": None, "base": None, "epic": None, "level": None, "phases": []}
     mask = fenced(lines)
     for l, f in zip(lines, mask):
-        if l.startswith("# ") and not f:
+        if l.startswith("# ") and l[2:].strip() and not f:
             P["title"] = l[2:].strip()
             break
     else:
@@ -715,11 +755,8 @@ def parse_plan(lines, root):
             if not m:
                 bad(n, "the Epic line must read `Epic: <path> · row <n>`")
                 break
-            efile, erow = epic_row(root, m[1], m[2])
-            if efile is None:
-                bad(n, f"epic file {m[1]} does not exist")
-            elif erow is None:
-                bad(n, f"epic {m[1]} has no table row {m[2]}")
+            if check_references:
+                check_epic(root, m[1], int(m[2]))
             P["epic"] = {"path": m[1], "row": int(m[2])}
             break
     dups = []
@@ -740,11 +777,20 @@ def parse_plan(lines, root):
     if "Done" in secs and not done_items(secs["Done"][1]):
         bad(secs["Done"][0] - 1, "the `## Done` section has no numbered item")
     if "Phases" in secs:
-        parse_phases(*secs["Phases"], root, P, bad)
+        parse_phases(*secs["Phases"], root, P, bad, check_references)
     return P, problems
 
 
-def parse_phases(start, body, root, P, bad):
+def checked_plan(plan, head, root, *, check_references=True):
+    parsed, problems = parse_plan(head, root, check_references=check_references)
+    if problems:
+        raise refuse_all([("bad-plan", f"{plan}:{n}: {message}",
+                           "repair the plan Markdown, then run `pipeline.py approve`")
+                          for n, message in sorted(problems)])
+    return parsed
+
+
+def parse_phases(start, body, root, P, bad, check_references):
     mask = fenced(body)
     heads = [i for i, l in enumerate(body) if l.startswith("### ") and not mask[i]]
     if not heads:
@@ -785,13 +831,13 @@ def parse_phases(start, body, root, P, bad):
         ph["skills"] = paths_of(f.get("Skills", ""))
         for sk in ph["skills"]:
             if "/" in sk or sk.endswith(".md"):
-                if not (os.path.exists(os.path.join(root, sk)) or os.path.exists(os.path.expanduser(sk))):
+                if check_references and not (os.path.exists(os.path.join(root, sk)) or os.path.exists(os.path.expanduser(sk))):
                     bad(ln["Skills"], f"phase {ph['n']}: skill {sk} does not exist")
             elif not re.fullmatch(r"[\w.:-]+", sk):
                 bad(ln["Skills"], f"phase {ph['n']}: {sk!r} is neither a SKILL.md path nor a skill name")
         ph["spec"] = paths_of(f.get("Spec", ""))
         for sp in ph["spec"]:
-            if not os.path.exists(os.path.join(root, sp)):
+            if check_references and not os.path.exists(os.path.join(root, sp)):
                 bad(ln["Spec"], f"phase {ph['n']}: area file {sp} does not exist")
         ph["waits"], ph["waits_text"] = [], ""
         w = f.get("Waits for", "")
@@ -870,10 +916,10 @@ def other_plans(root, md):
         if not is_plan_file(fn) or full == md:
             continue
         try:
-            head = split_gate(open(full, encoding="utf-8").read().split("\n"))[0]
-            P, _ = parse_plan(head, root)
-            st = json.load(open(full[:-3] + ".json")) if os.path.exists(full[:-3] + ".json") else None
-        except (OSError, ValueError):
+            head, _ = read_plan(full)
+            P, _ = parse_plan(head, root, check_references=False)
+            st = load_state(full)
+        except Refuse:
             continue
         status = st["status"] if st else P["status"]
         if status in LIVE:
@@ -890,14 +936,163 @@ def locked(plan):
         yield
 
 
-def load_state(plan):
+def check_state_fields(value, fields, location, *, optional=()):
+    """A `?` suffix marks fields that older records may omit."""
+    if type(value) is not dict:
+        return f"{location} must be an object"
+    for key, expected in fields.items():
+        required = not key.endswith("?") and key not in optional
+        key = key.removesuffix("?")
+        name = f"{location}.{key}"
+        if key not in value:
+            if required:
+                return f"{name} is missing"
+            continue
+        if problem := check_state_value(value[key], expected, name):
+            return problem
+
+
+def check_state_value(value, expected, name):
+    if isinstance(expected, dict):
+        return check_state_fields(value, expected, name)
+    if isinstance(expected, list):
+        if type(value) is not list:
+            return f"{name} must be a list"
+        for i, item in enumerate(value):
+            if problem := check_state_value(item, expected[0], f"{name}[{i}]"):
+                return problem
+    elif isinstance(expected, tuple):
+        for kind in expected:
+            if type(value) is (type(kind) if isinstance(kind, (dict, list)) else kind):
+                return check_state_value(value, kind, name)
+        return f"{name} must be " + " or ".join((kind if isinstance(kind, type) else type(kind)).__name__ for kind in expected)
+    elif type(value) is not expected:
+        return f"{name} must be a {expected.__name__}"
+
+
+def state_problem(st, md):
+    nullable_text = (str, type(None))
+    nullable_int = (int, type(None))
+    report = {"became": str, "skills": str, "interfaces": str, "checks": str, "commits": [str]}
+    finished = {"head": str}
+    core = {"version": int, "plan": str, "status": str, "branch": str, "base": str, "title": str, "level": str,
+            "render_hash": str, "phases": [dict],
+            "history": [{"at": str, "what": str, "from": nullable_text, "to": str, "note": nullable_text, "sha": nullable_text}]}
+    records = {
+        "done": [{"n": int, "text": str, "you_check": bool}],
+        "cycles": [{"n": int, "kind": str, "level": nullable_text, "raised_by": [str],
+                    "spec_refusal?": ([str], type(None)), "current_run?": int, "verify_cases?": dict,
+                    "runs": [{"head": str, "at": str, "full": [str], "done?": bool, "pid?": nullable_int,
+                              "commands": [{"command": str, "exit": int, "red": bool, "changed_tree": bool, "tail?": str}]}],
+                    "findings": [{"id": str, "kind": str, "where": nullable_text, "source": nullable_text, "text": str, "again?": nullable_text}],
+                    "results": [{"case": int, "outcome": str, "do": str, "see": str, "width": str, "detail": nullable_text,
+                                 "capture": nullable_text, "at": str, "commit?": nullable_text}],
+                    "fixes": [{"n": int, "from": str, "items": [str], "survived": [str], "report": (report, type(None)),
+                               "done": (finished, type(None)), "verify_cases?": [int]}],
+                    "reviews?": [{"range": str, "assignment": str, "at": str, "findings": int}]}],
+        "lands": [{"n": int, "pre": str, "tip": str, "backup": str, "judge?": int,
+                   "shape": [{"paths": [str], "message": str, "walkthrough": str, "sha": str}],
+                   "difference": [str], "accepted": ({"note": str}, type(None)), "since?": nullable_text, "range_diff?": nullable_text}],
+        "page": {"note": str, "message": nullable_text, "ending": {"how": str, "target": str}, "binding?": str},
+        "rounds": [{"n": int, "by": str, "from": str, "notes": [int],
+                    "report": (report, type(None)), "done": (finished, type(None))}],
+        "notes": [{"n": int, "by": str, "text": str, "cause": str, "round": nullable_int, "source": nullable_text, "verdict": nullable_int}],
+        "verdicts": [{"n": int, "kind": str, "head": str, "cycle": str, "at": str, "epoch": int, "report": str,
+                      "decisions": [{"id": str, "action": str, "reason": str}], "notes": [int], "question": nullable_text,
+                      "owed": nullable_text, "evidence_note?": nullable_text, "stop?": nullable_text, "answer?": nullable_text, "round?": nullable_int,
+                      "stopped_notes?": [[str]], "owed_cases?": [int], "review_count?": int, "result_count?": int}],
+        "land_stops": [{"lands": int, "kind": str, "message": str}],
+        "decisions": [{"at": str, "phase": nullable_int, "by": str, "question": str, "source": str, "answer": str, "why": str, "cost": str}],
+        "approvals": dict, "run": dict, "alloc": dict, "tree": str, "tail_hash": str,
+        "acceptance": {"page": str}, "request": {"tip": str, "acceptance": str}, "pushed": {"tip": str},
+        "check_transition": {"cycle": str, "id": str, "command": str, "target": nullable_int, "host": nullable_text,
+                             "child": ({"pgid": int, "start": str}, type(None)), "note?": nullable_text},
+    }
+    if problem := check_state_fields(st, {**core, **records}, "state", optional=records):
+        return problem
+    if st["version"] != 1 or st["plan"] != os.path.basename(md):
+        return f"state must be version 1 for {os.path.basename(md)}"
+    if st["status"] not in PLAN_STATUSES and not st["status"].startswith("http"):
+        return "state.status must name a plan status or merge-request link"
+    if st["level"] not in ("small", "normal") or not st["phases"]:
+        return "state needs a gate level and at least one phase"
+    if (page := st.get("page")) and page["ending"]["how"] not in CHOICES["finish", "how"]:
+        return "state.page.ending.how must name a supported finish strategy"
+    if (transition := st.get("check_transition")) and transition["command"] not in ("gate start", "fix done", "round done"):
+        return "state.check_transition.command must name a full-check transition"
+    for i, cycle in enumerate(st.get("cycles", [])):
+        loc = f"state.cycles[{i}]"
+        if cycle["kind"] not in ("gate", "round"):
+            return f"{loc}.kind must be gate or round"
+        if cycle["kind"] == "round" and not 1 <= cycle["n"] <= len(st.get("rounds", [])):
+            return f"{loc}.n must refer to a recorded round"
+        if "current_run" in cycle and not 0 <= cycle["current_run"] < len(cycle["runs"]):
+            return f"{loc}.current_run must refer to a recorded check run"
+        for assignment, cases in cycle.get("verify_cases", {}).items():
+            if problem := check_state_value(cases, [int], f"{loc}.verify_cases.{assignment}"):
+                return problem
+        for j, finding in enumerate(cycle["findings"]):
+            if finding["kind"] not in FINDING_KINDS:
+                return f"{loc}.findings[{j}].kind must name a finding kind"
+        for j, result in enumerate(cycle["results"]):
+            if result["outcome"] not in ("failed", "not reached", "passed"):
+                return f"{loc}.results[{j}].outcome must name a result outcome"
+    for i, verdict in enumerate(st.get("verdicts", [])):
+        loc = f"state.verdicts[{i}]"
+        if verdict.get("stop") and "stopped_notes" not in verdict:
+            return f"{loc}.stopped_notes is missing for a stopped verdict"
+        if any(len(note) != 2 for note in verdict.get("stopped_notes", [])):
+            return f"{loc}.stopped_notes must contain pairs of text and cause"
+        if verdict["kind"] == "evidence-owed" and verdict["owed"] not in EVIDENCE_ROLES:
+            return f"{loc}.owed must be {' or '.join(EVIDENCE_ROLES)} for an evidence-owed verdict"
+    if (epic := st.get("epic")) is not None:
+        if problem := check_state_fields(epic, {"path": str, "row": int}, "state.epic"):
+            return problem
+    for i, phase in enumerate(st["phases"], 1):
+        fields = {"n": int, "status": str, "title": str, "territory": [str], "skills": [str],
+                  "spec": [str], "waits": [int], "waits_text": str, "grants": [str], "report": dict}
+        if problem := check_state_fields(phase, fields, f"state.phases[{i}]", optional=("grants", "report")):
+            return problem
+        if phase["n"] != i or phase["status"] not in PHASE_STATUSES:
+            return f"state.phases[{i}] needs its consecutive phase number and a valid status"
+        if any(n < 1 or n > len(st["phases"]) or n == i for n in phase["waits"]):
+            return f"state.phases[{i}].waits must refer to other phases"
+        if "report" in phase:
+            fields = {**report, "check_outcomes": dict}
+            if problem := check_state_fields(phase["report"], fields, f"state.phases[{i}].report", optional=("check_outcomes",)):
+                return problem
+    for kind, fields in (("run", {"digest": str}),
+                         ("summary", {"digest": str, "file": str, "planning": str, "run": str, "acceptor": str})):
+        approvals = st.get("approvals", {})
+        if kind in approvals:
+            if problem := check_state_fields(approvals[kind], fields, f"state.approvals.{kind}"):
+                return problem
+    if "run" in st and (problems := run_diags(st["run"])):
+        return f"state.run: {problems[0][1]}"
+
+
+def missing_state(plan):
     js = plan_paths(plan)[1]
-    if not os.path.exists(js):
+    return Refuse("not-compiled", f"{js} does not exist",
+                  f"restore the compiled state, or run `pipeline.py approve {plan}` for an uncompiled plan")
+
+
+def load_state(plan, *, required=False):
+    md, js, _ = plan_paths(plan)
+    fix = f"restore {js} from a known-good copy of the compiled plan state"
+    text = read_required(js, "bad-state", fix, optional=True)
+    if text is None:
+        if required:
+            raise missing_state(plan)
         return None
     try:
-        return json.load(open(js, encoding="utf-8"))
-    except ValueError as e:
-        raise Refuse("bad-state", f"{js} is not valid JSON ({e})", "restore it from git or approve the plan again after deleting it")
+        st = json.loads(text)
+        json.dumps(st, ensure_ascii=False).encode("utf-8")
+    except (ValueError, RecursionError) as e:
+        raise Refuse("bad-state", f"{js} is not valid JSON ({e})", fix)
+    if problem := state_problem(st, md):
+        raise Refuse("bad-state", f"{js}: {problem}", fix)
+    return st
 
 
 def code_owned(st, head):
@@ -993,7 +1188,7 @@ def drift_diags(plan, st, head, tail=None):
     """What differs between the file and its last render, as Refuse diagnostics."""
     out = []
     if tail is not None and st.get("tail_hash") and head_hash(tail) != st["tail_hash"]:
-        out.append(("drift", f"{plan}: `## Human gate` was edited by hand", "restore it; code draws it from the records, and `pipeline.py page` changes its note and message"))
+        out.append(("drift", f"{plan}: `## Human gate` was edited by hand", "restore it; code draws it from the records, and `pipeline.py page` changes its guide and message"))
     if head_hash(head) == st.get("render_hash"):
         return out
     owned = code_owned(st, head)
@@ -1010,11 +1205,15 @@ def writing(plan, edit_tail=None):
     edit_tail(state, tail lines) -> tail lines rewrites the hand-written `## Human gate` on exit.
     """
     md = plan_paths(plan)[0]
+    if not os.path.isdir(os.path.dirname(md)):
+        read_plan(md)
     with locked(plan):
-        st = load_state(plan)
-        if st is None:
-            raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
         head, tail = read_plan(md)
+        st = load_state(plan, required=True)
+        root = plan_root(md)
+        checked_plan(md, head, root, check_references=False)
+        if (epic := st.get("epic")) and os.path.lexists(os.path.join(root, epic["path"])):
+            check_epic(root, epic["path"], epic["row"])
         diags = drift_diags(plan, st, head, tail)
         if diags:
             r = Refuse(*diags[0])
@@ -1083,8 +1282,8 @@ def type_ok(v, kind):
     if kind == "bool":
         return isinstance(v, bool)
     if kind == "str":
-        return isinstance(v, str)
-    return isinstance(v, list) and all(isinstance(x, str) for x in v)
+        return isinstance(v, str) and "\0" not in v
+    return isinstance(v, list) and all(type_ok(x, "str") for x in v)
 
 
 def single_line(value):
@@ -1126,12 +1325,8 @@ def executor_diags(values):
 def agents_executors(tree):
     path = os.path.join(tree, "AGENTS.md")
     fix = f"add ## Executors with one fenced toml block of provider primary/secondary profiles to {path}"
-    try:
-        with open(path, encoding="utf-8") as f:
-            dups = []
-            secs = sections(f.read().splitlines(), dups)
-    except (OSError, UnicodeDecodeError) as e:
-        raise Refuse("executors-missing", f"cannot read Executors from {path} ({e})", fix)
+    dups = []
+    secs = sections(read_required(path, "executors-missing", fix).splitlines(), dups)
     body = "\n".join(secs.get("Executors", (0, []))[1])
     blocks = re.findall(r"(?ms)^```toml[ \t]*\n(.*?)^```[ \t]*$", body)
     if len(blocks) != 1 or any(name == "Executors" for _, name in dups):
@@ -1141,7 +1336,7 @@ def agents_executors(tree):
     except tomllib.TOMLDecodeError as e:
         raise Refuse("executors-bad-toml", f"{path} Executors is not valid TOML ({e})", fix)
     problems = [("executor-invalid", f"{path}: {key} is an unknown field in Executors", fix) for key in values if key != "executors"]
-    problems += executor_diags(values.get("executors"))
+    problems += [(code, f"{path}: {message}", fix) for code, message, _ in executor_diags(values.get("executors"))]
     if problems:
         raise refuse_all(problems)
     return values["executors"], path
@@ -1223,14 +1418,26 @@ def executor_toml(values):
 
 def read_run(plan):
     """-> (values, []) or (None, [(code, message, fix)]); the file is read as written."""
-    path = run_path(plan)
-    if not os.path.exists(path):
-        return None, [("no-run-file", f"{path} does not exist", "write it with `dev-skills:run-file`, or copy one with `pipeline.py run new`")]
     try:
-        with open(path, "rb") as f:
-            v = tomllib.load(f)
-    except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as e:
-        return None, [("run-bad-toml", f"{path} is not valid TOML ({e})", "fix the syntax")]
+        _, values = read_run_file(run_path(plan))
+    except Refuse as error:
+        return None, error.diags
+    return values, []
+
+
+def read_run_file(path):
+    fix = "repair the run file with `dev-skills:run-file`, or create it with `pipeline.py run new`"
+    text = read_required(path, "no-run-file", fix, newline="")
+    try:
+        values = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        raise Refuse("run-bad-toml", f"{path} is not valid TOML ({e})", "fix the TOML syntax in the run file")
+    if problems := run_diags(values):
+        raise refuse_all([(code, f"{message} ({path})", fix) for code, message, fix in problems])
+    return text, values
+
+
+def run_diags(v):
     out = []
     for sec in v:
         if sec not in RUN_SECTIONS and sec not in ("run", "executors"):
@@ -1268,7 +1475,7 @@ def read_run(plan):
                 for ph in sorted(set(PLACEHOLDER.findall(s)) if isinstance(s, str) else []):
                     if iso.get(ph) is not True:
                         out.append(("run-bad-placeholder", f"[checks] {k} uses {{{ph}}}, but [isolation] {ph} is not true", f"set `{ph} = true` in [isolation], or drop the placeholder"))
-    return (None, out) if out else (v, [])
+    return out
 
 
 def same(a, b):
@@ -1291,7 +1498,7 @@ def run_drift(plan, st):
     fix = f"obtain renewed consent with `pipeline.py run approve {plan} --by NAME --words TEXT`, or restore the file"
     v, probs = read_run(plan)
     if v is None:
-        return [("run-drift", f"{run_path(plan)} no longer passes `run check` ({probs[0][1]}); the approved values stand", fix)]
+        return [("run-drift", f"{probs[0][1]}; the approved values stand", probs[0][2])]
     keys = [f"[{x}] {k}" for x, k in run_changes(st["run"], v)]
     return [("run-drift", f"the run file differs from the approved values ({', '.join(keys)}); the approved values stand", fix)] if keys else []
 
@@ -1362,14 +1569,12 @@ def free_port(plan, md):
 def cmd_run(command, plan, as_json):
     path = run_path(plan)
     if command == "new":
-        if os.path.exists(path):
+        if os.path.lexists(path):
             raise Refuse("run-exists", f"{path} already exists", "edit it, or pick another plan name")
         d = os.path.dirname(path)
         runs = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".run.toml")] if os.path.isdir(d) else []
-        src = max(runs, key=os.path.getmtime) if runs else os.path.normpath(EXAMPLE)
-        os.makedirs(d, exist_ok=True)
-        with open(src, encoding="utf-8") as f:
-            text = f.read()
+        src = max(runs, key=lambda name: os.lstat(name).st_mtime) if runs else os.path.normpath(EXAMPLE)
+        text, _ = read_run_file(src)
         if not runs:
             text = without_table(text, "run", keep_header=True)
         directory = d
@@ -1386,6 +1591,7 @@ def cmd_run(command, plan, as_json):
                 snapshot = ""
             out.append(statement)
         text = "".join(out).rstrip() + "\n" + ("\n" + snapshot if snapshot else "")
+        os.makedirs(d, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
         print(f"run new: {path} (copied from {src})")
@@ -1437,23 +1643,93 @@ def planning_digest(plan):
     return digest(lines)
 
 
-def consent_diags(plan, st):
+# Default_Ignorable_Code_Point from https://www.unicode.org/Public/18.0.0/ucd/DerivedCoreProperties.txt
+# See references/unicode-license.txt.
+DEFAULT_IGNORABLE = re.compile(
+    "[\u00ad\u034f\u061c\u115f-\u1160\u17b4-\u17b5\u180b-\u180f"
+    "\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff"
+    "\uffa0\ufff0-\ufff8\U0001bca0-\U0001bca3\U0001d173-\U0001d17a"
+    "\U000e0000-\U000e0fff]"
+)
+
+
+def summary_destinations(text):
+    from _marko.inline import CodeSpan, Image, Link, Literal, RawText, unescape_text
+    from _marko.parser import Parser
+
+    def has_visible_label(link):
+        pending = list(link.children)
+        while pending:
+            node = pending.pop()
+            if isinstance(node, Image) and node.dest.strip():
+                return True
+            if isinstance(node, (RawText, Literal, CodeSpan)):
+                label = unescape_text(node.children) if isinstance(node, RawText) else node.children
+                label = DEFAULT_IGNORABLE.sub("", label)
+                if any(char.isprintable() and not char.isspace() for char in label):
+                    return True
+            elif isinstance(node.children, list):
+                pending.extend(node.children)
+        return False
+
+    try:
+        document = Parser().parse(text)
+    except RecursionError:
+        return
+    pending = [document]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, Link):
+            if has_visible_label(node):
+                yield node.dest
+        elif not isinstance(node, Image) and isinstance(node.children, list):
+            pending.extend(reversed(node.children))
+
+
+def read_summary(plan, path):
+    fix = "write and present a summary of at most 350 words with a visible link such as `[Plan](<path to plan.md>)`"
+    text = read_required(path, "no-summary", fix)
+    expected = os.path.realpath(plan_paths(plan)[0])
+    if len(text.split()) > 350:
+        raise Refuse("bad-summary", f"{path} must link this plan and contain at most 350 words", fix)
+    for target in summary_destinations(markdown_newlines(text)):
+        if re.match(r"(?:[A-Za-z][A-Za-z0-9+.-]*:|//)", target):
+            continue
+        local = unquote(re.split(r"[?#]", target, maxsplit=1)[0])
+        if local and "\0" not in local:
+            try:
+                if os.path.realpath(os.path.join(os.path.dirname(path), local), strict=True) == expected:
+                    return text
+            except OSError:
+                continue
+    raise Refuse("bad-summary", f"{path} must link this plan and contain at most 350 words", fix)
+
+
+def consent_diags(plan, st, *, check_summary=True):
     approvals = st.get("approvals", {})
     run = approvals.get("run")
     values, problems = read_run(plan)
+    if problems:
+        if not run and "run" not in st and not os.path.lexists(run_path(plan)):
+            return [("run-unapproved", problems[0][1], f"{problems[0][2]}, then obtain explicit run approval")]
+        return problems
     if not run:
         return [("run-unapproved", "the proposed run has no explicit approval", "record the user's words with `pipeline.py run approve --by NAME --words TEXT`")]
-    if problems or digest(values) != run["digest"] or digest(st.get("run")) != run["digest"]:
-        return [("run-stale", "the proposed run differs from its approval", "validate it and obtain renewed `run approve`, then `summary approve`")]
+    if "run" not in st:
+        return [("run-stale", f"{plan_paths(plan)[1]} has no approved run snapshot", "restore the compiled state, or obtain renewed `run approve`, then `summary approve`")]
+    if digest(values) != run["digest"] or digest(st["run"]) != run["digest"]:
+        return [("run-stale", f"{run_path(plan)} differs from its approval", "validate it and obtain renewed `run approve`, then `summary approve`")]
+    if not check_summary:
+        return []
     summary = approvals.get("summary")
     if not summary:
         return [("summary-unapproved", "the current plan has no approved summary", "present a linked summary, then record `summary approve --file PATH --by NAME --words TEXT`")]
     try:
-        text = open(summary["file"], encoding="utf-8").read()
-    except OSError:
-        text = None
+        text = read_summary(plan, summary["file"])
+    except Refuse as error:
+        return error.diags
     if summary["planning"] != planning_digest(plan) or summary["run"] != run["digest"] or digest(text) != summary["digest"]:
-        return [("summary-stale", "the approved summary, plan or Spec changed", "validate the plan and obtain renewed `summary approve`")]
+        return [("summary-stale", f"the approved summary ({summary['file']}), plan or Spec changed", "validate the plan and obtain renewed `summary approve`")]
     return []
 
 
@@ -1469,6 +1745,7 @@ def approval_words(a):
 
 
 def cmd_consent(plan, kind, a):
+    read_plan(plan_paths(plan)[0])
     with port_lock(plan_paths(plan)[0]), writing(plan) as st:
         entry = approval_words(a)
         approvals = st.setdefault("approvals", {})
@@ -1486,15 +1763,10 @@ def cmd_consent(plan, kind, a):
                 print("facts: " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in allocated.items()))
             approvals["run"] = {**entry, "digest": digest(values)}
         else:
-            if problems := [d for d in consent_diags(plan, st) if d[0].startswith("run-")]:
+            if problems := consent_diags(plan, st, check_summary=False):
                 raise refuse_all(problems)
             path = os.path.abspath(a.file)
-            try:
-                text = open(path, encoding="utf-8").read()
-            except OSError as error:
-                raise Refuse("no-summary", str(error), "write and present the linked summary first")
-            if not text.strip() or len(text.split()) > 350 or not re.search(r"\[[^\]]+\]\([^)]*" + re.escape(os.path.basename(plan_paths(plan)[0])) + r"(?:#[^)]*)?\)", text):
-                raise Refuse("bad-summary", "the summary must link this plan and contain at most 350 words", "present a concise linked summary before recording approval")
+            text = read_summary(plan, path)
             if a.acceptor != "user" and not (a.authority or "").strip():
                 raise Refuse("no-authority", "a designated acceptor needs the user's grant", "pass --authority with their unchanged grant words, or use --acceptor user")
             approvals["summary"] = {**entry, "file": path, "digest": digest(text), "planning": planning_digest(plan), "run": approvals["run"]["digest"],
@@ -1516,8 +1788,8 @@ def contract_digest(plan, st):
 
 def require_judge(plan, st):
     require_consent(plan, st)
-    c = cycle_of(st)
-    settled(c)
+    cycle_of(st)
+    settled(plan, st)
     v = (st.get("verdicts") or [None])[-1]
     if not v or not (v["kind"] == "pass" or v.get("stop")):
         raise Refuse("no-pass", "the judge's last verdict is not a pass or stopped round", "run the judge on the current evidence")
@@ -1549,9 +1821,9 @@ def require_page(plan, st):
         raise Refuse("land-stale", "the current branch differs from its accepted land", "land the current result and render its page again")
     pg = st.get("page")
     if not pg:
-        raise Refuse("no-page", "the landed result has no acceptance page", "render `page` and obtain acceptance")
+        raise Refuse("no-page", "the landed result has no acceptance page", "render `page` with `--guide-file PATH` for the landed result and obtain acceptance")
     if pg.get("binding") != page_binding(plan, st):
-        raise Refuse("page-stale", "the page no longer describes the current approval and evidence", "render `page` again and obtain acceptance")
+        raise Refuse("page-stale", "the page no longer describes the current approval and evidence", "render `page` again with `--guide-file PATH` and obtain acceptance")
     return pg
 
 
@@ -1579,16 +1851,20 @@ def cmd_accept(plan, a):
 
 def cmd_approve(plan, as_json):
     md = plan_paths(plan)[0]
+    read_plan(md)
     root = plan_root(md)
-    head, tail = read_plan(md)
-    P, problems = parse_plan(head, root)
-    if problems:
-        print("\n".join(f"{plan}:{n}: {m}" for n, m in sorted(problems)))
-        return 1
     derived = ("title", "territory", "skills", "spec", "waits", "waits_text")
     with port_lock(md), locked(plan):
+        head, tail = read_plan(md)
+        P, problems = parse_plan(head, root)
+        if problems:
+            print("\n".join(f"{plan}:{n}: {message} — fix: repair the plan Markdown and run `pipeline.py approve`"
+                            for n, message in sorted(problems)))
+            return 1
         st = load_state(plan)
         if st is None:
+            if was_compiled(head) and P["status"] != "merged":
+                raise missing_state(plan)
             how = "validated" if P["status"] == "draft" else "adopted"
             st = {"version": 1, "plan": os.path.basename(md), "status": P["status"],
                   "branch": P["branch"], "base": P["base"], "history": [], "phases": []}
@@ -1616,7 +1892,7 @@ def cmd_approve(plan, as_json):
             st["phases"] = [{**old.get(n, {"n": n, "status": "waiting"}), **{k: p[k] for k in derived}} for n, p in sorted(new.items())]
         had = "run" in st
         values, probs = read_run(plan)
-        if probs and (had or how == "validated" or os.path.exists(run_path(plan))):
+        if probs and (had or how == "validated" or os.path.lexists(run_path(plan))):
             raise refuse_all(probs)
         facts = []
         if values is not None:
@@ -1682,7 +1958,20 @@ def workflow_view(plan, stage, actions, optional=None):
               for i, (key, _) in enumerate(WORKFLOW_STAGES)]
     return {"plan": plan, "stage": stage,
             "stages": [{"id": key, "label": label, "state": state} for (key, label), state in zip(WORKFLOW_STAGES, states)],
-            "actions": [{"owner": owner, "action": action} for owner, action in actions]}
+            "actions": actions}
+
+
+def workflow_action(owner, kind, action, **context):
+    return {"owner": owner, "kind": kind, "action": action, **context}
+
+
+def run_action(plan, owner, action, command, *args):
+    return workflow_action(owner, "run", action, argv=[
+        sys.executable, os.path.realpath(__file__), *command.split(), plan_paths(plan)[0], *map(str, args)])
+
+
+def work_action(owner, action, role, kind, **context):
+    return workflow_action(owner, "work", action, role=role, assignment={"kind": kind, **context})
 
 
 def show_workflow(view):
@@ -1696,11 +1985,15 @@ def show_next(actions):
     if actions:
         print("Next:")
         for step in actions:
-            print(f"  {step['owner']} — {step['action']}")
+            print(f"  {step['owner']} — {step['action']} [{step['kind']}]")
+            if step["kind"] == "run":
+                print(f"    {shlex.join(step['argv'])}")
 
 
 def cmd_workflow(as_json):
-    view = workflow_view(None, "grill", [("user and planner", "Discuss open decisions in a grill, or continue to planning. Offer an optional prototype before writing the plan.")])
+    view = workflow_view(None, "grill", [work_action(
+        "user and planner", "Discuss open decisions in a grill, or continue to planning. Offer an optional prototype before writing the plan.",
+        "planner", "grill")])
     if as_json:
         print(json.dumps(view, ensure_ascii=False))
     else:
@@ -1731,23 +2024,27 @@ def missing_phase_checks(st, report):
     return [command for command in phase_checks(st) if command not in report.get("check_outcomes", {})]
 
 
-def build_actions(st, ready):
+def build_actions(plan, st, ready, provider):
     done = {p["n"] for p in st["phases"] if p["status"] == "done"}
     actions = []
     for p in st["phases"]:
         n = p["n"]
+        owner = f"Implementer for phase {n}"
         if p["status"] == "in progress":
             if p.get("report") and (missing := missing_phase_checks(st, p["report"])):
-                actions.append((f"Implementer for phase {n}", f"Record the outcomes for {', '.join(missing)} with `phase report <plan> {n} --check COMMAND OUTCOME`."))
+                actions.append(work_action(owner, f"Record the outcomes for {', '.join(missing)} with `phase report <plan> {n} --check COMMAND OUTCOME`.",
+                                           "implementer", "phase", phase=n, checks=missing))
             elif p.get("report"):
-                actions.append(("Coordinator", f"Check the report and run `phase done <plan> {n}`."))
+                actions.append(run_action(plan, "Coordinator", f"Check the report and run `phase done <plan> {n}`.", "phase done", n))
             else:
-                actions.append((f"Implementer for phase {n}", f"Work from the phase brief and record `phase report <plan> {n}`."))
+                add_brief_actions(actions, plan, st, provider, "implementer", work_action(
+                    owner, f"Work from the phase brief and record `phase report <plan> {n}`.", "implementer", "phase", phase=n), n)
         elif n in ready:
-            actions.append(("Coordinator", f"Start phase {n} with `phase start <plan> {n}`, then issue its implementer brief."))
+            actions.append(run_action(plan, "Coordinator", f"Start phase {n} with `phase start <plan> {n}`, then issue its implementer brief.", "phase start", n))
         elif p["status"] == "waiting":
-            waits = ", ".join(str(k) for k in p["waits"] if k not in done)
-            actions.append(("Coordinator", f"Phase {n} waits for phase {waits} to finish."))
+            waits = [k for k in p["waits"] if k not in done]
+            actions.append(workflow_action("Coordinator", "wait", f"Phase {n} waits for phase {', '.join(map(str, waits))} to finish.",
+                                           phase=n, waits_for=waits))
     return actions
 
 
@@ -1756,67 +2053,123 @@ def workflow_brief(st, role):
     return f"brief {role}{provider} <plan>"
 
 
-def verification_workflow(st, c, tree):
+def brief_tier(brief, review_assignment=None):
+    return "primary" if brief == "judge" or (brief == "reviewer" and review_assignment == "gate") else "secondary"
+
+
+def add_brief_actions(actions, plan, st, provider, brief, work, *args):
+    actions.append(work)
+    if provider is None and "executors" in st.get("run", {}):
+        needed = workflow_action("Coordinator", "ask", "Supply the current provider with `status --provider NAME` to get executable brief commands.",
+                                 input="provider")
+    elif provider is not None:
+        try:
+            selection = executor_selection(plan, provider)
+        except Refuse as error:
+            _, message, fix = error.diags[0]
+            needed = workflow_action("Coordinator", "ask", f"{message}. {fix}.", input="provider")
+        else:
+            tier = brief_tier(brief, work["assignment"].get("id"))
+            work["executor"] = {"provider": provider, "source": selection["source"], "tier": tier, **selection[tier]}
+            args = (*args, "--provider", provider)
+            needed = None
+    else:
+        needed = None
+    if needed is None:
+        step = run_action(plan, "Coordinator", f"Generate the `brief {brief}` assignment for {work['owner']}.", f"brief {brief}", *args)
+        actions.append({**step, "role": work["role"], "assignment": work["assignment"]})
+    elif needed not in actions:
+        actions.append(needed)
+
+
+def verification_workflow(plan, st, c, tree, provider):
     checked = checks_current(st, c, tree)
     actions = []
     if not checked:
-        recovery = ("Refresh the checks with `gate start <plan>`." if c["kind"] == "gate"
-                    else "Restore the checked round tree or obtain authorization for another round.")
-        actions.append(("Coordinator", "Full checks are missing or stale. " + recovery))
-    target = review_target(st, c, tree, head_sha(None, tree))
+        if c["kind"] == "gate":
+            actions.append(run_action(plan, "Coordinator", "Full checks are missing or stale. Refresh the checks with `gate start <plan>`.", "gate start"))
+        else:
+            actions.append(work_action("Coordinator", "Full checks are missing or stale. Restore the checked round tree or obtain authorization for another round.",
+                                       "coordinator", "checks", cycle=cycle_label(c)))
+    head = head_sha(None, tree)
+    target = review_target(st, c, tree, head)
     reviewed = review_is_current(c, target)
+    label = cycle_label(c)
+    verify_id, _ = verify_target(c, tree)
     after_checks = " Wait for current full checks first." if not checked else ""
+
+    def evidence_work(role, work, *args):
+        if checked:
+            add_brief_actions(actions, plan, st, provider, role, work, *args)
+        else:
+            actions.append({**work, "kind": "wait", "waiting_for": "full-checks"})
+
     if not reviewed:
         issue = "stale" if c.get("reviews") else "unrecorded"
-        actions.append(("Reviewer", f"Review completion is {issue}.{after_checks} Use `{workflow_brief(st, 'reviewer')}` and record `review complete`."))
+        evidence_work("reviewer", work_action("Reviewer", f"Review completion is {issue}.{after_checks} Use `{workflow_brief(st, 'reviewer')}` and record `review complete`.",
+                                            "reviewer", "review", cycle=label, id=target[0], range=target[1]))
     pending = pending_results(st, c, tree)
     if pending:
         cases = ", ".join(f"Done {n}" for n in pending)
-        actions.append(("Verify", f"Current evidence is missing for {cases}.{after_checks} Drive the cases from `{workflow_brief(st, 'verify')}` and record the results."))
+        evidence_work("verify", work_action("Verify", f"Current evidence is missing for {cases}.{after_checks} Drive the cases from `{workflow_brief(st, 'verify')}` and record the results.",
+                                          "verify", "verify", cycle=label, id=verify_id, head=head, cases=pending))
     owed = outstanding_evidence(st, c, tree)
     for request, cases in owed:
         role = request["owed"]
         if role == "verify" and not cases:
-            actions.append(("Coordinator", f"{request['report']} No Done cases are assigned to Verify. Give the judge the reason for an explicit E2E exception."))
+            actions.append(workflow_action("Coordinator", "ask", f"{request['report']} No Done cases are assigned to Verify. Give the judge the reason for an explicit E2E exception.",
+                                           input="evidence-exception"))
             continue
-        owner = "Reviewer" if role == "reviewer" else "Verify"
         scope = " --cases " + ",".join(map(str, cases)) if cases else ""
-        actions.append((owner, f"{request['report']} Use `{workflow_brief(st, role)}{scope}` to record the requested evidence."))
+        action = f"{request['report']}{after_checks} Use `{workflow_brief(st, role)}{scope}` to record the requested evidence."
+        if role == "reviewer":
+            evidence_work(role, work_action("Reviewer", action, role, "review", cycle=label, id=target[0], range=target[1], request=request["n"]))
+        else:
+            evidence_work(role, work_action("Verify", action, role, "verify", cycle=label, id=verify_id, head=head, cases=cases, request=request["n"]),
+                          "--cases", ",".join(map(str, cases)))
     if checked and reviewed and len(c["fixes"]) < FIXES_PER_CYCLE and any(not taken(c, i["id"]) for i in items(c)):
-        actions.append(("Coordinator", "Open a fix for the outstanding items with `fix start <plan>`."))
+        actions.append(run_action(plan, "Coordinator", "Open a fix for the outstanding items with `fix start <plan>`.", "fix start"))
     elif checked and reviewed and not any(v["owed"] == "reviewer" for v, _ in owed):
         judge = workflow_brief(st, "judge")
         if pending or owed:
-            actions.append(("Coordinator", f"For an explicit E2E exception, issue `{judge} --note REASON`. Record the reason with `verdict --evidence-note REASON`."))
+            actions.append(workflow_action("Coordinator", "ask", f"For an explicit E2E exception, issue `{judge} --note REASON`. Record the reason with `verdict --evidence-note REASON`.",
+                                           input="evidence-exception"))
         else:
-            actions.append(("Coordinator", f"Issue `{judge}`."))
+            add_brief_actions(actions, plan, st, provider, "judge", work_action("Coordinator", f"Issue `{judge}`.", "judge", "judge", cycle=label))
     return "build-verification", actions
 
 
-def finish_workflow(st, tip):
+def finish_workflow(plan, st, tip):
     status = st["status"]
     request = st.get("request") or {}
     current_request = request.get("tip") == tip and request.get("acceptance") == digest(st["acceptance"])
     if status.startswith("http"):
         if not current_request:
-            return "finish", [("Coordinator", "The linked request has no current finish record. Recover its accepted tip and authorization before confirming a merge.")]
+            return "finish", [work_action("Coordinator", "The linked request has no current finish record. Recover its accepted tip and authorization before confirming a merge.",
+                                          "coordinator", "finish", request=status)]
         confirm = "finish" if forge_of(status) == "github" else "finish --merged"
-        return "finish", [("Coordinator", f"Wait for {status} to merge, then confirm it with `{confirm} <plan>`.")]
+        return "finish", [workflow_action("Coordinator", "wait", f"Wait for {status} to merge, then confirm it with `{confirm} <plan>`.",
+                                          waiting_for="merge", request=status)]
     if (st.get("pushed") or {}).get("tip") == tip:
-        return "finish", [("Coordinator", "Find the outstanding request and record its link with `plan status <plan> LINK`.")]
+        return "finish", [work_action("Coordinator", "Find the outstanding request and record its link with `plan status <plan> LINK`.", "coordinator", "request-link")]
     if current_request:
-        return "finish", [("Coordinator", "Open the request on the forge and record its link with `plan status <plan> LINK`.")]
+        return "finish", [work_action("Coordinator", "Open the request on the forge and record its link with `plan status <plan> LINK`.", "coordinator", "request-link")]
     fin = st["run"]["finish"]
-    return "finish", [("Coordinator", f"Use `finish <plan>` for the approved ending, {fin['how']} into {fin['target']}.")]
+    if fin["how"] == "merge-request" and not remote_url(plan_root(plan_paths(plan)[0])):
+        return "finish", [work_action("Coordinator", "Configure the request's `origin` remote before running `finish <plan>`.", "coordinator", "finish")]
+    return "finish", [run_action(plan, "Coordinator", f"Use `finish <plan>` for the approved ending, {fin['how']} into {fin['target']}.", "finish")]
 
 
-def land_workflow(plan, st, tree, c, verdict):
+def land_workflow(plan, st, tree, c, verdict, provider):
     land = (st.get("lands") or [None])[-1]
-    current_land = land and (land["judge"] == verdict["n"] or same_tree_land(st, c, tree, land, verdict["head"]))
+    current_land = land and (land.get("judge") == verdict["n"] or same_tree_land(st, c, tree, land, verdict["head"]))
     if current_land and land["difference"] and not land["accepted"]:
-        return "judge", [("Judge", "Decide the land hook's changes with `land accept <plan> --note WHY` or `land revert <plan>`.")]
-    if current_land and st["status"] == "at the human gate" and st.get("page") and any(n["by"] == "user" for n in open_notes(st)):
-        return "human-review", [("User", "Review the open notes. If you authorize a round, the coordinator runs `round start <plan>`.")]
+        return "judge", [workflow_action("Judge", "ask", "Decide the land hook's changes with `land accept <plan> --note WHY` or `land revert <plan>`.",
+                                         input="land-difference", land=land["n"])]
+    user_notes = [n["n"] for n in open_notes(st) if n["by"] == "user"]
+    if current_land and st["status"] == "at the human gate" and st.get("page") and user_notes:
+        return "human-review", [workflow_action("User", "ask", "Review the open notes. If you authorize a round, the coordinator runs `round start <plan>`.",
+                                                input="round-authorization", notes=user_notes)]
     try:
         if current_land:
             page = require_page(plan, st)
@@ -1825,78 +2178,115 @@ def land_workflow(plan, st, tree, c, verdict):
     except Refuse as error:
         code = error.diags[0][0]
         if code in ("land-stale", "no-page", "page-stale"):
-            owner = "Judge" if code == "land-stale" else "Coordinator"
-            return "judge", [(owner, fix) for _, _, fix in error.diags]
-        return verification_workflow(st, c, tree)
+            role = "judge" if code == "land-stale" else "coordinator"
+            return "judge", [work_action(role.title(), fix, role, "land" if code == "land-stale" else "page") for _, _, fix in error.diags]
+        return verification_workflow(plan, st, c, tree, provider)
     if not current_land:
         if dirty := dirty_lines(tree):
             paths = ", ".join(line[3:] for line in dirty)
-            return "judge", [("Coordinator", f"Resolve the uncommitted paths before land: {paths}.")]
-        if not os.path.isfile(shape_path(plan)):
-            return "judge", [("Judge", "Create and edit the commit shape with `land draft <plan>`, then run `land <plan>`.")]
-        return "judge", [("Judge", "Prepare the current commit shape with `land draft <plan>` if needed, then run `land <plan>`.")]
+            return "judge", [work_action("Coordinator", f"Resolve the uncommitted paths before land: {paths}.", "coordinator", "land")]
+        if not os.path.lexists(shape_path(plan)):
+            return "judge", [run_action(plan, "Judge", "Create and edit the commit shape with `land draft <plan>`, then run `land <plan>`.", "land draft")]
+        try:
+            checked_land_shape(plan, st, tree)
+        except Refuse as error:
+            return "judge", [work_action("Judge", f"Prepare the current commit shape with `land draft <plan>` if needed. {message} — fix: {fix}.",
+                                         "judge", "land", shape=shape_path(plan)) for _, message, fix in error.diags]
+        return "judge", [run_action(plan, "Judge", "Use the current commit shape to run `land <plan>`.", "land")]
     status = st["status"]
     if status == "building":
-        return "judge", [("Coordinator", "Return to human review with `page <plan>`.")]
+        return "judge", [work_action("Coordinator", "Return to human review with `page <plan> --guide-file PATH`.", "coordinator", "page")]
     accepted = (st.get("acceptance") or {}).get("page") == digest(page)
     if status == "at the human gate" and accepted:
-        return "human-review", [("Coordinator", "Restore the accepted status with `plan status <plan> passed`.")]
+        return "human-review", [run_action(plan, "Coordinator", "Restore the accepted status with `plan status <plan> passed`.", "plan status", "passed")]
     if not accepted:
         if status.startswith("http"):
-            return "human-review", [("Coordinator", 'Restore human review with `plan status <plan> "at the human gate"` and obtain current acceptance.')]
+            return "human-review", [run_action(plan, "Coordinator", 'Restore human review with `plan status <plan> "at the human gate"` and obtain current acceptance.',
+                                               "plan status", "at the human gate")]
         acceptor = st["approvals"]["summary"]["acceptor"]
-        return "human-review", [(acceptor, f"Review the current page at {plan_paths(plan)[0]}#human-gate. Record authorized approval with `accept <plan>`.")]
-    return finish_workflow(st, land["tip"])
+        page_path = plan_paths(plan)[0] + "#human-gate"
+        return "human-review", [workflow_action(acceptor, "ask", f"Review the current page at {page_path}. Record authorized approval with `accept <plan>`.",
+                                                input="acceptance", page=page_path)]
+    return finish_workflow(plan, st, land["tip"])
 
 
-def workflow_next(plan, st, tree, ready, plan_drift, consent):
+def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
     if st["status"] == "merged":
         return "finish", []
     if plan_drift:
-        return "plan", [("Planner", fix) for _, _, fix in plan_drift]
+        return "plan", [work_action("Planner", fix, "planner", "repair-plan") for _, _, fix in plan_drift]
     if consent:
-        return "plan", [("User and planner", fix) for _, _, fix in consent]
+        approvals = {"run-unapproved": "run-approval", "run-stale": "run-approval",
+                     "summary-unapproved": "summary-approval", "summary-stale": "summary-approval"}
+        return "plan", [workflow_action("User and planner", "ask", fix, input=approvals[code])
+                        if code in approvals else work_action("Planner", f"{message} — fix: {fix}", "planner", "repair-file")
+                        for code, message, fix in consent]
     if st["status"] in ("draft", "approved"):
-        return "plan", [("Coordinator", "Wait for the user's separate start instruction, then run `build start <plan> --base REF`.")]
+        return "plan", [workflow_action("Coordinator", "wait", "Wait for the user's separate start instruction, then run `build start <plan> --base REF`.",
+                                       waiting_for="start-instruction")]
+    pending = pending_check(st)
+    if pending:
+        step = check_action(plan, pending)
+        if step["kind"] != "run":
+            return "build-verification", [step]
     try:
         on_branch(st, tree_of(plan, st))
     except Refuse as error:
-        return "build", [("Coordinator", fix) for _, _, fix in error.diags]
+        return "build", [work_action("Coordinator", fix, "coordinator", "checkout") for _, _, fix in error.diags]
+    if pending:
+        return "build-verification", [step]
     if not st.get("cycles"):
-        if actions := build_actions(st, ready):
+        if actions := build_actions(plan, st, ready, provider):
             return "build", actions
-        return "build-verification", [("Coordinator", "Open build verification with `gate start <plan>`.")]
+        return "build-verification", [run_action(plan, "Coordinator", "Open build verification with `gate start <plan>`.", "gate start")]
     c = cycle_of(st)
-    checked = selected_run(c)
-    if checked and not checked.get("done", True) and checked.get("pid") and alive(checked["pid"]):
-        return "build-verification", [("Coordinator", "Wait for the full checks to finish.")]
     round_ = (st.get("rounds") or [None])[-1]
     if round_ and not round_["done"]:
         if not round_["report"]:
-            return "build", [("Round implementer", f"Work from the round {round_['n']} brief and record `round report <plan>`.")]
-        return "build", [("Coordinator", f"Check round {round_['n']}'s report and note sources, then run `round done <plan>`.")]
+            actions = []
+            add_brief_actions(actions, plan, st, provider, "round", work_action("Round implementer",
+                f"Work from the round {round_['n']} brief and record `round report <plan>`.", "implementer", "round", round=round_["n"], notes=round_["notes"]))
+            return "build", actions
+        if missing := missing_note_sources(st, round_):
+            return "build", [work_action("Coordinator", f"Record the note sources for round {round_['n']} before `round done <plan>`.",
+                                         "coordinator", "note-sources", round=round_["n"], notes=missing)]
+        return "build", [run_action(plan, "Coordinator", f"Check round {round_['n']}'s report and note sources, then run `round done <plan>`.", "round done")]
     fix = (c["fixes"] or [None])[-1]
     if fix and not fix["done"]:
         if not fix["report"]:
-            return "build-verification", [("Fix implementer", f"Work from the fix {fix['n']} brief and record `fix report <plan>`.")]
-        return "build-verification", [("Coordinator", f"Check fix {fix['n']}'s report and run `fix done <plan>`.")]
+            actions = []
+            add_brief_actions(actions, plan, st, provider, "fix", work_action("Fix implementer",
+                f"Work from the fix {fix['n']} brief and record `fix report <plan>`.", "implementer", "fix", cycle=cycle_label(c), fix=fix["n"], items=fix["items"]))
+            return "build-verification", actions
+        return "build-verification", [run_action(plan, "Coordinator", f"Check fix {fix['n']}'s report and run `fix done <plan>`.", "fix done")]
     v = (st.get("verdicts") or [None])[-1]
     if not v or v["cycle"] != cycle_label(c):
-        return verification_workflow(st, c, tree)
+        return verification_workflow(plan, st, c, tree, provider)
     if v["kind"] == "pass" or v.get("stop"):
-        return land_workflow(plan, st, tree, c, v)
+        return land_workflow(plan, st, tree, c, v, provider)
     if v["kind"] == "question":
-        return "judge", [("User", f"Answer the judge's question: {v['question']}"), ("Coordinator", f"Relay the user's answer with `{workflow_brief(st, 'judge')} --note ANSWER`.")]
+        if not v.get("answer"):
+            return "judge", [workflow_action("User", "ask", f"Answer the judge's question: {v['question']}", input="judge-answer", verdict=v["n"]),
+                             workflow_action("Coordinator", "wait", f"Relay the user's answer with `{workflow_brief(st, 'judge')} --note ANSWER`.", waiting_for="judge-answer")]
+        try:
+            require_current_checks(plan, st, c)
+            require_evidence(st, c, tree, None)
+        except Refuse:
+            return verification_workflow(plan, st, c, tree, provider)
+        actions = []
+        add_brief_actions(actions, plan, st, provider, "judge", work_action(
+            "Coordinator", f"Use `{workflow_brief(st, 'judge')}` with the recorded answer.", "judge", "judge", cycle=cycle_label(c), verdict=v["n"]))
+        return "judge", actions
     if v["kind"] == "round":
-        return "judge", [("Coordinator", "Open the judge-ordered round with `round start <plan>`, then issue the round brief.")]
-    return verification_workflow(st, c, tree)
+        return "judge", [run_action(plan, "Coordinator", "Open the judge-ordered round with `round start <plan>`, then issue the round brief.", "round start")]
+    return verification_workflow(plan, st, c, tree, provider)
 
 
 def status_workflow(plan, head, stage, actions):
     return workflow_view(plan_paths(plan)[0], stage, actions, optional_workflow_history(head))
 
 
-def summary(plan, st, head, tail=None, *, workflow=False):
+def summary(plan, st, head, tail=None, *, workflow=False, provider=None):
     """-> the dict `status --json` prints."""
     plan_drift = drift_diags(plan, st, head, tail)
     consent = [] if st["status"] == "merged" else consent_diags(plan, st)
@@ -1905,11 +2295,11 @@ def summary(plan, st, head, tail=None, *, workflow=False):
            "stale": stale_evidence(plan, st), "page": st.get("page"), "approvals": st.get("approvals", {}), "acceptance": st.get("acceptance"),
            "drift": [f"{m} — fix: {f}" for _, m, f in plan_drift + run_drift(plan, st) + consent]}
     if workflow:
-        out["workflow"] = status_workflow(plan, head, *workflow_next(plan, st, out["tree"], out["ready"], plan_drift, consent))
+        out["workflow"] = status_workflow(plan, head, *workflow_next(plan, st, out["tree"], out["ready"], plan_drift, consent, provider))
     return out
 
 
-def cmd_status(plan, as_json, cwd, current=False):
+def cmd_status(plan, as_json, cwd, current=False, provider=None):
     if plan is None:
         root = git("rev-parse", "--show-toplevel", check=False, cwd=cwd)
         if root.returncode:
@@ -1923,17 +2313,29 @@ def cmd_status(plan, as_json, cwd, current=False):
         for fn in names:
             full = os.path.join(d, fn)
             st = load_state(full)
-            head, tail = read_plan(full)
+            try:
+                head, tail = read_plan(full)
+            except Refuse:
+                if st is not None:
+                    raise
+                continue
             if st is None:
                 m = next((STATUS_LINE.match(l) for l, f in zip(head, fenced(head)) if not f and STATUS_LINE.match(l)), None)
                 if m and m[1] in LIVE:
                     if scoped and (not (tree := branch_tree(main, m[2])) or os.path.realpath(tree) != checkout):
                         continue
-                    rows.append(({"plan": fn[:-3], "status": None, "ready": [], "nostate": True, "path": full}, None))
+                    compiled = was_compiled(head)
+                    row = {"plan": fn[:-3], "status": None, "ready": [], "nostate": True, "path": full,
+                           "state_repair": f"restore {plan_paths(full)[1]}" if compiled else None}
+                    if current:
+                        action = (work_action("Planner", row["state_repair"], "planner", "repair-file") if compiled
+                                  else work_action("Planner", "Inspect the historical plan and adopt it with `approve <plan>`.", "planner", "adopt-plan"))
+                        row["workflow"] = status_workflow(full, head, "plan", [action])
+                    rows.append((row, None))
             elif st["status"] in LIVE or (current and (st["status"] == "approved" or st["status"].startswith("http"))):
                 if scoped and os.path.realpath(tree_fact(full, st)) != checkout:
                     continue
-                rows.append((summary(full, st, head, tail, workflow=current), st))
+                rows.append((summary(full, st, head, tail, workflow=current, provider=provider), st))
         if as_json:
             fields = ("plan", "status", "ready", "drift", "stale")
             print(json.dumps([r if current else {k: r.get(k) for k in fields} for r, _ in rows], ensure_ascii=False))
@@ -1942,7 +2344,10 @@ def cmd_status(plan, as_json, cwd, current=False):
             if current and i:
                 print()
             if r.get("nostate"):
-                print(f"{r['plan']} — no state — fix: run `pipeline.py approve` on " + (r["path"] if current else "it"))
+                fix = r["state_repair"] or "run `pipeline.py approve` on " + (r["path"] if current else "it")
+                print(f"{r['plan']} — no state — fix: {fix}")
+                if current:
+                    show_workflow(r["workflow"])
             elif current:
                 show_status(r, st)
             else:
@@ -1954,17 +2359,29 @@ def cmd_status(plan, as_json, cwd, current=False):
     st = load_state(plan)
     head, tail = read_plan(md)
     if st is None:
-        draft, _ = parse_plan(head, plan_root(md))
+        if was_compiled(head):
+            raise missing_state(plan)
+        root = plan_root(md)
+        draft, problems = parse_plan(head, root, check_references=False)
         if draft["status"] != "draft":
-            raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
-        view = status_workflow(plan, head, "plan", [("Planner", "Validate the draft with `approve <plan>` before obtaining run and summary approval.")])
+            raise missing_state(plan)
+        if not problems:
+            try:
+                _, problems = parse_plan(head, root)
+            except Refuse as error:
+                problems = error.diags
+        action = "Validate the draft with `approve <plan>` before obtaining run and summary approval."
+        _, run_problems = read_run(plan)
+        step = (work_action("Planner", f"Prepare the draft and run file. {action}", "planner", "plan") if problems or run_problems
+                else run_action(plan, "Planner", action, "approve"))
+        view = status_workflow(plan, head, "plan", [step])
         if as_json:
             print(json.dumps({**draft, "plan": os.path.basename(md)[:-3], "workflow": view}, ensure_ascii=False))
         else:
             print(f"Status: draft · branch `{draft['branch']}` · base `{draft['base']}`")
             show_workflow(view)
         return 0
-    s = summary(plan, st, head, tail, workflow=True)
+    s = summary(plan, st, head, tail, workflow=True, provider=provider)
     if as_json:
         print(json.dumps(s, ensure_ascii=False))
     else:
@@ -2245,14 +2662,13 @@ def cmd_phase_done(plan, n, note):
 
 
 def cmd_owner(plan, path):
-    st = load_state(plan)
-    if st is None:
-        raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
+    head, _ = read_plan(plan_paths(plan)[0])
+    st = load_state(plan, required=True)
     tree = tree_of(plan, st)
     rel = os.path.relpath(path, tree) if os.path.isabs(path) else path
     ph = owner_of(st, rel)
     print(f"phase {ph['n']} ({ph['title']}) owns {rel}" if ph else f"none: no running phase owns {rel}")
-    for _, m, f in drift_diags(plan, st, read_plan(plan_paths(plan)[0])[0]):
+    for _, m, f in drift_diags(plan, st, head):
         print(f"Drift: {m} — fix: {f}")
     return 0
 
@@ -2302,12 +2718,15 @@ def spec_entry_lines(md):
 
 
 def cmd_brief(plan, kind, n, note, cases=(), provider=None):
-    st = load_state(plan)
-    if st is None:
-        raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
     md = plan_paths(plan)[0]
+    lines, _ = read_plan(md)
+    st = load_state(plan, required=True)
+    root = plan_root(md)
+    checked_plan(md, lines, root, check_references=False)
+    if (epic := st.get("epic")) and os.path.lexists(os.path.join(root, epic["path"])):
+        check_epic(root, epic["path"], epic["row"])
     tree = tree_of(plan, st)
-    drift = drift_diags(plan, st, read_plan(md)[0])
+    drift = drift_diags(plan, st, lines)
     if drift and kind == "implementer":
         r = Refuse(*drift[0])
         r.diags = drift
@@ -2336,7 +2755,7 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
         raise Refuse("provider-required", "a brief with executor presets requires --provider", "supply the current provider; no provider is inferred from a model")
     if provider is not None:
         selected = executor_selection(plan, provider)
-        tier = "primary" if kind == "judge" or (review and review[0] == "gate") else "secondary"
+        tier = brief_tier(kind, review[0] if review else None)
         profile = selected[tier]
         out += [f"Executor provider: {provider}", f"Executor source: {selected['source']}", f"Executor tier: {tier}",
                 f"Executor model: {profile['model']}"]
@@ -2345,7 +2764,6 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
         out += ["Apply this model and effort explicitly; do not inherit another role preset.", ""]
     if kind == "implementer":
         ph = phase_of(st, n)
-        lines = read_plan(md)[0]
         mask = fenced(lines)
         i = next((k for k, l in enumerate(lines) if not mask[k] and (m := PHASE_HEAD.match(l)) and int(m[1]) == n), None)
         if i is None:
@@ -2364,7 +2782,7 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
         if "run" in st:
             v = fill(st["run"], st.get("alloc"))
             out += ["## The run", "", "[checks].phase = " + json.dumps(v["checks"]["phase"], ensure_ascii=False), ""]
-            out += [f"{k} = {json.dumps(x, ensure_ascii=False)}" for k, x in v["run"].items()]
+            out += [f"{k} = {json.dumps(x, ensure_ascii=False)}" for k, x in v.get("run", {}).items()]
             out += [f"Drift: {m} — fix: {f}" for _, m, f in run_drift(plan, st)] + [""]
         out += spec_entry_lines(md)
         for w in ph["waits"]:
@@ -2430,69 +2848,220 @@ def tree_snapshot(tree):
     return hashlib.sha256((g("status", "--porcelain", "--untracked-files=all") + g("diff", "HEAD")).encode()).hexdigest()
 
 
-def run_command(command, tree):
-    """One full check on its own: its exit code, and red on a non-zero exit or a changed tree."""
-    before = tree_snapshot(tree)
-    r = subprocess.run(command, shell=True, cwd=tree, capture_output=True, text=True, errors="replace")
-    changed = tree_snapshot(tree) != before
-    out = {"command": command, "exit": r.returncode, "changed_tree": changed, "red": bool(r.returncode or changed)}
-    if out["red"]:
-        out["tail"] = "\n".join((r.stdout + r.stderr).rstrip().splitlines()[-20:])
-    return out
-
-
 def checks_of(st):
     if "run" not in st:
         raise Refuse("no-run-values", "the plan has no approved run values", "write the run file and run `pipeline.py approve`")
     return fill(st["run"], st.get("alloc"))["checks"]["full"]
 
 
-def alive(pid):
+def check_host():
+    """Identify the boot and PID namespace in which a process group can be probed."""
     try:
-        os.kill(pid, 0)
+        if sys.platform == "darwin":
+            boot = subprocess.check_output(["/usr/sbin/sysctl", "-n", "kern.bootsessionuuid"], text=True).strip()
+            return f"{socket.gethostname()}:{boot}" if boot else None
+        if sys.platform.startswith("linux"):
+            with open("/proc/sys/kernel/random/boot_id", encoding="ascii") as f:
+                return f"{socket.gethostname()}:{f.read().strip()}:{os.readlink('/proc/self/ns/pid')}"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def check_processes(pgid):
+    lines = subprocess.check_output(["/bin/ps", "-ax", "-o", "pid=,pgid=,stat=,lstart="], text=True,
+                                    env={**os.environ, "LC_ALL": "C", "TZ": "UTC"}).splitlines()
+    for line in lines:
+        pid, group, state, start = line.split(None, 3)
+        if int(group) == pgid:
+            yield int(pid), state, start
+
+
+def child_state(child):
+    pgid, started = child.get("pgid"), child.get("start")
+    if type(pgid) is not int or pgid < 1 or not started:
+        return "unknown"
+    try:
+        os.killpg(pgid, 0)
+        members = list(check_processes(pgid))
+        if not members:
+            os.killpg(pgid, 0)
+            return "unknown"
     except ProcessLookupError:
-        return False
-    except OSError:
-        return True
-    return True
+        return "stopped"
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return "unknown"
+    if any(pid == pgid and start != started for pid, _, start in members):
+        return "unknown"
+    return "running" if any(state[0] not in "ZX" for _, state, _ in members) else "stopped"
 
 
-def begin_run(plan, st, cycle, tree):
-    """Under the plan lock: -> (the cycle's run for this HEAD and these commands, reused).
+def check_lock_path(plan):
+    return plan_paths(plan)[1] + ".checks.lock"
 
-    A run whose call is gone is dropped and a new one starts, empty, to be executed by run_checks.
-    """
-    cmds, head = checks_of(st), head_sha(plan_paths(plan)[0], tree)
-    keep = []
-    for r in cycle["runs"]:
-        if r.get("done", True):
-            keep.append(r)
-        elif alive(r.get("pid", 0)) and r["pid"] != os.getpid():
-            raise Refuse("checks-running", f"the checks at {r['head'][:7]} are running (pid {r['pid']})", "wait for that call to end")
-    cycle["runs"] = keep
+
+def pending_check(st):
+    if pending := st.get("check_transition"):
+        return pending
+    for c in reversed(st.get("cycles", [])):
+        if (r := selected_run(c)) and not r.get("done", True):
+            return {"cycle": cycle_label(c), "legacy_pid": r.get("pid")}
+    return None
+
+
+def check_ownership(plan, pending, *, claiming=False):
+    if not claiming:
+        try:
+            with open(check_lock_path(plan), "rb") as lease:
+                fcntl.flock(lease, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return "running", "a coordinator or its child holds the check lock"
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return "unknown", f"cannot inspect {check_lock_path(plan)}"
+    if "id" not in pending:
+        return "unknown", f"legacy check record (coordinator PID {pending.get('legacy_pid') or 'unknown'}) lacks child ownership evidence"
+    host = pending.get("host")
+    if not host or host != check_host():
+        return "unknown", f"the recorded process scope ({host or 'unknown'}) cannot be observed here"
+    child = pending.get("child")
+    if child:
+        state = child_state(child)
+        if state == "running":
+            return state, f"check process group {child['pgid']} is still active"
+        if state == "unknown":
+            return state, f"cannot verify the recorded check process group {child.get('pgid', 'unknown')}"
+    return "stopped", "the prior check work has stopped"
+
+
+def check_status(plan, pending, *, claiming=False):
+    command = pending.get("command", "the full check")
+    label = f"`{command}` ({pending['cycle']})"
+    state, reason = check_ownership(plan, pending, claiming=claiming)
+    if state == "running":
+        return "wait", "checks-running", f"{label}: {reason}", "wait for the coordinator and its check processes to stop"
+    if state == "unknown":
+        fix = ("inspect the original session and its child processes; resume the original coordinator if available"
+               if "id" not in pending else "inspect the process group from the original host, boot and PID namespace")
+        return "ask", "checks-owner-unknown", f"{label}: {reason}", fix
+    return "run", "checks-unfinished", f"{label}: {reason}", f"run `{command} <plan>` to recover this transition"
+
+
+def check_action(plan, pending):
+    kind, _, message, fix = check_status(plan, pending)
+    text = f"{message}. {fix[0].upper()}{fix[1:]}."
+    check = {key: pending[key] for key in ("command", "cycle", "target") if key in pending}
+    if kind == "run":
+        return {**run_action(plan, "Coordinator", text, pending["command"], "--check-id", pending["id"]), "check": check}
+    return workflow_action("Coordinator", kind, text, check=check,
+                           **({"waiting_for": "full-checks"} if kind == "wait" else {"input": "check-ownership"}))
+
+
+@contextlib.contextmanager
+def check_lease(plan):
+    path = check_lock_path(plan)
+    with contextlib.ExitStack() as stack:
+        try:
+            lease = stack.enter_context(open(path, "ab"))
+            fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            st = load_state(plan)
+            if st and (pending := pending_check(st)):
+                command = pending.get("command", "the full check")
+                raise Refuse("checks-running", f"`{command}` ({pending['cycle']}) still holds the check lock",
+                             "wait for the coordinator and its check processes to stop")
+            raise Refuse("checks-running", "a full check transition holds the check lock", "wait and read status again")
+        except OSError as error:
+            raise Refuse("checks-owner-unknown", f"cannot claim {path}: {error.strerror}", "restore access to the check lock and read status again") from error
+        yield lease.fileno()
+
+
+def recover_check(plan, st, command, check_id):
+    pending = pending_check(st)
+    if check_id is not None and (not pending or pending.get("id") != check_id or pending.get("command") != command):
+        raise Refuse("checks-recovery-stale", "this recovery no longer matches the pending check transition", "read status again")
+    if pending:
+        kind, code, message, fix = check_status(plan, pending, claiming=True)
+        if kind != "run" or pending["command"] != command:
+            raise Refuse(code, message, fix)
+    return pending
+
+
+def begin_run(plan, st, cycle, tree, command, pending, *, target=None, note=None):
+    """Select the suite and persist its owning transition under the plan lock."""
+    if pending and (pending["cycle"], pending["target"]) != (cycle_label(cycle), target):
+        raise Refuse("checks-recovery-stale", "the original check transition's target changed", "restore the original transition and read status again")
+    cmds = checks_of(st)
+    spec, cycle["spec_refusal"] = commit_spec(plan, st, tree)
+    head = head_sha(None, tree)
+    st["check_transition"] = {"id": pending["id"] if pending else secrets.token_hex(16), "command": command,
+                              "cycle": cycle_label(cycle), "target": target, "host": check_host(), "child": None, "note": note}
+    keep = cycle["runs"] = [r for r in cycle["runs"] if r.get("done", True)]
     for i, r in enumerate(keep):
         if r["head"] == head and r["full"] == cmds:
             if i == len(keep) - 1:
                 cycle.pop("current_run", None)
             else:
                 cycle["current_run"] = i
-            return r, True
-    run_ = {"at": now(), "head": head, "full": cmds, "commands": [], "done": not cmds, "pid": os.getpid()}
+            return r, True, spec
+    run_ = {"at": now(), "head": head, "full": cmds, "commands": [], "done": not cmds}
     cycle["runs"].append(run_)
     cycle.pop("current_run", None)
-    return run_, False
+    return run_, False, spec
 
 
-def run_checks(plan, cycle, run_, tree):
-    """Run the commands of a begun run with the plan unlocked, recording each result as it ends; -> the finished run."""
-    for n, cmd in enumerate(run_["full"]):
-        res = run_command(cmd, tree)
+CHECK_CHILD = """import os, signal, sys
+fd = int(sys.argv[1])
+start = os.read(fd, 1)
+os.close(fd)
+if start:
+    for name in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):
+        if sig := getattr(signal, name, None):
+            signal.signal(sig, signal.SIG_DFL)
+    os.execl('/bin/sh', '/bin/sh', '-c', sys.argv[2])
+"""
+
+
+def run_checks(plan, cycle, run_, tree, lease):
+    """Run commands outside the plan lock with the process group recorded before each command starts."""
+    for cmd in run_["full"]:
+        reader, writer = os.pipe()
+        process = None
+        try:
+            with os.fdopen(writer, "wb") as release, os.fdopen(reader, "rb") as start:
+                with writing(plan) as st:
+                    process = subprocess.Popen([sys.executable, "-I", "-S", "-c", CHECK_CHILD, str(reader), cmd], cwd=tree, start_new_session=True,
+                                               pass_fds=(start.fileno(), lease), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
+                    try:
+                        born = next(started for pid, _, started in check_processes(process.pid) if pid == process.pid)
+                    except (StopIteration, OSError, ValueError, subprocess.SubprocessError) as error:
+                        raise Refuse("checks-owner-unknown", f"cannot identify the new check process group {process.pid}",
+                                     "restore local process inspection and read status again") from error
+                    child = {"pgid": process.pid, "start": born}
+                    st["check_transition"]["child"] = child
+                before = tree_snapshot(tree)
+                # EOF cancels the child if the coordinator dies before saving ownership.
+                release.write(b"1")
+        except BaseException:
+            if process is not None:
+                process.communicate()
+            raise
+        stdout, stderr = process.communicate()
+        state = child_state(child)
+        if state != "stopped":
+            raise Refuse("checks-running" if state == "running" else "checks-owner-unknown",
+                         f"check process group {process.pid} has no confirmed stop", "inspect the group, then read status again")
+        changed = tree_snapshot(tree) != before
+        res = {"command": cmd, "exit": process.returncode, "changed_tree": changed, "red": bool(process.returncode or changed)}
+        if res["red"]:
+            res["tail"] = "\n".join((stdout + stderr).rstrip().splitlines()[-20:])
         with writing(plan) as st:
-            c = next(c for c in st["cycles"] if c["kind"] == cycle["kind"] and c["n"] == cycle["n"])
-            r = next(r for r in c["runs"] if r["at"] == run_["at"] and r.get("pid") == run_["pid"])
-            r["commands"].append(res)
-            r["done"] = len(r["commands"]) == len(r["full"])
-            run_ = r
+            c = next(c for c in st["cycles"] if cycle_label(c) == cycle_label(cycle))
+            run_ = selected_run(c)
+            run_["commands"].append(res)
+            run_["done"] = len(run_["commands"]) == len(run_["full"])
+            st["check_transition"]["child"] = None
     return run_
 
 
@@ -2500,12 +3069,21 @@ def selected_run(c):
     return c["runs"][c.get("current_run", -1)] if c["runs"] else None
 
 
-def settled(c):
-    """Refuse while the cycle's selected run has not finished."""
-    r = selected_run(c)
-    if r and not r.get("done", True):
-        raise Refuse("checks-unfinished", f"the checks at {r['head'][:7]} did not finish ({len(r['commands'])} of {len(r['full'])} ran)",
-                     "run `gate start`, `fix done` or `round done` again; it runs them again")
+def settled(plan, st):
+    if pending := pending_check(st):
+        _, code, message, fix = check_status(plan, pending)
+        raise Refuse(code, message, fix)
+
+
+def close_check(plan, st, transition, run_, tree):
+    current = st.get("check_transition")
+    if not current or current["id"] != transition["id"]:
+        raise Refuse("checks-recovery-stale", "the original check transition is no longer pending", "read status again")
+    on_branch(st, tree)
+    if tree_of(plan, st) != tree or run_["head"] != head_sha(None, tree) or run_["full"] != checks_of(st):
+        raise Refuse("checks-stale", "HEAD or the approved commands changed during the full checks",
+                     f"run `{transition['command']} <plan>` again")
+    del st["check_transition"]
 
 
 def checks_current(st, c, tree):
@@ -2515,7 +3093,7 @@ def checks_current(st, c, tree):
 
 
 def require_current_checks(plan, st, c):
-    settled(c)
+    settled(plan, st)
     if st.get("rounds") and not st["rounds"][-1]["done"]:
         raise Refuse("round-open", "a round is still running", "finish its report and re-check")
     if c["fixes"] and not c["fixes"][-1]["done"]:
@@ -2572,14 +3150,17 @@ def commit_spec(plan, st, tree):
     return [f"spec: committed docs/spec/ at {head_sha(md, tree)[:7]}"], None
 
 
-def cmd_gate_start(plan, note):
+def cmd_gate_start(plan, note, lease, check_id):
     with writing(plan) as st:
+        pending = recover_check(plan, st, "gate start", check_id)
+        if pending:
+            note = pending.get("note")
         require_consent(plan, st)
         open_ = [p["n"] for p in st["phases"] if p["status"] != "done"]
         if open_ and not note:
             raise Refuse("phases-open", f"phase {', '.join(map(str, open_))} is not done", "finish them, or pass --note with the reason to open the gate now")
-        checks_of(st)
         tree = tree_of(plan, st)
+        on_branch(st, tree)
         cycles = st.setdefault("cycles", [])
         cycle = next((c for c in cycles if c["kind"] == "gate"), None)
         if cycle is None:
@@ -2587,12 +3168,14 @@ def cmd_gate_start(plan, note):
                      "runs": [], "findings": [], "results": [], "fixes": []}
             cycles.append(cycle)
             record(plan, st, "gate", None, "opened", note)
-        out, cycle["spec_refusal"] = commit_spec(plan, st, tree)
+        r, reused, out = begin_run(plan, st, cycle, tree, "gate start", pending, note=note)
         cycle["level"], cycle["raised_by"] = level_of(st, tree)
-        r, reused = begin_run(plan, st, cycle, tree)
+        transition = st["check_transition"]
         head = f"gate: {plan_slug(st)} level {cycle['level']}" + (f", raised by {', '.join(cycle['raised_by'])}" if cycle["raised_by"] else "")
     if not reused:
-        r = run_checks(plan, cycle, r, tree)
+        r = run_checks(plan, cycle, r, tree, lease)
+    with writing(plan) as st:
+        close_check(plan, st, transition, r, tree)
     print(head)
     print("\n".join(out + show_run(r, reused)))
     return 0
@@ -2631,7 +3214,7 @@ def verify_target(c, tree):
 
 def same_tree_land(st, c, tree, land, head):
     return (head == land["tip"] and not land["difference"]
-            and any(v["n"] == land["judge"] and v["cycle"] == cycle_label(c) for v in st.get("verdicts", []))
+            and any(v["n"] == land.get("judge") and v["cycle"] == cycle_label(c) for v in st.get("verdicts", []))
             and (current := tree_id(tree, head)) and current == tree_id(tree, land["pre"]))
 
 
@@ -2820,14 +3403,12 @@ def open_fix(c):
 
 
 def cmd_fix(plan, a):
-    if a.command == "done":
-        return fix_done(plan)
     with writing(plan) as st:
         c = cycle_of(st)
         tree = tree_of(plan, st)
         md = plan_paths(plan)[0]
         if a.command == "start":
-            settled(c)
+            settled(plan, st)
             if c["fixes"] and not c["fixes"][-1]["done"]:
                 raise Refuse("fix-open", f"fix {len(c['fixes'])} is running", "finish it with `fix report` and `fix done`")
             if len(c["fixes"]) >= FIXES_PER_CYCLE:
@@ -2848,24 +3429,31 @@ def cmd_fix(plan, a):
         return 0
 
 
-def fix_done(plan):
+def fix_done(plan, lease, check_id):
     with writing(plan) as st:
+        pending = recover_check(plan, st, "fix done", check_id)
+        require_consent(plan, st)
         c = cycle_of(st)
         tree = tree_of(plan, st)
+        on_branch(st, tree)
         f = open_fix(c)
-        if not f["report"]:
+        report = f["report"]
+        if not report:
             raise Refuse("no-report", f"fix {f['n']} has no report", "`pipeline.py fix report` first")
-        gone = [x for x in f["report"]["commits"] if git("merge-base", "--is-ancestor", x, "HEAD", check=False, cwd=tree).returncode]
+        gone = [x for x in report["commits"] if git("merge-base", "--is-ancestor", x, "HEAD", check=False, cwd=tree).returncode]
         if gone:
             raise Refuse("commit-gone", f"{', '.join(gone)} is not on the branch", "report the commits that are")
-        checks_of(st)
-        out, c["spec_refusal"] = commit_spec(plan, st, tree)
-        r, reused = begin_run(plan, st, c, tree)
+        r, reused, out = begin_run(plan, st, c, tree, "fix done", pending, target=f["n"])
+        transition = st["check_transition"]
     if not reused:
-        r = run_checks(plan, c, r, tree)
+        r = run_checks(plan, c, r, tree, lease)
     with writing(plan) as st:
-        c = next(x for x in st["cycles"] if x["kind"] == c["kind"] and x["n"] == c["n"])
-        f = open_fix(c)
+        close_check(plan, st, transition, r, tree)
+        c = cycle_of(st)
+        if cycle_label(c) != transition["cycle"] or (f := open_fix(c))["n"] != transition["target"]:
+            raise Refuse("checks-recovery-stale", "the original fix is no longer pending", "read status again")
+        if f["report"] != report:
+            raise Refuse("checks-report-changed", "the original fix report changed during the checks", "run `fix done <plan>` again")
         f["done"] = {"at": now(), "head": r["head"]}
         again = {i["id"] for i in items(c)}
         back = []
@@ -2908,7 +3496,7 @@ def show_cycle(c, st=None):
         if fs:
             out.append(f"{title}:")
             out += [f"  {f['id']} " + (f"{f['where']} — " if f["where"] else "") + f["text"] + (f" ({f['source']})" if f["source"] else "")
-                    + (f" [{f['again']} again]" if f["again"] else "") + (f" [closed by {by}]" if st and (by := closed_by(st, c, f["id"])) else "") for f in fs]
+                    + (f" [{f['again']} again]" if f.get("again") else "") + (f" [closed by {by}]" if st and (by := closed_by(st, c, f["id"])) else "") for f in fs]
     if c["results"]:
         out.append("Results:")
         order = {"failed": 0, "not reached": 1, "passed": 2}
@@ -2933,7 +3521,7 @@ def brief_cycle(st, kind, cli, md, tree, cases, review):
     """The body and file name of a reviewer, verify or fix brief for the newest cycle."""
     c = cycle_of(st)
     if kind != "verify":
-        settled(c)
+        settled(md, st)
     label = cycle_label(c)
     done = [f for f in c["fixes"] if f["done"]]
     last = done[-1] if done else None
@@ -2995,6 +3583,7 @@ def items_of(c, ids):
 JUDGE_ROUNDS = 3
 CAUSES = ["bug", "off-plan", "proto-mismatch", "grill-miss", "proto-miss", "feel-ui", "code-taste", "task"]
 ACTIONS = ["let-through", "round", "question"]
+EVIDENCE_ROLES = ("reviewer", "verify")
 SOURCE = re.compile(r"^(P\d+|missed)$")
 
 
@@ -3086,11 +3675,10 @@ def pending_rounds(st):
 
 
 def cmd_round(plan, a):
-    if a.command == "done":
-        return round_done(plan)
     with writing(plan) as st:
         rs, md, tree = st.setdefault("rounds", []), plan_paths(plan)[0], tree_of(plan, st)
         if a.command == "start":
+            settled(plan, st)
             if rs and not rs[-1]["done"]:
                 raise Refuse("round-open", f"round {rs[-1]['n']} is running", "finish it with `round report` and `round done`")
             gate = next((c for c in st.get("cycles", []) if c["kind"] == "gate"), None)
@@ -3124,28 +3712,40 @@ def cmd_round(plan, a):
     return 0
 
 
-def round_done(plan):
+def missing_note_sources(st, round_):
+    return [n["n"] for n in st["notes"] if n["round"] == round_["n"] and n["source"] is None and n["by"] == "user"]
+
+
+def round_done(plan, lease, check_id):
     with writing(plan) as st:
+        pending = recover_check(plan, st, "round done", check_id)
+        require_consent(plan, st)
         rs, tree = st.get("rounds", []), tree_of(plan, st)
+        on_branch(st, tree)
         r = rs[-1] if rs and not rs[-1]["done"] else None
         if r is None:
             raise Refuse("no-round", "no round is running", "`pipeline.py round start` first")
-        if not r["report"]:
+        report = r["report"]
+        if not report:
             raise Refuse("no-report", f"round {r['n']} has no report", "`pipeline.py round report` first")
-        gone = [x for x in r["report"]["commits"] if git("merge-base", "--is-ancestor", x, "HEAD", check=False, cwd=tree).returncode]
+        gone = [x for x in report["commits"] if git("merge-base", "--is-ancestor", x, "HEAD", check=False, cwd=tree).returncode]
         if gone:
             raise Refuse("commit-gone", f"{', '.join(gone)} is not on the branch", "report the commits that are")
-        bare = [n["n"] for n in st["notes"] if n["round"] == r["n"] and n["source"] is None and n["by"] == "user"]
+        bare = missing_note_sources(st, r)
         if bare:
             raise Refuse("no-source", f"note {', '.join(map(str, bare))} has no source", "`pipeline.py note edit N --source P<n>|missed`")
-        checks_of(st)
         c = round_cycle(st, r["n"])
-        out, c["spec_refusal"] = commit_spec(plan, st, tree)
-        run_, reused = begin_run(plan, st, c, tree)
+        run_, reused, out = begin_run(plan, st, c, tree, "round done", pending, target=r["n"])
+        transition = st["check_transition"]
     if not reused:
-        run_ = run_checks(plan, c, run_, tree)
+        run_ = run_checks(plan, c, run_, tree, lease)
     with writing(plan) as st:
-        r = st["rounds"][r["n"] - 1]
+        close_check(plan, st, transition, run_, tree)
+        r = st["rounds"][-1]
+        if r["n"] != transition["target"] or r["done"]:
+            raise Refuse("checks-recovery-stale", "the original round is no longer pending", "read status again")
+        if r["report"] != report:
+            raise Refuse("checks-report-changed", "the original round report changed during the checks", "run `round done <plan>` again")
         r["done"] = {"at": now(), "head": run_["head"]}
         for n in st["notes"]:
             if n["round"] == r["n"] and n["by"] == "judge":
@@ -3194,6 +3794,28 @@ def render_judge(st, v, a):
     pred = [f"User's verdict: {a.predicted}"] + [f"P{i}. {t} — {c}" for i, (t, c) in enumerate(a.predict or [], 1)]
     return (f"# Judge: {plain_title(st)}\n\nPlan: `{plan_slug(st)}` · head `{v['head'][:7]}` · {v['at']} · engine {a.engine}\n\n"
             "## Verdict\n" + "\n".join(body) + "\n\n## Prediction\n" + "\n".join(pred) + "\n")
+
+
+def check_judge_file(path, *, optional=False):
+    fix = "restore the Judge file written by the first verdict, including its Prediction"
+    text = read_required(path, "no-verdict", fix, optional=optional)
+    if text is None:
+        return False
+    if (not text.startswith("# Judge: ") or "\n## Verdict\n" not in text
+            or not re.search(r"(?m)^## Prediction\nUser's verdict: (pass|round)$", text)):
+        raise Refuse("bad-verdict-file", f"{path} needs the Judge heading, Verdict and Prediction", fix)
+    return True
+
+
+def round_notes_file(md, st, round_):
+    path = os.path.join(os.path.dirname(md), plan_slug(st) + ".notes.md")
+    fix = "restore the generated notes file or reissue `round report` to render the notes again"
+    text = read_required(path, "bad-notes-file", fix, optional=not round_["notes"])
+    if text is None:
+        return []
+    if not text.startswith("# Notes: ") or not re.search(rf"(?m)^## Round {round_['n']}(?: · .+)?$", text):
+        raise Refuse("bad-notes-file", f"{path} needs the Notes heading and a section for round {round_['n']}", fix)
+    return [f"Notes file: {path}"]
 
 
 def require_evidence(st, c, tree, note):
@@ -3252,7 +3874,7 @@ def cmd_verdict(plan, a):
     with writing(plan) as st:
         require_consent(plan, st)
         c, md = cycle_of(st), plan_paths(plan)[0]
-        settled(c)
+        settled(plan, st)
         owed = a.kind == "evidence-owed"
         if not owed:
             tree = require_current_checks(plan, st, c)
@@ -3303,7 +3925,7 @@ def cmd_verdict(plan, a):
         v["evidence"], v["contract"] = judge_evidence(st), contract_digest(plan, st)
         st.setdefault("verdicts", []).append(v)
         path = os.path.join(os.path.dirname(md), plan_slug(st) + ".judge.md")
-        if first and not owed and not os.path.exists(path):
+        if first and not owed and not check_judge_file(path, optional=True):
             text = render_judge(st, v, a)
             open(path, "w", encoding="utf-8").write(text)
         write_notes(plan, st)
@@ -3339,8 +3961,7 @@ def brief_judge(plan, st, cli, md, note):
     tree = require_current_checks(plan, st, c)
     owed = require_evidence(st, c, tree, note)
     ref = os.path.join(os.path.dirname(os.path.realpath(__file__)), "references", "judge.md")
-    if not os.path.isfile(ref):
-        raise Refuse("no-judge-md", f"{ref} does not exist", "reinstall the plugin")
+    read_required(ref, "no-judge-md", "restore the judge rules or reinstall the plugin")
     slug, root = plan_slug(st), os.path.dirname(md)
     jf = os.path.join(root, slug + ".judge.md")
     asked = (st.get("verdicts") or [{}])[-1]
@@ -3348,6 +3969,8 @@ def brief_judge(plan, st, cli, md, note):
     answer = (asked or {}).get("answer") or note
     if asked and not answer:
         raise Refuse("no-answer", "the last verdict asked the user a question", "pass --note with the user's answer, in their words")
+    if asked or c["kind"] == "round":
+        check_judge_file(jf)
     out = [f"Judge rules: {ref}", f"Plan: {slug} — {st['title']}"]
     out += [f"Owed: {v['owed']} — {v['report']}" for v, _ in owed]
     if st.get("epic"):
@@ -3363,10 +3986,9 @@ def brief_judge(plan, st, cli, md, note):
         out += [f"Conventions: {', '.join(f['id'] for f in c['findings'] if f['kind'] == 'convention') or 'none'}",
                 "You check: " + (", ".join(str(d["n"]) for d in st.get("done", []) if human_case(c, d)) or "none")]
     else:
-        if not os.path.exists(jf):
-            raise Refuse("no-verdict", "no judge file exists yet", "the gate's `verdict` writes it")
         r = st["rounds"][c["n"] - 1]
-        out += [f"Case: after round {r['n']} ({r['by']})"] + ([f"Conflict at finish: {r['conflict']}"] if r.get("conflict") else []) + [f"Judge file: {jf}", f"Notes file: {os.path.join(root, slug + '.notes.md')}", "", f"## Round {r['n']}'s notes", ""]
+        out += [f"Case: after round {r['n']} ({r['by']})"] + ([f"Conflict at finish: {r['conflict']}"] if r.get("conflict") else [])
+        out += [f"Judge file: {jf}", *round_notes_file(md, st, r), "", f"## Round {r['n']}'s notes", ""]
         out += [note_line(st, n) for n in st["notes"] if n["round"] == r["n"]] + [""]
         if asked:
             out += [f"Question asked: {asked['question']}", f"The user's answer: {answer}", ""]
@@ -3383,7 +4005,8 @@ def brief_round(plan, st, cli, md, tree):
         raise Refuse("no-round", "no round is running", "`pipeline.py round start` first")
     r = rs[-1]
     sk = sorted({x for p in st["phases"] for x in p["skills"] if x != "none"})
-    out = [f"## Round {r['n']} takes", ""] + ([f"Conflict at finish: {r['conflict']}", ""] if r.get("conflict") else []) + [f"Notes file: {os.path.join(os.path.dirname(md), plan_slug(st) + '.notes.md')}"]
+    out = [f"## Round {r['n']} takes", ""] + ([f"Conflict at finish: {r['conflict']}", ""] if r.get("conflict") else [])
+    out += round_notes_file(md, st, r)
     out += [f"- {n['n']}. {n['text']} — {n['cause']}" for n in st["notes"] if n["round"] == r["n"]]
     out += ["", "Skills to read first: " + (", ".join(os.path.join(tree, x) for x in sk) or "none"), ""] + spec_entry_lines(md) + ["## Record", "",
             f"- Your report: {cli} round report {md} --became … --skills … --interfaces … --checks … [--commit <sha>] (repeat --commit; none when the round changed nothing)",
@@ -3426,26 +4049,29 @@ def tstr(s):
 
 def read_shape(plan):
     path = shape_path(plan)
+    text = read_required(path, "no-shape", f"restore the commit shape or write it with `pipeline.py land draft {plan}`", newline="")
     try:
-        with open(path, "rb") as f:
-            v = tomllib.load(f)
-    except OSError:
-        raise Refuse("no-shape", f"{path} does not exist", f"write it with `pipeline.py land draft {plan}`")
+        v = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
-        raise Refuse("bad-shape", f"{path} is not valid TOML ({e})", "fix the syntax")
+        raise Refuse("bad-shape", f"{path} is not valid TOML ({e})", "fix the TOML syntax in the shape")
     cs = v.get("commit")
-    text = lambda c, k: isinstance(c.get(k), str) and c[k].strip()
+    text = lambda c, k: type_ok(c.get(k), "str") and c[k].strip()
     if not (isinstance(cs, list) and cs and all(
-            isinstance(c, dict) and isinstance(c.get("paths"), list) and c["paths"] and all(isinstance(x, str) for x in c["paths"])
+            isinstance(c, dict) and type_ok(c.get("paths"), "list") and c["paths"] and all(map(norm, c["paths"]))
             and text(c, "message") and text(c, "walkthrough") for c in cs)):
         raise Refuse("bad-shape", f"{path}: every [[commit]] needs a list of paths, a message and a walkthrough, none empty", "fill them in")
+    if "since" in v and not isinstance(v["since"], str):
+        raise Refuse("bad-shape", f"{path}: since must be a string", "write what changed since the last land as text")
     return v
 
 
 def cmd_land_draft(plan):
-    st = load_state(plan)
-    if st is None:
-        raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
+    md = plan_paths(plan)[0]
+    head, tail = read_plan(md)
+    st = load_state(plan, required=True)
+    checked_plan(md, head, plan_root(md), check_references=False)
+    if problems := drift_diags(plan, st, head, tail):
+        raise refuse_all(problems)
     tree = tree_of(plan, st)
     on_branch(st, tree)
     changed = changed_paths(st, tree)
@@ -3494,6 +4120,23 @@ def dirty_lines(tree):
     return land_git(tree, "status", "--porcelain", "--untracked-files=all", "--", ".", NOT_MINE).stdout.splitlines()
 
 
+def checked_land_shape(plan, st, tree):
+    shape, changed = read_shape(plan), changed_paths(st, tree)
+    seen, again = set(), set()
+    for c in shape["commit"]:
+        for p in map(norm, c["paths"]):
+            (again if p in seen else seen).add(p)
+    probs = [(code, f"{what} {', '.join(sorted(ps))}", fix) for code, what, ps, fix in (
+        ("shape-missing", "the shape leaves out", set(changed) - seen, "place each path in a commit"),
+        ("shape-repeats", "the shape puts in two commits", again, "put each path in one commit"),
+        ("shape-unknown", f"the shape names paths {st['base'][:7]}..HEAD does not change:", seen - set(changed), "drop them")) if ps]
+    if st.get("lands") and not str(shape.get("since", "")).strip():
+        probs.append(("no-since", "a re-land needs `since` in the shape: what changed since the last land", "write it in the shape file"))
+    if probs:
+        raise refuse_all([(code, f"{shape_path(plan)}: {message}", fix) for code, message, fix in probs])
+    return shape
+
+
 def do_land(plan, st, tree):
     """-> a refusal to raise once the state is saved, or None."""
     g = lambda *a: land_git(tree, *a)
@@ -3504,20 +4147,8 @@ def do_land(plan, st, tree):
     if dirty := dirty_lines(tree):
         msg = land_stop(st, tree, "dirty", "land stopped: the tree has uncommitted paths: " + ", ".join(l[3:] for l in dirty))
         return Refuse("dirty-tree", msg, "commit them to the branch or move them away, then land again")
-    shape, changed = read_shape(plan), changed_paths(st, tree)
-    seen, again = set(), set()
-    for c in shape["commit"]:
-        for p in map(norm, c["paths"]):
-            (again if p in seen else seen).add(p)
+    shape = checked_land_shape(plan, st, tree)
     prev = lands[-1] if lands else None
-    probs = [(code, f"{what} {', '.join(sorted(ps))}", fix) for code, what, ps, fix in (
-        ("shape-missing", "the shape leaves out", set(changed) - seen, "place each path in a commit"),
-        ("shape-repeats", "the shape puts in two commits", again, "put each path in one commit"),
-        ("shape-unknown", f"the shape names paths {st['base'][:7]}..HEAD does not change:", seen - set(changed), "drop them")) if ps]
-    if prev and not str(shape.get("since", "")).strip():
-        probs.append(("no-since", "a re-land needs `since` in the shape: what changed since the last land", "write it in the shape file"))
-    if probs:
-        raise refuse_all(probs)
     pre, backup = g("rev-parse", "HEAD").stdout.strip(), next_backup(st["branch"], tree)
     stash = g("stash", "list").stdout.splitlines()
     g("branch", backup, pre)
@@ -3626,7 +4257,7 @@ def commits_section(st):
         out.append(f"The tip has the tree the checks passed (the head `{L['pre'][:7]}` before the land). The commits before it were not checked.")
     out.append("")
     if prev:
-        out += ["Since the last land:", "", L["since"], "", "```text", L["range_diff"] or "", "```", ""]
+        out += ["Since the last land:", "", L.get("since") or "", "", "```text", L.get("range_diff") or "", "```", ""]
     for c in L["shape"]:
         subject, _, body = c["message"].strip().partition("\n")
         out += [f"#### {subject} · `{c['sha'][:7]}`", ""] + ([body.strip(), ""] if body.strip() else []) + [f"Paths: " + ", ".join(f"`{p}`" for p in c["paths"]), "", c["walkthrough"].strip(), ""]
@@ -3750,7 +4381,65 @@ def render_gate(plan, st):
     return out + (commits_section(st) or [])
 
 
-def cmd_page(plan, note, message):
+def read_guide(plan, st, a):
+    source = os.path.abspath(a.guide_file) if a.guide_file is not None else f"--guide for {plan_paths(plan)[0]}"
+    example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "references", "example.guide.md")
+    fix = f"follow the example at {example} and run `page` again"
+    guide = read_required(source, "bad-guide", fix, newline="") if a.guide_file is not None else a.guide
+
+    def bad(problem):
+        return Refuse("bad-guide", f"{source}: {problem}", fix)
+
+    try:
+        guide.encode("utf-8")
+    except UnicodeEncodeError:
+        raise bad("the guide is not valid UTF-8") from None
+    lines = markdown_newlines(guide).split("\n")
+    headings = [i for i, (line, hidden) in enumerate(zip(lines, fenced(lines)))
+                if not hidden and re.match(r"^#{1,4}(?:\s|$)", line)]
+    if (len(headings) != 2 or any(not re.fullmatch(r"####\s+\S.*", lines[i]) for i in headings)
+            or not any(line.strip() for line in lines[:headings[0]])):
+        raise bad("give the location and setup, then exactly two level-four headings for the checks and decisions")
+
+    start, end = headings
+    checks = [line for line in lines[start + 1:end] if line.strip()]
+    choices = [line for line in lines[end + 1:] if line.strip()]
+    if not checks or not choices:
+        raise bad("each list needs bullets or a lone `- —` for an empty list")
+    if choices != ["- —"] and any(not line.startswith("- ") or line[2:].strip() in ("", "—") for line in choices):
+        raise bad("give each outstanding decision its own bullet, or use a lone `- —`")
+
+    gate = next((c for c in st["cycles"] if c["kind"] == "gate"), cycle_of(st))
+    done = {f"Done {d['n']}": d for d in st.get("done", [])}
+    seen = set()
+    for line in [] if checks == ["- —"] else checks:
+        match = re.fullmatch(r"- \*\*(Done [0-9]+|Check [1-9][0-9]*)\*\*\s+(.*?) → (.*)", line)
+        if not match or not all(part.strip() for part in match.groups()[1:]):
+            raise bad(f"write each check as `- **Done N** action → visible result` or `- **Check N** action → visible result`: {line!r}")
+        ref = match[1]
+        if ref in seen:
+            raise bad(f"{ref} appears twice; use each check reference once")
+        if ref.startswith("Done ") and ref not in done:
+            raise bad(f"{ref} is not in the plan; use a current Done reference or `Check N` for an extra check")
+        seen.add(ref)
+    missing = [ref for ref, d in done.items() if human_case(gate, d) and ref not in seen]
+    if missing:
+        raise bad("add the manual checks for " + ", ".join(missing))
+    return guide
+
+
+def cmd_page(plan, a):
+    if a.show:
+        if a.message is not None:
+            raise Refuse("bad-page", "`--show` reads the recorded guide", "omit --message")
+        md = plan_paths(plan)[0]
+        head, tail = read_plan(md)
+        st = load_state(plan, required=True)
+        if problems := drift_diags(plan, st, head, tail):
+            raise refuse_all(problems)
+        sys.stdout.buffer.write(require_page(plan, st)["note"].encode("utf-8"))
+        return 0
+
     with writing(plan) as st:
         require_judge(plan, st)
         if not st.get("lands"):
@@ -3764,12 +4453,13 @@ def cmd_page(plan, note, message):
         if not fin:
             raise Refuse("no-run-values", "the plan has no approved run values", "write the run file and run `pipeline.py approve`")
         for _, m, f in run_drift(plan, st):
-            print(f"Drift: {m} — fix: {f}")
-        if fin["how"] != "ff-only" and not message:
+            print(f"Drift: {m} — fix: {f}", file=sys.stderr)
+        if fin["how"] != "ff-only" and not a.message:
             raise Refuse("no-message", f"a run ending in {fin['how']} needs the merge message or request title", "pass --message")
-        st["page"] = {"at": now(), "note": note, "message": message, "ending": {"how": fin["how"], "target": fin["target"]}, "binding": page_binding(plan, st)}
+        guide = read_guide(plan, st, a)
+        st["page"] = {"at": now(), "note": guide, "message": a.message, "ending": {"how": fin["how"], "target": fin["target"]}, "binding": page_binding(plan, st)}
         set_plan(plan, st, status="at the human gate")
-        print(f"page: {fin['how']} into {fin['target']}, at the human gate")
+    sys.stdout.buffer.write(guide.encode("utf-8"))
     return 0
 
 
@@ -3805,7 +4495,7 @@ def local_merge(st, root, fin):
         raise Refuse("no-target", f"the run file's target {target} is not a branch here", "fix `[finish].target` and approve again")
     msg = (st.get("page") or {}).get("message")
     if fin["how"] == "no-ff" and not msg:
-        raise Refuse("no-message", "a no-ff merge needs the merge message the page recorded", "run `pipeline.py page --note T --message T`")
+        raise Refuse("no-message", "a no-ff merge needs the merge message the page recorded", "run `pipeline.py page --guide-file PATH --message TEXT`")
     tree = branch_tree(root, target)
     was = None if tree else git("branch", "--show-current", cwd=root).stdout.strip() or ("--detach", git("rev-parse", "HEAD", cwd=root).stdout.strip())
     tree = tree or root
@@ -3830,7 +4520,7 @@ def open_request(plan, st, root, fin):
     branch, target = st["branch"], fin["target"]
     msg = (st.get("page") or {}).get("message")
     if not msg:
-        raise Refuse("no-message", "a merge request needs the title the page recorded", "run `pipeline.py page --note T --message T`")
+        raise Refuse("no-message", "a merge request needs the title the page recorded", "run `pipeline.py page --guide-file PATH --message TEXT`")
     url = remote_url(root)
     if not url:
         raise Refuse("no-remote", "the repository has no remote `origin`", "add it, or end the run locally")
@@ -3976,6 +4666,7 @@ def main():
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("status", help="one plan's state, the live inventory, or current workflow guidance")
     s.add_argument("--json", action="store_true", help="print as JSON")
+    s.add_argument("--provider", help="the current provider for executable brief commands in workflow guidance")
     status_scope = s.add_mutually_exclusive_group()
     status_scope.add_argument("plan", nargs="?", help="the plan file, any status; omit for the plans in .ai-workflow/plans/ from building to passed")
     status_scope.add_argument("--current", action="store_true", help="show the steps for relevant plans from the current checkout")
@@ -4062,6 +4753,7 @@ def main():
     s = gp.add_subparsers(dest="command", required=True).add_parser(
         "start", help="write and commit the rules, compute the level, run the full checks unless this HEAD has a run")
     s.add_argument("--note", help="the reason to open the gate before every phase is done")
+    s.add_argument("--check-id", help="the pending recovery identifier from status")
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("finding", help="record a finding of the newest cycle: Defect, Convention, Observation, or what could not be judged")
     s.add_argument("--kind", required=True, choices=list(FINDING_KINDS))
@@ -4100,10 +4792,11 @@ def main():
     s.add_argument("--commit", action="append", default=[], help="a commit of this fix; repeat for each; none when the fix changed nothing")
     s.add_argument("plan", help="the plan file")
     s = xsub.add_parser("done", help="write and commit the rules, run the full checks at the new HEAD, mark what survived")
+    s.add_argument("--check-id", help="the pending recovery identifier from status")
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("verdict", help="the judge's verdict on the newest cycle: a decision for every Open entry and Convention, each --decide action one of let-through, round or question; the first one writes .judge.md and alone takes --predicted, --predict and --engine. A round verdict past the cap, or on an early-stop sign, records the stop and opens no round")
     s.add_argument("kind", choices=["pass", "round", "question", "evidence-owed"])
-    s.add_argument("--owed", choices=["reviewer", "verify"], help="evidence-owed: who owes the evidence; the verdict takes no decisions")
+    s.add_argument("--owed", choices=EVIDENCE_ROLES, help="evidence-owed: who owes the evidence; the verdict takes no decisions")
     s.add_argument("--case", type=int, action="append", default=[], help="evidence owed by Verify: Done case to drive again; repeat for each case")
     s.add_argument("--evidence-note", help="the reason to judge with missing gate results; recorded on the acceptance page")
     s.add_argument("--report", required=True, help="what was let through and why, in the judge's words")
@@ -4124,8 +4817,11 @@ def main():
         if name in ("accept", "revert"):
             s.add_argument("--note", help="why" if name == "revert" else "why the change stays (required)")
         s.add_argument("plan", help="the plan file")
-    s = top.add_parser("page", help="record how to try the build and the merge message, and set the plan at the human gate; the page itself is drawn from the records")
-    s.add_argument("--note", required=True, help="how to try it, in the author's words")
+    s = top.add_parser("page", help="record and print the guide to the landed result, or read the current recorded guide")
+    guide_args = s.add_mutually_exclusive_group(required=True)
+    guide_args.add_argument("--guide", "--note", help="the guide as Markdown")
+    guide_args.add_argument("--guide-file", help="the UTF-8 Markdown file containing the guide")
+    guide_args.add_argument("--show", action="store_true", help="print the current recorded guide without changing the page")
     s.add_argument("--message", help="the merge message, or the request's title; required unless the run ends in ff-only")
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("accept", help="record authorized acceptance of the current page and set passed")
@@ -4168,6 +4864,7 @@ def main():
     s.add_argument("--commit", action="append", default=[], help="a commit of this round; repeat for each; none when the round changed nothing")
     s.add_argument("plan", help="the plan file")
     s = rosub.add_parser("done", help="refused while a note of the user's has no source; writes and commits the rules, runs the full checks at the new HEAD, completes the notes file")
+    s.add_argument("--check-id", help="the pending recovery identifier from status")
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("finish", help="end the run as the run file's [finish] says: merge locally, or push the branch and open the merge request by the remote's forge; later, check the request and set merged")
     s.add_argument("--merged", action="store_true", help="the request is merged (GitLab or an unknown host, where code cannot ask)")
@@ -4198,8 +4895,12 @@ def main():
         lp.error("a plan file, or draft|accept|revert|now and a plan file, is required")
     try:
         plan_arg = getattr(a, "plan", None)
+        if a.group == "spec":
+            if a.command in ("list", "show"):
+                return read_spec(a.command, getattr(a, "id", None))
+            return run(a.command, a.plan, a.base)
         if plan_arg and a.group not in ("run", "spec", "executor") and not os.path.isfile(plan_arg):
-            raise Refuse("no-plan", f"{plan_arg} does not exist", "pass an existing plan file")
+            read_plan(plan_paths(plan_arg)[0])
         if a.group == "run" and a.command == "approve":
             return cmd_consent(a.plan, "run", a)
         if a.group == "summary":
@@ -4213,7 +4914,7 @@ def main():
         if a.group == "approve":
             return cmd_approve(a.plan, a.json)
         if a.group == "status":
-            return cmd_status(a.plan, a.json, os.getcwd(), a.current)
+            return cmd_status(a.plan, a.json, os.getcwd(), a.current, a.provider)
         if a.group == "workflow":
             return cmd_workflow(a.json)
         if a.group == "plan":
@@ -4227,8 +4928,11 @@ def main():
             return cmd_owner(a.plan, a.path)
         if a.group == "grant":
             return cmd_grant(a.plan, a.n, a.path, a.note)
-        if a.group == "gate":
-            return cmd_gate_start(a.plan, a.note)
+        if a.group == "gate" or (a.group in ("fix", "round") and a.command == "done"):
+            with check_lease(a.plan) as lease:
+                if a.group == "gate":
+                    return cmd_gate_start(a.plan, a.note, lease, a.check_id)
+                return (fix_done if a.group == "fix" else round_done)(a.plan, lease, a.check_id)
         if a.group == "finding":
             return cmd_finding(a.plan, a)
         if a.group == "review":
@@ -4248,7 +4952,7 @@ def main():
         if a.group == "finish":
             return cmd_finish(a.plan, a.merged)
         if a.group == "page":
-            return cmd_page(a.plan, a.note, a.message)
+            return cmd_page(a.plan, a)
         if a.group == "decision":
             return cmd_decision(a.plan, a)
         if a.group == "brief":
@@ -4257,9 +4961,6 @@ def main():
         for code, message, fix in e.diags:
             print(f"{code}: {message} — fix: {fix}")
         return 1
-    if a.command in ("list", "show"):
-        return read_spec(a.command, getattr(a, "id", None))
-    return run(a.command, a.plan, a.base)
 
 
 if __name__ == "__main__":

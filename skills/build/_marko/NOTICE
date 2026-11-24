@@ -1,0 +1,13 @@
+Marko 2.2.5 (MIT), by Frost Ming. See LICENSE.
+Source: https://github.com/frostming/marko/tree/v2.2.5/marko
+Wheel: https://pypi.org/project/marko/2.2.5/
+SHA-256: 26380a6b037b5b49cec3847ee3585ba66f6782a4b9aec0d1216b7194ec5871ee
+
+This copy contains the parser and excludes renderers, extensions, and the CLI.
+The initializer and helpers reflect that subset. Source uses relative imports
+to keep the package private. The optional objprint debug helper is excluded.
+
+Local patches follow CommonMark 0.31.2. The HTML block conditions in block.py
+and patterns.py follow §4.6, including HTML block tags and CDATA termination.
+Links and summary labels decode escapes and entity references together in
+one pass, without using Marko's HTML renderer.

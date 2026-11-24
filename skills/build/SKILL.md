@@ -28,7 +28,8 @@ its notes and the rest of `.ai-workflow/` stay in the main tree, and the app
 runs from the worktree on a port of its own.
 
 On resume, use `CLI status --current` to find plans or `CLI status <plan>`
-to see its tree, current owner and next action. Reuse the existing writer.
+to see its tree, owner and next action. Reuse the existing writer. Follow
+[typed actions](../../README.md#the-pipeline) with `--json --provider NAME`.
 
 ## 2. The graph
 
@@ -54,13 +55,13 @@ start after the last phase. Relay any refusal to the implementer.
 
 ## 3. The E2E gate
 
-When every phase is done, `CLI gate start <plan>`. It writes and commits the
-rules, prints the level and the paths that raised it, and runs the full checks
-(`CLI status <plan>` shows the run). It runs a few minutes: run it in the
-background or with a long timeout, as `fix done` and `round done`; a killed
-call keeps each command that finished, and the next one runs the rest again. Fix a plan refusal
-in `## Spec`; a stale base, by `CLI plan base <plan> $(git merge-base
-<default> HEAD)` and `gate start` again.
+When phases are done, `CLI gate start <plan>` commits the rules, prints the
+level and runs full checks. Run `gate start`, `fix done` and `round done` in the
+background or with a long timeout.
+After interruption, follow `CLI status <plan>` to wait, investigate ownership
+or run the printed retry. It reruns the suite or reuses matching results.
+Fix plan refusals in `## Spec`. For a stale base, run `CLI plan base <plan>
+$(git merge-base <default> HEAD)`, then `gate start` again.
 
 Then the rest of the gate, by [gate.md](references/gate.md); read it then, not
 before.
@@ -85,13 +86,13 @@ A verdict that stops rounds says why in `CLI status`; it lands as a pass.
 
 ## 4. The human gate
 
-Run `CLI page --note "<how to try it>" [--message "<merge message or request
-title>"] <plan>`: it sets `at the human gate` and draws `## Human gate` from the
-records, which you never edit. The note explains trying the app, from
-a worktree how to run it there. The message is needed unless the run ends
-`ff-only`; draft it from the plan's Result by `dev-skills:commit-work`. Report
-the page and review location to the designated contact, then wait: [SESSIONS.md](../../references/SESSIONS.md). For a flagged result, say
-whether later changes touched it.
+After judge and land, write the [guide to the landed build](references/human-guide.md).
+Run `CLI page <plan> --guide-file <path> [--message "<merge message or request
+title>"]` (or `--guide "<Markdown>"`). The message is needed unless the run ends
+`ff-only`. Draft it from the plan's Result by `dev-skills:commit-work`.
+The command validates the guide, records it on `## Human gate`, sets `at the human gate` and prints it.
+Send the printed guide verbatim and link to the current page, then wait for the
+designated contact by [SESSIONS.md](../../references/SESSIONS.md).
 
 On approval from the user or designated acceptor within granted authority:
 `CLI accept <plan> --by <name> --words "<unchanged approval>"` binds it to the

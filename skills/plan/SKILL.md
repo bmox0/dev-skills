@@ -38,9 +38,9 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
 - Get Checks from the run file's `[checks]` via `CLI run show <plan>`.
   The Environment block of `AGENTS.md` fills only what the run
   file lacks: [environment-contract.md](references/environment-contract.md).
-- The plan uses the Language line in
-  [environment-contract.md](references/environment-contract.md). The conversation and the gate
-  page stay in the user's language.
+- Write the plan in the project's document language from
+  [environment-contract.md](references/environment-contract.md). Use the original
+  conversation language for user messages and the gate guide, per [SESSIONS.md](../../references/SESSIONS.md).
 
 ## The file
 
@@ -134,7 +134,7 @@ Show the proposed run, including executor presets, and obtain explicit approval:
 Reuse recorded authorization; never invent consent or re-ask.
 
 Write a linked summary following [resume.example.md](references/resume.example.md),
-≤350 words in the conversation language: Result, phases, Spec, checks and limits.
+≤350 words in the original conversation language: Result, phases, Spec, checks and limits.
 Ask approval of that summary and record it:
 `CLI summary approve <plan> --file <summary> --by <name> --words "<unchanged approval>"`.
 For a designated acceptor also supply `--acceptor <name> --authority "<granted scope>"`.

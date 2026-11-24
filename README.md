@@ -12,6 +12,27 @@ eight stages before planning. Use the installed CLI path in other repositories.
 Run `status <plan>` for its stage, owner and next action, or `status --current`
 to find relevant plans from your checkout.
 
+For automation, use `workflow --json` before there is a plan, or
+`status --json <plan>` and `status --current --json` during a run. Read
+`workflow.actions` on a status result, or `actions` on the entry view. Each
+action names its `owner`, has readable `action` text, and supplies a `kind`.
+
+- `run` carries an `argv` array. Run it directly as a process, with each array
+  item as a separate argument. The interpreter, script and plan paths are absolute.
+- `work` names a `role` and its `assignment`, such as a phase number, review
+  range or Done cases. Reuse an existing worker when it owns the assignment.
+  For a new worker, use the brief command with the matching assignment and
+  dispatch the returned brief through the chosen host.
+- `wait` identifies work or authorization to wait for. Read status again when
+  it arrives.
+- `ask` identifies a decision or missing input. Obtain it from the named owner
+  before proceeding.
+
+Pass `--provider NAME` to status for executable brief commands using the
+approved executor snapshot. The ordinary `status` inventory keeps its existing
+shape. The merged workflow has an empty `actions` array. Guidance is a snapshot
+and the CLI still applies each command's own checks.
+
 1. **Grill (optional).** Use a grill when the change is unclear or a discussion
    for simpler work. Workers bring facts from the code. You make the decisions.
    A bug adds its reproduction and its cause. A second worker on secondary, the spec
@@ -56,18 +77,17 @@ to find relevant plans from your checkout.
    verdict and its prediction of your verdict, and lands the branch: the working commits
    become the ones a reviewer reads, one or a few by meaning, on the same tree;
    a backup branch keeps the old ones.
-7. **Human review.** The page shows what was decided without you, what is still
-   open with the judge's report, the e2e (the use cases, each with its last
-   result and the commit it ran on; the ones marked "you check" are yours),
-   and the landed commits, each with a walkthrough. The build session reports
-   the gate and concrete review location, then waits. Your designated contact
-   alerts you and opens the result. You try the running app
+7. **Human review.** The build session sends the guide you see on the page.
+   The guide tells you where to open the landed result,
+   what to try and what you still need to decide. The page also has the judge's
+   report, E2E results with their commits and a walkthrough of each landed commit.
+   Your designated contact alerts you and opens the result. You try the running app
    and read the commits in one sitting. Each note you make gets a cause from
    seven and is matched against the judge's prediction; a note that changes
    the approach is listed as a task, not built. A round runs on your word,
    then the judge again (it lands) and back to the gate. The contact relays
    your notes, round requests and approval unchanged to the same build session;
-   notes alone start no round.
+   notes alone start no round. [Example guide](skills/build/references/example.guide.md).
 8. **Finish.** `accept --by --words` records the user’s or authorized acceptor’s
    approval of the current page; finish runs when instructed. It asks
    nothing: the run file says how it ends (a merge request, or local with

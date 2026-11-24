@@ -16,7 +16,9 @@ skills/bug/references/condition-based-waiting.md 325
 skills/bug/references/defense-in-depth.md 300
 skills/bug/references/root-cause-tracing.md 325
 skills/build/SKILL.md 1000
+skills/build/references/example.guide.md 120
 skills/build/references/gate.md 345
+skills/build/references/human-guide.md 290
 skills/build/references/judge.md 590
 skills/build/references/rounds.md 580
 skills/commit-work/SKILL.md 300

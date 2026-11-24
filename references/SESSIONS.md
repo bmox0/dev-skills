@@ -1,8 +1,7 @@
 # Executors and build handoff
 
-Shared rules come from `AGENTS.md`; host files adapt them. Provider/model
-identifiers are open; a host implies no executor. Hooks are optional advice:
-run prescribed CLI checks with or without hooks; hooks confer no approval.
+`AGENTS.md` supplies shared rules. Provider/model identifiers are open. Hooks
+are optional advice and confer no approval. Always run prescribed CLI checks.
 
 ## Select executors
 
@@ -19,26 +18,25 @@ dispatch; never inherit, substitute or translate a preset.
 
 ## Bind workers
 
-Generate `CLI brief <role> --provider <provider> <plan> …`. Follow the host CLI's
-`adapters/<host>/workers.md` when present. Bind tools for the assignment and
-its report commands. Prefer native custom-role instructions. A generic worker
-requires verified equivalent role priority and behavior without conflicting
-higher-priority instructions; otherwise report unavailable. Coordinators never
-implement. Never reuse an implementer as independent reviewer or judge.
+Generate `CLI brief <role> --provider <provider> <plan> …`. Follow
+`adapters/<host>/workers.md` when present. Bind assignment/report tools.
+Prefer native custom-role instructions. For generic workers, verify equivalent
+role priority and behavior and no conflicting higher-priority instructions, or
+report unavailable. Coordinators never implement or reuse implementers as
+independent reviewers or judges.
 
-Give each clean context its authoritative role source, absolute brief/protocol paths,
-assignment/territory or range, approved executor, cwd, return channel and
-reporting commands. Initialization evidence records loaded sources,
+Give each clean context its authoritative role source, absolute brief/protocol
+paths, assignment/territory or range, approved executor, cwd, return channel and
+report commands. Initialization evidence records loaded sources,
 requested/effective settings when exposed, cwd/branch and boundaries. Report
-missing tools and instruction conflicts before acting. Workers dispatch nobody.
-Independent ready phases may run concurrently within available slots.
+missing tools or conflicts before acting. Workers never dispatch. Independent
+ready phases may run concurrently within available slots.
 
-Use native messages and continuation when available. Otherwise return an
-actionable question, error or result through the host's result channel or an
-agreed report artifact; the coordinator must collect it and answer within
-existing authority. A returned question leaves work pending. Workers retain
-their report commands; the coordinator records decisions/transitions without
-duplicate reports.
+Use native messages and continuation when available. Otherwise return actionable
+questions, errors or results via the host's result channel or agreed
+report artifact. The coordinator collects them and answers within existing
+authority. Questions leave work pending. Workers retain report commands.
+Coordinators record decisions/transitions without duplicate reports.
 
 ## Start and recover once
 
@@ -47,6 +45,9 @@ Planning obtains explicit run approval, then a linked summary approval
 instruction chooses **herdr**, a **native independent session**, or **manual handoff**.
 Record absolute plan/run/build-skill paths, tree, provider/primary pair,
 session identifiers, contact/channel and acceptance authority beside the plan.
+Carry the user's opening language or the approved summary path.
+On resume recover it from the handoff or summary. Use it for user messages.
+Tracked documents and examples follow comparable project documents' language.
 The coordinator owns phase/build/gate transitions; workers retain prescribed
 reporting, verdict and land commands. A controller only relays unless granted
 acceptance authority; it cannot approve its own result.
@@ -55,8 +56,8 @@ On resume run `CLI status --current` to find plans and `CLI status <plan>`
 for the owner and next action. Inspect the existing writer, reports and Git
 facts before resending. Timeout, idle, delivery and prompts imply no completion
 or approval.
-Preserve role, brief, assignment, executor, tree, contact, reporting and pending
-questions and answers. Resume without repeating `phase start` or completed work.
+Retain role, brief, assignment, executor, tree, contact, reporting and pending
+questions/answers. Resume without repeating `phase start` or completed work.
 
 When continuation is unavailable, replace only after the old attempt and all
 write-capable jobs are confirmed stopped. An unreachable or unknown attempt
@@ -79,12 +80,12 @@ the same contract through native identifiers/channels.
 
 ## Questions and acceptance
 
-Surface questions and permission prompts to the designated contact; answer
-routine questions from existing authorization. At the human gate report the
-current page, concrete artifact/app location, how to try it, checks and limits;
-then wait while the contact opens it. Relay notes, rounds and approval unchanged
-to the same inspected writer; retain incoming words while it works. Notes alone
-start no round. Only the user or designated
+Answer routine questions from existing authorization and surface other questions
+and permission prompts to the contact. At the human gate relay the validated
+guide verbatim and link the page. Recover it with `CLI page <plan> --show`.
+Wait while the contact opens the result. Relay notes, rounds and approval
+unchanged to the same inspected writer. Retain incoming words while it works.
+Notes alone start no round. Only the user or designated
 acceptor within granted authority accepts: `CLI accept <plan> --by <name>
 --words "<unchanged approval>"` binds current judge/land/page. Finish as configured
 when instructed, reusing authorization. Watch through rounds and finish.

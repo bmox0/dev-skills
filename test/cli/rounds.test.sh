@@ -145,6 +145,14 @@ cli round start "$plan" | grep -q "takes notes 1, 2" || fail "a round takes the 
 cli note edit "$plan" 1 --text x >/dev/null && fail "a note in a round is fixed"
 rb=$(cli brief round "$plan") || fail "brief round"
 grep -q "2026-11-16-r.notes.md" "$rb" && grep -q "much bigger" "$rb" || fail "brief round names the notes file and the notes"
+# build#required-transition-files: the running round requires the generated notes it hands over.
+cp "$notes" "$notes.saved"
+printf 'Unrelated Markdown\n' > "$notes"
+out=$(cli brief round "$plan" 2>&1); rc=$?
+assert_eq 1 "$rc" "a brief cannot hand over a malformed notes file" || exit 1
+assert_contains "$out" "$notes" "the diagnostic names the notes file" || exit 1
+assert_contains "$out" "fix:" "the diagnostic explains how to restore the notes" || exit 1
+mv "$notes.saved" "$notes"
 c1=$(commit r1)
 cli round report "$plan" --became x --commit "$c1" >/dev/null || fail "round report"
 cli round done "$plan" >/dev/null && fail "round done needs a source for the user's notes"
@@ -215,7 +223,7 @@ text = open(path).read().replace('message = ""', 'message = "stopped round"').re
 open(path, "w").write(text)
 PYSHAPE
 cli land "$plan" >/dev/null || fail "stopped round remains landable"
-cli page "$plan" --note "review the stopped proposal" --message "stopped round" >/dev/null || fail "stopped round page"
+cli page "$plan" --guide $'Open the stopped proposal.\n\n#### Checks\n\n- **Done 3** Run e → See f.\n\n#### Decisions\n\n- Decide whether to take d1 in a human round.' --message "stopped round" >/dev/null || fail "stopped round page"
 assert_contains "$(sed -n '/^## Human gate/,$p' "$plan")" "d1" "build#page-from-records: stopped notes stay visible at acceptance" || exit 1
 cli note add "$plan" --text "user round" --cause bug >/dev/null
 cli round start "$plan" | grep -q "(user)" || fail "after a stop the user's round is the user's"
@@ -325,6 +333,15 @@ newrepo
 cli result "$plan" --case 1 --outcome passed --capture a.png >/dev/null; cli result "$plan" --case 2 --outcome passed --capture b.png >/dev/null
 cli verdict question "$plan" --report r --question "which colour?" "${vfirst[@]}" >/dev/null || fail "verdict question"
 cli brief judge "$plan" >/dev/null && fail "an answer brief needs the answer"
+# build#required-transition-files: an answer brief consumes the Judge file before recording the answer.
+judge=${plan%.md}.judge.md
+mv "$judge" "$judge.saved"
+out=$(cli brief judge --note "the user said blue" "$plan" 2>&1); rc=$?
+assert_eq 1 "$rc" "a missing judge file prevents recording a supplied answer" || exit 1
+assert_contains "$out" "$judge" "the diagnostic names the judge file" || exit 1
+assert_contains "$out" "fix:" "the diagnostic explains how to restore the judge file" || exit 1
+json 'assert c["verdicts"][-1].get("answer") is None' || fail "the answer was recorded before validating the judge file"
+mv "$judge.saved" "$judge"
 b=$(cli brief judge --note "the user said blue" "$plan") || fail "brief judge after an answer"
 grep -q "^Case: after the user's answer" "$b" && grep -q "2026-11-16-r.judge.md" "$b" && grep -q "which colour?" "$b" && grep -q "the user said blue" "$b" || fail "the answer brief names the case, the judge file, the question and the answer"
 # the question and its answer stay in every judge brief until the next verdict is recorded

@@ -165,3 +165,31 @@ Why: a clean review, missing review and stale check lead to different next steps
 
 - Run a normal gate and finish a clean review → status distinguishes pending review from zero findings and names outstanding E2E cases. Retry review completion and submit an old range after a change → current evidence remains accurate.
 - Change the tree after verification, then drive a fix and a targeted recheck → the required cases and reviewer are named, stale evidence cannot silently satisfy the judge, and existing explicit exceptions remain visible. On small, review remains required and the human sees the cases to try.
+
+### typed-workflow-actions — Workflow actions identify executable commands, role assignments, waits and required input
+
+Why: a fresh coordinator needs the permitted next steps and parallel owners throughout the run.
+
+- Inspect entry, draft, consent, build, verification, judge, human review and finish in a fresh context → text and typed JSON agree, approval boundaries hold, parallel owners are visible, and merged has no actions. Inspect current-checkout and per-plan views; run known argv directly from another directory with spaces in the plan path.
+
+### full-check-recovery — Competing callers recover the originating full check without overlapping work
+
+Why: a stale status response or a lost coordinator must not launch a duplicate suite.
+
+- Hold a full check, kill only its coordinator, then stop its remaining child → wait while work is alive, ask for the missing fact when ownership is indeterminate, and run the correct gate, fix or round retry once safe, including a fix nested in a round.
+- Execute the same recovery from two fresh sessions → only one replacement suite starts. Interrupt between check completion and transition closure → the matching result is reused and the originating transition closes once.
+
+### required-transition-files — Each transition validates its required files before changing state
+
+Why: a coordinator needs the affected path, failure and repair at the point where the file is consumed.
+
+- Exercise every required file at its consuming transition, including the pre-build summary → valid files pass; missing, empty, unreadable, invalidly encoded and malformed required inputs name the path and repair without advancing state. Optional absence and historical reads still work.
+- Submit the shipped example, then remove a manual case, duplicate its reference, or leave its expected result empty → the production validator accepts the example, rejects each broken guide at page, and points to the correction. Planning summary approval succeeds without these post-build steps.
+
+### human-check-guide — Human review hands over one validated guide to the landed build on the page and in the coordinator’s message
+
+Why: a person needs concrete checks and outstanding decisions that reflect the result, including choices made during implementation.
+
+- Build a human guide after judge and land for a small and normal gate, including a decision taken mid-build and an open defect → page and message contain identical actionable text, cover manual cases and distinguish the outstanding choice. A new round supersedes the old guide and acceptance.
+- Submit the shipped example, then remove a manual case, duplicate its reference, or leave its expected result empty → the production validator accepts the example, rejects each broken guide at page, and points to the correction. Planning summary approval succeeds without these post-build steps.
+- Read the final guide in the coordinator’s message alone → I can open the result, perform the checks and decide what to accept or defer without asking what to look at
