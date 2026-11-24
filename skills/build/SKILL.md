@@ -8,17 +8,16 @@ description: Build an approved plan — its branch, implementers run by the plan
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
 
-`build <plan>` starts only on a subsequent instruction choosing the handoff
-in [SESSIONS.md](../../references/SESSIONS.md). Reuse the existing writer on resume.
-The build coordinator uses primary and never edits code. Secondary implementers
-and workers write and check code.
+`build <plan>` starts on the separate handoff instruction in
+[SESSIONS.md](../../references/SESSIONS.md). The coordinator uses primary
+and never edits code. Select each worker's executor from the shared contract.
 
 ## 1. The branch
 
-Read the plan, its epic, and the project's `AGENTS.md`.
-`CLI` is `python3 "<this skill's directory>/pipeline.py"`; every status, the
-base and the epic's row change through it, never by hand. `CLI status` lists
-other plans from `building` to `passed`: report shared territories to the designated contact.
+Read the plan, its epic and the project's `AGENTS.md`.
+`CLI` is `python3 "<this skill's directory>/pipeline.py"`. It updates statuses,
+the base and the epic row. `CLI status` lists runs from `building` to `passed`.
+Report shared territories to the designated contact.
 
 Run `CLI build start --base <ref> [--worktree <path>] <plan>`. You name the
 base. It reports the checked-out
@@ -28,7 +27,8 @@ From a worktree, hand every implementer, worker and judge its path; the plan,
 its notes and the rest of `.ai-workflow/` stay in the main tree, and the app
 runs from the worktree on a port of its own.
 
-Resuming: `CLI status <plan>` prints the branch and the tree it lives in; work there.
+On resume, use `CLI status --current` to find plans or `CLI status <plan>`
+to see its tree, current owner and next action. Reuse the existing writer.
 
 ## 2. The graph
 
@@ -37,8 +37,8 @@ once: `CLI phase start <plan> <n>`, then `CLI brief implementer --provider <prov
 and a `dev-skills:implementer` in the background whose prompt is the path it
 prints. To go against a fact the CLI reports, pass `--note` with your reason; it
 reaches the gate page. When an implementer finishes, `CLI phase done <plan>
-<n>` checks its report and commits and prints what is ready next; a failure
-goes back to the implementer as printed.
+<n>` checks outcomes and commits and prints the next actions, including gate
+start after the last phase. Relay any refusal to the implementer.
 
 - **Messages go through you.** An implementer writes to you for a file outside
   its territory, or a product call the plan does not hold, and carries on
@@ -75,9 +75,8 @@ records its verdict with `CLI verdict` and returns:
 - `question: <…>`, even after a round: run the round, ask the user, a fresh
   judge with the answer.
 - `evidence owed: <verify|reviewer> — <what>`: the judge recorded it with
-  `CLI verdict evidence-owed`; a worker on `dev-skills:verify` handed `CLI brief
-  verify --provider <provider>`, or the reviewer handed `CLI brief reviewer --provider <provider>`, records it; then the
-  judge again.
+  `CLI verdict evidence-owed`. Follow `CLI status <plan>` for the reviewer
+  brief, Verify cases, or the explicit E2E exception. Then run the judge again.
 - `land stopped: <…>`: the judge again. Code turns a stop that keeps coming
   into a question to the user; `CLI brief judge --provider <provider>` refuses until `--note`
   holds their answer.

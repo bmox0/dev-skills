@@ -8,23 +8,18 @@ description: Review a commit range from a fresh context against the project's ru
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
 
-The session that asks for a review dispatches `dev-skills:reviewer`, a fresh
-context using primary, and reads its lists; `build` uses secondary for
-rechecks and round reviews. Any range works.
+Dispatch `dev-skills:reviewer` in a fresh primary context. Build rechecks and
+round reviews use secondary.
 
-**Receives:** the range `BASE..HEAD`, the plan when there is one, where the
-project's rules live, and the
-full checks' result when they have just run.
+**Receives:** the `BASE..HEAD` range, any plan, the rules' location, and any
+full check results.
 
 1. **Pin the range:** `git log --oneline BASE..HEAD` and
-   `git diff --stat BASE..HEAD`. A range that does not resolve, or is empty,
-   stops here.
-2. **Read the intent first:** the plan's Result, Approach, Out of scope and
-   Done, and the project's rules, the skills its phases name among them, and
-   the area files in `docs/spec/` that the phases' `Spec:` lines name.
-   Without a plan, ask what the change is for;
-   without an answer, say the report judges the code and not whether it is the
-   right code.
+   `git diff --stat BASE..HEAD`. Use the SHAs from the brief. A range that does
+   not resolve stops here. For an empty assigned range, record completion.
+2. **Read the intent first:** the plan's Result, Approach, Out of scope, Done,
+   project rules, named skills and Spec area files. Without a plan, ask the
+   purpose. If unanswered, limit the report to code quality.
 3. **The full checks**, as the plan's Checks or the project's rules name them: run them unless you were handed their result. Red
    is a Defect.
 4. **Read the diff** against [CRITERIA.md](references/CRITERIA.md). Tests are
@@ -40,6 +35,9 @@ source:
 
 Then what could not be judged from the range, and why.
 
-Handed a brief, record each item with its `finding` command (`--kind unjudged` for the last list) and return one line.
+With a brief, record each item with its `finding` command (`--kind unjudged`
+for the last list). Run its `review complete` command after the findings, even
+when there are zero. If the assignment changed, ask for the current brief.
+Return one line.
 
 A re-check reads only the fix's commits.

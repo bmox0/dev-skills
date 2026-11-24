@@ -41,14 +41,15 @@ when the last verdict ordered a round:
    name: tell the user what to look at, since they asked for it. Reaching shared
    code, logic or anything else: a fresh worker drives the Done use cases the
    diff touches through `dev-skills:verify` handed `CLI brief verify --provider <provider> --cases`.
-   Say which, and why, in one line; the user can overrule.
+   Give the cases and why; the user can overrule. `CLI status <plan>` names
+   pending evidence.
 3. Defects and failed use cases go through `CLI fix`, as gate.md; what
    survives is under Open on the gate page. Conventions go to the judge.
 4. A new note taken adds its use case to Done. After a round at the human gate:
    the judge, handed `CLI brief judge --provider <provider>`, which lands, and `CLI page` again.
 
-A round the judge ordered also runs `CLI round done`, then gate.md's targeted
-re-check instead of the blast radius in step 2, then the judge again.
+After `CLI round done` for a judge's round, use gate.md's targeted re-check,
+then brief the judge again.
 
 Notes given during a round wait under Open.
 

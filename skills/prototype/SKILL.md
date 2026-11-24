@@ -7,9 +7,10 @@ description: Build a throwaway prototype to answer a design question before the 
 
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
+Run `python3 "<this skill's directory>/../build/pipeline.py" workflow` for the route.
 
-After a grill or a discussion, offer one in a line, its shape part of the
-question: "A prototype? An HTML file, inside the app with real data, or code
+After a grill or discussion, offer a prototype in one line. "A prototype?
+An HTML file, inside the app with real data, or code
 for the logic?" The user picks a shape or declines. This session is the
 orchestrator: a worker draws, it does not. A prototype is throwaway code that
 answers one question, in the shape the user picked:

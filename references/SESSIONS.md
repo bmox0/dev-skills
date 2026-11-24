@@ -51,11 +51,12 @@ The coordinator owns phase/build/gate transitions; workers retain prescribed
 reporting, verdict and land commands. A controller only relays unless granted
 acceptance authority; it cannot approve its own result.
 
-On resume inspect the existing writer's state/output before resend. Timeout,
-idle, message delivery and permission prompts imply no completion or approval.
-Preserve role, brief, assignment, executor, tree, contact and reporting on every
-continuation. Read current CLI reports and Git facts, including completed work
-and unresolved questions/answers; do not replay commands or repeat `phase start`.
+On resume run `CLI status --current` to find plans and `CLI status <plan>`
+for the owner and next action. Inspect the existing writer, reports and Git
+facts before resending. Timeout, idle, delivery and prompts imply no completion
+or approval.
+Preserve role, brief, assignment, executor, tree, contact, reporting and pending
+questions and answers. Resume without repeating `phase start` or completed work.
 
 When continuation is unavailable, replace only after the old attempt and all
 write-capable jobs are confirmed stopped. An unreachable or unknown attempt

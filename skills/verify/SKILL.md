@@ -8,8 +8,8 @@ description: Drive a plan's Done use cases on the running system — a browser, 
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
 
-The session that asks for e2e dispatches a worker, a fresh secondary subagent, that follows the steps below, and reads only its lines. It drives
-what the user will see at the human gate.
+Coordinators dispatch a fresh secondary worker. The assigned worker drives
+the cases from the brief and records their results.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e
 drives the system and where it runs (the plan's Checks, and the plan's run
@@ -38,5 +38,6 @@ file through `python3 "<this skill's directory>/../build/pipeline.py" run show
 <n>. <do this> → <see that> — <width> — passed | failed: <what was seen> | not reached: <why> — <capture path, or the command's output>
 ```
 
-Once. After a fix, drive only the use cases that failed or were not reached.
-With a brief, record each with `result`; return one line.
+Once. After a fix or round, drive the cases in the current brief. Use its
+`result` command with the supplied cycle and commit. If the tree changed,
+get the current brief and drive the case again. Return one line.

@@ -10,6 +10,9 @@ Read shared `AGENTS.md` and the executor contract:
 
 Planning uses primary; research helpers use secondary. This session plans and never edits code.
 
+`CLI` is `python3 "<this skill's directory>/../build/pipeline.py"`.
+Run `CLI workflow` at entry or `CLI status <plan>` with a plan.
+
 A plan is always a file, about 1000 words. It holds only what an
 implementer cannot decide alone: the product decisions with a reason each, the
 interfaces where two phases meet, what is out, how it is checked. Implementers explore the code; omit mechanisms and file lists beyond territories.
@@ -25,20 +28,15 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
 - After a grill or a discussion, a prototype was offered. If not, offer one in a
   line: "A prototype? An HTML file, inside the app with real data, or code for
   the logic?" (`dev-skills:prototype`). The user may decline.
-- A worker reads the code the plan touches, a secondary subagent that returns
-  paths and seams, so the territories are real, and for each territory the
-  project's skills from the supplied catalogue/paths whose rules its code
-  follows, matched by description. The global ones come from this session's
-  skill list by the same test: a Vue territory gets no SwiftUI skill. Code
-  outside this repository that a decision points at gets its path. The same
-  worker lists the areas in `docs/spec/` (`list`) and matches them to each
-  territory by the area's description, as skills are.
+- A secondary worker reads the affected code and returns paths and seams,
+  including paths outside the repository that decisions refer to. For each
+  territory the worker matches applicable project and session skills and
+  `CLI spec list` areas by description.
 - The run file exists, `.ai-workflow/plans/YYYY-MM-DD-<slug>.run.toml`
   (`dev-skills:run-file`); if not, write it first. The plan takes its name with
   `.md`. `approve` validates without recording consent.
-- Checks takes its commands from the run file's `[checks]`, read with
-  `python3 "<this skill's directory>/../build/pipeline.py" run show <plan>`;
-  the Environment block of `AGENTS.md` fills only what the run
+- Get Checks from the run file's `[checks]` via `CLI run show <plan>`.
+  The Environment block of `AGENTS.md` fills only what the run
   file lacks: [environment-contract.md](references/environment-contract.md).
 - The plan uses the Language line in
   [environment-contract.md](references/environment-contract.md). The conversation and the gate
@@ -52,6 +50,7 @@ The run file's name with `.md`. It is written with Status `draft` and base `—`
 # Plan: <what the user gets, in a few words>
 
 Status: <draft | approved | building | at the human gate | passed | a merge-request link | merged> · branch `<branch>` · base `<sha>`
+Grill: <done | skipped>
 Prototype: <path, the chosen variant> | none
 
 ## Result
@@ -96,15 +95,14 @@ Waits for: <phases, and the interface it uses from them> | nothing
 <`+`, `~` or `-` for every rule this plan adds, changes or removes; else `none`>
 ```
 
-`## Spec` holds the rules, in the sense of
-[FORMAT.md](../spec/references/FORMAT.md): what must stay true beyond this plan,
-whoever checks it. Not each Approach decision: code structure goes to an ADR. It
-holds the product calls made without the user, and a `-` or `~` for each rule
-the grill dropped or changed. Which rule, area and ID, `~` or `-` with `+`, and
-the wording of statement and reason follow from the decisions made: you decide
-them here without asking the user. The grammar is in
-[FORMAT.md](../spec/references/FORMAT.md). Every plan has the section, a bug's
-too, usually `none`.
+Record `Grill: done` after a grill or `Grill: skipped` when omitted.
+Leave the field out when its history is unavailable.
+
+`## Spec` records lasting product rules, including decisions made without
+the user and rules the grill dropped or changed. Use an ADR for code structure.
+Choose the rule, ID, statement and reason from the settled decisions, following
+[FORMAT.md](../spec/references/FORMAT.md). Include the section even for bugs,
+with `none` when no rule changes.
 
 ## Phases and the graph
 
@@ -121,8 +119,7 @@ too, usually `none`.
 
 Before showing it:
 
-- **The spec.** Run `python3 "<this skill's directory>/../build/pipeline.py" spec check
-  <plan> --base <default branch>` until it is silent.
+- **The spec.** Run `CLI spec check <plan> --base <default branch>` until it is silent.
 - **What e2e cannot do.** A Done use case e2e cannot reach with what the run file
   gives (`[run]` keys, `[checks].dev` and `url`, `[isolation]`), or one judged by
   its look alone, is marked `you check`: the user checks it at the human gate.
@@ -131,7 +128,6 @@ Before showing it:
 - **The gate level** follows
   [gate.md](../build/references/gate.md).
 
-`CLI` is `python3 "<this skill's directory>/../build/pipeline.py"`.
 Run `CLI approve <plan>` until validation passes; compilation records no consent.
 Show the proposed run, including executor presets, and obtain explicit approval:
 `CLI run approve <plan> --by <name> --words "<unchanged approval>"`.

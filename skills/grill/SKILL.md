@@ -7,6 +7,7 @@ description: Question an idea with the user until both agree on what is being bu
 
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
+Run `python3 "<this skill's directory>/../build/pipeline.py" workflow` at entry.
 
 This session remains the user’s orchestrator: it talks, decides with the user,
 and never edits code. Turn the idea into a design you and the user both agree

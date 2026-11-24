@@ -1,8 +1,7 @@
 # The judge
 
-What `dev-skills:build` hands to the judge (`agents/judge.md`) after the E2E gate: a
-fresh primary context that reads what the gate produced and decides. It runs no check,
-reviewer or use case.
+The judge (`agents/judge.md`) uses fresh primary and decides from gate evidence.
+It runs no checks, review or use cases.
 
 Your brief is `CLI brief judge --provider <provider>`. After a round or answer: read only what the brief gives you and the written rules a note cites. The full read happened at
 the gate and is in the judge file. What the round did not touch should not have
@@ -11,13 +10,15 @@ changed; finding is the re-check's, not yours.
 1. At the gate, read the plan (and its epic), the brief's results, and the
    project's written rules. Name every Done case’s result and capture. After a round or an answer, done when you can name, for
    each note, its commit and the re-check's result.
-2. Check the evidence. A Done use case not marked `you check` is passed or
-   failed with no capture, or a Defect lacks a fix commit or an Open entry: record it with
+2. If a Done case needs a capture or a Defect lacks a fix commit or an Open entry, record it with
    `CLI verdict evidence-owed --owed verify|reviewer --report "<what>"` and return
-   `evidence owed: verify|reviewer — <what>`. It returns to whoever owes it. After a round or an answer, only the round's notes and the
-   re-check's use cases are checked; the plan is read for its slug and title and
-   for `land`, never for the other Done results or captures.
-   Missing-result judgment must be explicit and reasoned: brief with
+   `evidence owed: verify|reviewer — <what>`. Repeat `--case N` for the Done
+   cases Verify should drive again. An unscoped request uses the assigned cases.
+   With no assigned cases, use a reasoned E2E exception.
+   After a round or an answer, check only the round's notes and re-check use cases.
+   Read only the plan's slug, title and `land`.
+   Review completion is required. A decision with missing or stale E2E results
+   must be explicit and reasoned. Brief with
    `CLI brief judge --provider <provider> --note "<reason>"`, then record
    `--evidence-note "<reason>"` on the verdict, shown on the gate page;
    neither substitutes for real E2E evidence.

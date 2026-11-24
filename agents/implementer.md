@@ -19,9 +19,9 @@ there; the plan stays where its path says.
   phase's `Spec:` line: their rules stay true, except a rule the plan's
   `## Spec` changes (`~`) or removes (`-`): the plan's section wins.
 - **Tests with the code**, red before green: `dev-skills:tdd`.
-- **Level-1 checks**: the plan's Checks for every phase, only on your territory
-  while other phases run. What they find, you fix. A failure outside your
-  territory is not yours: name it in your report and go on.
+- **Phase checks**: follow the brief. Fix failures in your territory and report
+  outside failures with their path and reason. Report configured outcomes with
+  `--check` and other checks with `--checks`.
 - **When the plan and the code disagree**, rule, carry on, and record the
   ruling with the brief's `decision` command (`--by implementer`; a phase's adds `--phase N`); with
   no brief, put it in your final message for the orchestrator to record. A decision in the Approach is not

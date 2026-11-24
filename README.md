@@ -7,17 +7,19 @@ a chosen build session coordinates implementation. Neither edits code.
 
 ## The pipeline
 
-Every change goes through the same seven stages. For a small task each stage
-is shorter; none is skipped, and every plan ends in a human gate.
+Run `python3 skills/build/pipeline.py workflow` from this repository to see the
+eight stages before planning. Use the installed CLI path in other repositories.
+Run `status <plan>` for its stage, owner and next action, or `status --current`
+to find relevant plans from your checkout.
 
-1. **Entry.** A grill when it is unclear what is being built, a discussion when
-   it is lighter. Workers bring facts from the code; you make the decisions.
+1. **Grill (optional).** Use a grill when the change is unclear or a discussion
+   for simpler work. Workers bring facts from the code. You make the decisions.
    A bug adds its reproduction and its cause. A second worker on secondary, the spec
    scout, brings the rules in `docs/spec/` that the task touches; you are asked
    about a rule only when the task leaves open whether it stays true, in product
    words, and the plan's writer records it.
-2. **Prototype.** Offered after the entry; you pick the shape or decline: an
-   HTML file, inside the app with real data, or code. A worker draws it.
+2. **Prototype (optional).** After the discussion, you can choose an HTML file,
+   a prototype inside the app with real data, or code. A worker draws it.
 3. **Run file and plan.** First the run file (`<slug>.run.toml`,
    [`run-file`](skills/run-file/SKILL.md)): what the run may do, its checks, its
    isolation and how it ends, asked once so nothing pulls you in mid-run. Then
@@ -42,18 +44,19 @@ is shorter; none is skipped, and every plan ends in a human gate.
    dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it. Before the gate and
    each re-check, `pipeline.py spec write` runs and `docs/spec/` is committed alone.
-5. **The E2E gate.** At the level the plan names, small or normal: code runs
+5. **Build verification.** The coordinator opens the gate after the last phase.
+   At the level the plan names, small or normal, code runs
    the full checks, then at once a fresh review against the project's rules (and the `Spec:` areas' rules) and
    e2e over what you would not see by trying the app, at each width the plan
    names. Code records the findings and results; defects and failures make one
    list for one new implementer, then a targeted re-check. How many fixes and
-   rounds a gate allows is held in code, not here. Then a judge, a fresh primary
-   context: it re-runs nothing, decides every open entry and every Convention
+   rounds a gate allows is held in code, not here.
+6. **Judge.** A fresh primary judge decides every open entry and every Convention
    (let through, one round with a cause, or a question to you), records its
    verdict and its prediction of your verdict, and lands the branch: the working commits
    become the ones a reviewer reads, one or a few by meaning, on the same tree;
    a backup branch keeps the old ones.
-6. **The human gate.** One page: what was decided without you, what is still
+7. **Human review.** The page shows what was decided without you, what is still
    open with the judge's report, the e2e (the use cases, each with its last
    result and the commit it ran on; the ones marked "you check" are yours),
    and the landed commits, each with a walkthrough. The build session reports
@@ -65,7 +68,7 @@ is shorter; none is skipped, and every plan ends in a human gate.
    then the judge again (it lands) and back to the gate. The contact relays
    your notes, round requests and approval unchanged to the same build session;
    notes alone start no round.
-7. **Finish.** `accept --by --words` records the user’s or authorized acceptor’s
+8. **Finish.** `accept --by --words` records the user’s or authorized acceptor’s
    approval of the current page; finish runs when instructed. It asks
    nothing: the run file says how it ends (a merge request, or local with
    `--no-ff` or `--ff-only`) and whether the plan's backups go; the message
@@ -123,10 +126,12 @@ linters and typechecks.
 
 Native hooks only advise: none blocks a tool or interprets a shell command.
 Each host manifest selects its registration under `adapters/`; native payloads
-reach the normalized handler in `hooks/advise.py`. When a session starts, resumes or is compacted, the agent gets
-`status` of each plan from `building` to `passed`. After an edit of a compiled
-plan's rendered or state file, it is told which `pipeline.py` command makes that
-change. In Claude Code the hooks run once the plugin is enabled. In Codex you
+reach the normalized handler in `hooks/advise.py`. At startup, resume and
+compaction, `status --current` identifies plans by path and shows their next
+actions. The main checkout shows approved plans awaiting a separate start
+instruction and ongoing runs. A linked worktree shows its own run. After an edit
+of a compiled plan's rendered or state file, the hook names the `pipeline.py`
+command that makes the change. In Claude Code the hooks run once the plugin is enabled. In Codex you
 trust them, and again after every plugin update. Untrusted or off, they change
 no run: only the advice is lost. Qoder uses its own `QODER_PLUGIN_ROOT`
 registration. Host permissions and trust remain the user’s decision.
