@@ -42,16 +42,6 @@ def plan_advice(path):
     return "\n".join(drift)
 
 
-def session_start(cwd):
-    rows = json.loads(cli("status", "--json", cwd=cwd) or "[]")
-    root = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd, capture_output=True, text=True).stdout.strip()
-    listing = cli("status", cwd=cwd).splitlines()
-    out = [next((l for l in listing if l.startswith(r["plan"] + " — ")), "") if not r.get("status")
-           else cli("status", os.path.join(root, ".ai-workflow", "plans", r["plan"] + ".md"), cwd=cwd).rstrip()
-           for r in rows]
-    return "\n\n".join(t for t in out if t)
-
-
 def advice(data):
     if not isinstance(data, dict):
         return ""
@@ -59,7 +49,7 @@ def advice(data):
     if not isinstance(cwd, str) or not cwd.strip():
         return ""
     if data.get("event") == "session_start":
-        return session_start(cwd)
+        return cli("status", "--current", cwd=cwd).rstrip()
     paths = data.get("paths")
     if data.get("event") != "edit" or not isinstance(paths, list) or not all(isinstance(p, str) and p for p in paths):
         return ""

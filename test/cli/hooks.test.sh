@@ -24,9 +24,13 @@ claude_edit() { # tool path
 codex_patch() { # path cwd
   python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"PostToolUse","tool_name":"apply_patch","cwd":sys.argv[2],"tool_input":{"command":"*** Begin Patch\n*** Update File: "+sys.argv[1]+"\n@@\n-a\n+b\n*** End Patch"}}))' "$@"
 }
+normalized_start() {
+  python3 -c 'import json,sys; print(json.dumps({"event":"session_start","cwd":sys.argv[1]}))' "$1" | python3 -B "$advice"
+}
 
 repo=$(mktemp_dir)
 cd "$repo" || exit 1
+repo=$(pwd -P)
 git init -q
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 git commit -q --allow-empty -m base
@@ -87,13 +91,38 @@ for s in b a m; do
     approve_plan "$plans/2026-11-17-$s.md" >/dev/null || fail "approve $s"
   fi
 done
-cli build start "$plans/2026-11-17-b.md" --base HEAD --note go >/dev/null || fail "building"
+a="$repo/$plans/2026-11-17-a.md"
 b="$repo/$plans/2026-11-17-b.md"
+base=$(git rev-parse HEAD)
+linked="$repo/build tree"
+cli build start "$b" --base "$base" --worktree "$linked" >/dev/null || fail "building in a real worktree"
+cli phase start "$b" 1 >/dev/null || fail "open linked phase"
 
 # hooks#status-at-start: normalized input returns plain advice without a native envelope.
-out=$(python3 -c 'import json,sys; print(json.dumps({"event":"session_start","cwd":sys.argv[1]}))' "$repo" | python3 -B "$advice")
+out=$(normalized_start "$repo")
 assert_contains "$out" "Status: building" "normalized lifecycle advice" || exit 1
+assert_contains "$out" "Workflow for $a" "hooks#status-at-start: approved plan awaiting a separate start is visible by path" || exit 1
+assert_contains "$out" "Workflow for $b" "hooks#status-at-start: building plan has its own path" || exit 1
+assert_contains "$out" "Coordinator — Wait for the user's separate start instruction" "hooks#status-at-start: approved plan explains the wait" || exit 1
+assert_eq "$out" "$(cli status --current)" "hooks#status-at-start: main checkout advice is current CLI status" || exit 1
 case "$out" in *hookSpecificOutput*) fail "common advice must not wrap native output" ;; esac
+
+# hooks#status-at-start build#workflow-progress: only the relevant run is shown from a linked checkout.
+mkdir -p "$linked/src/deep"
+out=$(normalized_start "$linked/src/deep")
+assert_contains "$out" "Workflow for $b" "hooks#status-at-start: the linked checkout discovers the plan stored in the main checkout" || exit 1
+assert_contains "$out" "Build — current" "hooks#status-at-start: resume shows the current stage" || exit 1
+assert_contains "$out" "Implementer for phase 1 — Work from the phase brief" "hooks#status-at-start: resume names the owner and action" || exit 1
+assert_eq "$(cli status "$b")" "$out" "hooks#status-at-start: linked advice matches explicit plan status" || exit 1
+assert_eq "$out" "$(cd "$linked/src/deep" && cli status --current)" "hooks#status-at-start: linked advice matches current CLI status" || exit 1
+assert_eq "[$(cli status "$b" --json)]" "$(cd "$linked" && cli status --current --json)" "build#workflow-progress: current JSON contains the same linked plan and workflow" || exit 1
+assert_contains "$(cd "$linked" && cli status)" "2026-11-17-b — building" "build#workflow-progress: the existing CLI inventory finds the main checkout's plan" || exit 1
+
+other="$repo/other tree"
+git worktree add -q -b unrelated "$other" "$base" || fail "create unrelated worktree"
+assert_eq "" "$(normalized_start "$other")" "hooks#status-at-start: an unrelated checkout is quiet" || exit 1
+assert_eq "" "$(cd "$other" && cli status --current)" "hooks#status-at-start: current CLI status is quiet in an unrelated checkout" || exit 1
+
 # hooks#advise-only: malformed normalized input stays quiet.
 for payload in '{"event":"unknown","paths":[]}' '{"event":"edit","paths":"bad"}' '[]' 'not json'; do
   out=$(printf '%s' "$payload" | python3 -B "$advice")
@@ -101,27 +130,21 @@ for payload in '{"event":"unknown","paths":[]}' '{"event":"edit","paths":"bad"}'
   assert_eq "" "$out" "malformed normalized advice is quiet" || exit 1
 done
 
-# hooks#status-at-start: every start source, both hosts, gives the building plan's status alone
+# hooks#status-at-start: every start source, both hosts, gives current status
 for src in startup resume compact; do
   fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"SessionStart","source":sys.argv[1],"cwd":sys.argv[2]}))' "$src" "$repo")"
   assert_eq 0 "$rc" "$src exits 0" || exit 1
   c=$(ctx)
   assert_contains "$c" "2026-11-17-b — " "$src: status of the building plan" || exit 1
   assert_contains "$c" "Status: building" "$src: the full status" || exit 1
-  case "$c" in *2026-11-17-a*|*2026-11-17-m*|*2026-11-17-d*) fail "$src: only the building plan: $c" ;; esac
+  assert_contains "$c" "Workflow for $a" "$src: status of the approved plan" || exit 1
+  case "$c" in *2026-11-17-m*|*2026-11-17-d*) fail "$src: merged and draft plans stay out: $c" ;; esac
   assert_contains "$out" '"hookEventName": "SessionStart"' "$src: the event is named" || exit 1
 done
 # Codex sends the same fields plus its own; a subdirectory cwd still finds the repo
-mkdir -p src/deep
-fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"SessionStart","source":"compact","cwd":sys.argv[1],"model":"gpt","permission_mode":"default","session_id":"s"}))' "$repo/src/deep")"
+fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"SessionStart","source":"compact","cwd":sys.argv[1],"model":"gpt","permission_mode":"default","session_id":"s"}))' "$linked/src/deep")"
 assert_contains "$(ctx)" "2026-11-17-b — " "Codex compact from a subdirectory" || exit 1
-
-# hooks#status-at-start: no plan from building to passed → nothing
-cli plan status "$plans/2026-11-17-b.md" approved --note waiting >/dev/null || fail "set b outside live statuses"
-fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"SessionStart","source":"startup","cwd":sys.argv[1]}))' "$repo")"
-assert_eq "" "$out" "no live plan: nothing" || exit 1
-assert_eq 0 "$rc" "no live plan: exit 0" || exit 1
-cli plan status "$plans/2026-11-17-b.md" building --note again >/dev/null || fail "building again"
+assert_eq "$(cli status "$b")" "$(ctx)" "hooks#status-at-start: native compact selects the linked plan" || exit 1
 
 # hooks#status-at-start: a live plan with no state file (pre-5.1) is handed over with the CLI's fix line; a draft stays out
 mkplan 2026-11-01-old; edit "$plans/2026-11-01-old.md" 'Status: draft' 'Status: building'
@@ -139,11 +162,11 @@ fire "$(claude_edit Edit "$b" "$repo")"
 assert_contains "$(ctx)" "pipeline.py plan status" "a Status edit names plan status" || exit 1
 assert_contains "$out" '"hookEventName": "PostToolUse"' "the event is named" || exit 1
 edit "$b" 'Status: passed' 'Status: building'
-edit "$b" '### 1. One — `waiting`' '### 1. One — `done`'
+edit "$b" '### 1. One — `in progress`' '### 1. One — `done`'
 fire "$(claude_edit Write "$b" "$repo")"
 assert_contains "$(ctx)" "phase start" "a phase heading edit names phase start / phase done" || exit 1
 assert_contains "$(ctx)" "phase done" "a phase heading edit names phase done" || exit 1
-edit "$b" '### 1. One — `done`' '### 1. One — `waiting`'
+edit "$b" '### 1. One — `done`' '### 1. One — `in progress`'
 edit "$b" 'A.' 'Approach changed.'
 fire "$(claude_edit Edit "$b" "$repo")"
 assert_contains "$(ctx)" "pipeline.py approve" "an Approach edit names approve" || exit 1
