@@ -27,11 +27,11 @@ a role from an inherited model. Shared handoff and acceptance rules:
 
 ```toml
 [executors."GPT".primary]
-model = "gpt-6.1-sol"
-effort = "ultra"
+model = "gpt-6.2-astra"
+effort = "high"
 
 [executors."GPT".secondary]
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 effort = "high"
 
 [executors."Qwen".primary]
