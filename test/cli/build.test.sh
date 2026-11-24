@@ -127,7 +127,7 @@ echo a > src/a.txt; echo o > docs/out.txt
 git add src/a.txt docs/out.txt && git commit -q -m "p1" -- src/a.txt docs/out.txt
 c1=$(git rev-parse HEAD)
 echo s > src/staged.txt; git add src/staged.txt
-cli phase report "$plan" 1 --became "src exists" --skills "tdd" --interfaces "none" --checks "ok" --commit "$c1" >/dev/null || fail "report"
+report_phase "$plan" 1 --became "src exists" --skills "tdd" --interfaces "none" --checks "ok" --commit "$c1" >/dev/null || fail "report"
 out=$(cli phase done "$plan" 1); rc=$?
 assert_eq 1 "$rc" "phase done refuses: $out" || exit 1
 assert_contains "$out" "docs/out.txt" "names the path outside the territory" || exit 1
@@ -151,10 +151,11 @@ assert_contains "$out" "phase 1" "names the owner" || exit 1
 cli grant "$plan" 1 docs/out.txt >/dev/null || fail "grant"
 git commit -q -m "staged" -- src/staged.txt
 c2=$(git rev-parse HEAD)
-cli phase report "$plan" 1 --became "src exists" --skills "tdd" --interfaces "none" --checks "ok" --commit "$c1" --commit "$c2" >/dev/null || fail "report again"
+report_phase "$plan" 1 --became "src exists" --skills "tdd" --interfaces "none" --checks "ok" --commit "$c1" --commit "$c2" >/dev/null || fail "report again"
 out=$(cli phase done "$plan" 1); rc=$?
 assert_eq 0 "$rc" "phase done passes: $out" || exit 1
 assert_contains "$out" "ready: 2" "phase 2 is ready" || exit 1
+assert_contains "$out" 'Coordinator — Start phase 2' "build#workflow-progress: closing a prerequisite names the newly ready phase and its owner" || exit 1
 grep -q '^### 1. One — `done`$' "$plan" || fail "phase 1 is done"
 
 # build#act-with-a-reason: a commit that is not on the branch after the base
@@ -167,10 +168,10 @@ import json, sys
 h = [e for e in json.load(open(sys.argv[1]))["history"] if e["note"] == "redo"][0]
 assert h["sha"] == sys.argv[2] and h["from"] == "done" and h["to"] == "in progress", h
 PY
-cli phase report "$plan" 1 --became x --commit "$v0" >/dev/null
+report_phase "$plan" 1 --became x --commit "$v0" >/dev/null
 out=$(cli phase done "$plan" 1); rc=$?
 assert_eq 1 "$rc" "a commit before the base is refused" || exit 1
-cli phase report "$plan" 1 --became "src exists" --commit "$c1" --commit "$c2" >/dev/null
+report_phase "$plan" 1 --became "src exists" --commit "$c1" --commit "$c2" >/dev/null
 cli phase done "$plan" 1 >/dev/null || fail "done again"
 
 # records: parallel decisions all land
@@ -275,7 +276,7 @@ approve_plan "$planb" >/dev/null || fail "approve b"
 cli build start "$planb" --base v0 >/dev/null || fail "build start b"
 cli phase start "$planb" 1 >/dev/null || fail "phase start b"
 mkdir -p src; echo b > src/b.txt; git add src/b.txt; git commit -q -m b -- src/b.txt
-cli phase report "$planb" 1 --became b --commit "$(git rev-parse HEAD)" >/dev/null || fail "report b"
+report_phase "$planb" 1 --became b --commit "$(git rev-parse HEAD)" >/dev/null || fail "report b"
 python3 -B - "$pipeline" "$planb" <<'PY'
 import sys; sys.path.insert(0, sys.argv[1].rsplit("/", 1)[0])
 import pipeline
@@ -298,7 +299,7 @@ mkdir -p docs; echo s > docs/side.txt; git add docs/side.txt; git commit -q -m s
 git switch -q mg
 git merge -q --no-ff side -m merge
 cmerge=$(git rev-parse HEAD)
-cli phase report "$planm" 1 --became m --commit "$cm1" --commit "$cmerge" >/dev/null || fail "report m"
+report_phase "$planm" 1 --became m --commit "$cm1" --commit "$cmerge" >/dev/null || fail "report m"
 out=$(cli phase done "$planm" 1); rc=$?
 assert_eq 1 "$rc" "a merge commit's paths are checked: $out" || exit 1
 assert_contains "$out" "docs/side.txt" "names the path the merge brought in" || exit 1

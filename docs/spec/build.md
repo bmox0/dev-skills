@@ -143,3 +143,25 @@ Why: CLI locking cannot prevent delayed old-worker reports or commits
 - Remove native messaging → actionable question/error/result reaches the coordinator through the agreed result/artifact channel; no idle state, timeout or permission prompt approves/completes work.
 - Replace an unresumable, confirmed-stopped attempt → the same role uses current reports/Git facts without phase restart, duplicate reports or replay; an unknown/still-writing old attempt blocks replacement.
 - Drive a complete Qoder temporary-repository workflow, including question/recovery and authorized finish → captured evidence meets the same contract; fixtures cannot satisfy this required live case
+
+### workflow-progress — The workflow view shows eight stages, current owners and the next permitted actions or waits
+
+Why: a fresh coordinator needs to recover the route at any handoff
+
+- Enter with no plan, then view a draft with optional steps taken or skipped and a legacy plan missing that history → all eight stages are identifiable, optional history is honest, and neither inspection nor consent launches work.
+- Open two independent phases and a dependent phase → the coordinator sees parallel owners and waits, each brief gives its territory, TDD and checks, and a configured check with no reported outcome keeps its phase open. Close the last phase → the output names gate start.
+- Resume an approved plan and a building plan from their relevant checkouts → CLI and hook agree on the plan, stage, owner and next action. With several plans each has its own path. A session unrelated to any run gets no unsolicited workflow.
+- Drive judge pass, land, human notes, an authorized round, renewed review and acceptance through configured finish → every handoff names the next role or wait, and merged is terminal. Open a fixture merge request → the guide shows the outstanding merge.
+
+### phase-check-outcomes — Completing a phase with configured checks requires a report of their outcomes
+
+Why: a completed phase is used to release dependent work
+
+- Open two independent phases and a dependent phase → the coordinator sees parallel owners and waits, each brief gives its territory, TDD and checks, and a configured check with no reported outcome keeps its phase open. Close the last phase → the output names gate start.
+
+### review-completion — Gate readiness distinguishes completed review of the assigned range and applicable E2E evidence for the current change
+
+Why: a clean review, missing review and stale check lead to different next steps
+
+- Run a normal gate and finish a clean review → status distinguishes pending review from zero findings and names outstanding E2E cases. Retry review completion and submit an old range after a change → current evidence remains accurate.
+- Change the tree after verification, then drive a fix and a targeted recheck → the required cases and reviewer are named, stale evidence cannot silently satisfy the judge, and existing explicit exceptions remain visible. On small, review remains required and the human sees the cases to try.

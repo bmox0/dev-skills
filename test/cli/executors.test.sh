@@ -3,7 +3,7 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PIPELINE="$here/../../skills/build/pipeline.py"
 python3 -B <<'PY'
-import json, os, pathlib, subprocess, tempfile, tomllib
+import json, os, pathlib, shlex, subprocess, tempfile, tomllib
 
 presets = '''## Executors
 
@@ -191,22 +191,28 @@ none
         assert 'confirmed stopped' in text and 'write-capable jobs' in text, text
         assert 'Return contact: dispatching build coordinator' in text, text
         return text
+    def complete_review(text):
+        prefix = '- Complete the review: '
+        args = shlex.split(next(line.removeprefix(prefix) for line in text.splitlines() if line.startswith(prefix)))
+        result = command(*args)
+        assert result.returncode == 0, result.stdout + result.stderr
     cli('brief', 'implementer', plan, '1', ok=False, code='--provider')
     brief('implementer', 'secondary', '1')
     cli('phase', 'start', plan, '1')
     (root / 'src/a').write_text('built\n')
     git('commit', '-qm', 'phase', '--', 'src/a')
-    cli('phase', 'report', plan, '1', '--became', 'built', '--commit', git('rev-parse', 'HEAD'))
+    cli('phase', 'report', plan, '1', '--became', 'built', '--commit', git('rev-parse', 'HEAD'),
+        '--check', 'scripts/check', 'failed: scripts/check is missing in the throwaway repository')
     cli('phase', 'done', plan, '1')
     cli('gate', 'start', plan)
-    brief('reviewer', 'primary')
     brief('verify', 'secondary')
     cli('finding', plan, '--kind', 'defect', '--where', 'src/a:1', '--source', 'plan', '--text', 'fix fixture')
+    complete_review(brief('reviewer', 'primary'))
     cli('fix', 'start', plan)
     brief('fix', 'secondary')
     cli('fix', 'report', plan, '--became', 'no change needed')
     cli('fix', 'done', plan)
-    brief('reviewer', 'secondary')
+    complete_review(brief('reviewer', 'secondary'))
     brief('judge', 'primary')
     # build#judge-file-by-code: open engine names, first prediction required, later file immutable.
     cli('verdict', 'pass', plan, '--report', 'ready', '--engine', 'qwen', ok=False, code='no-prediction')
@@ -230,6 +236,6 @@ none
     brief('round', 'secondary')
     cli('round', 'report', plan, '--became', 'no change needed')
     cli('round', 'done', plan)
-    brief('reviewer', 'secondary')
+    complete_review(brief('reviewer', 'secondary'))
     brief('judge', 'primary')
 PY

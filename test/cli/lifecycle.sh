@@ -8,3 +8,14 @@ approve_plan() {
   cli summary approve "$consent_plan" --file "$consent_summary" --by user --words 'Fixture summary approved' >/dev/null || return
   printf '%s\n' "$validation"
 }
+
+report_phase() {
+  cli phase report "$@" --check scripts/check 'failed: scripts/check is missing in the throwaway repository'
+}
+
+complete_review() {
+  local review_brief review_command
+  review_brief=$(cli brief reviewer "$@") || return
+  review_command=$(sed -n 's/^- Complete the review: //p' "$review_brief")
+  [[ -n "$review_command" ]] && bash -c "$review_command" >/dev/null
+}

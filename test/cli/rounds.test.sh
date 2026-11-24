@@ -82,9 +82,10 @@ PY
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   if [ "${1:-}" = red ]; then echo r > src/red.txt; else echo r > src/p.txt; fi
   git add src && git commit -q -m p1 -- src
-  cli phase report "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
+  report_phase "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
   cli phase done "$plan" 1 >/dev/null || fail "phase done"
   cli gate start "$plan" >/dev/null || fail "gate start"
+  complete_review "$plan" || fail "complete initial review"
   if [ "${1:-}" != missing ]; then
     cli result "$plan" --case 1 --outcome passed --capture 'fixture output 1' >/dev/null || fail "fixture result 1"
     cli result "$plan" --case 2 --outcome passed --capture 'fixture output 2' >/dev/null || fail "fixture result 2"
@@ -107,6 +108,8 @@ cli fix report "$plan" --became x --commit "$f1" >/dev/null || fail "fix report"
 cli fix done "$plan" >/dev/null || fail "fix done"
 cli finding "$plan" --kind convention --where src/a.txt:1 --source AGENTS.md --text "a convention" >/dev/null || fail "convention"
 cli finding "$plan" --kind defect --where src/a.txt:2 --source plan --text "a defect" >/dev/null || fail "defect"
+cli result "$plan" --case 2 --outcome passed --capture shot2.png >/dev/null || fail "targeted verification"
+complete_review "$plan" || fail "complete review"
 b=$(cli brief judge "$plan") || fail "brief judge"
 for want in "$repo_root/skills/build/references/judge.md" "shot1.png" "shot2.png" "a convention" "Fix 1" "Open:" "$(git rev-parse --short "$f1")" "checks at"; do
   grep -q -- "$want" "$b" || fail "the gate's judge brief holds: $want"
@@ -162,6 +165,7 @@ grep -q "^## Round 2 · \`$(git rev-parse --short "$c2")..$(git rev-parse --shor
 
 # build#judge-reads-the-round: a new file with the judge file, the round's notes and its re-check only
 cli result "$plan" --case 1 --outcome passed --capture r2.png >/dev/null || fail "round 2 result"
+complete_review "$plan" || fail "complete review"
 rb2=$(cli brief judge "$plan") || fail "brief judge after a round"
 [ "$rb2" != "$b" ] || fail "a new file after a round"
 grep -q "2026-11-16-r.judge.md" "$rb2" && grep -q "third" "$rb2" && grep -q "r2.png" "$rb2" || fail "the round brief holds the judge file, the notes and the re-check"
@@ -173,7 +177,7 @@ b=$(cli brief verify "$plan" --cases 1) || fail "brief verify --cases"
 grep -q "1\. a → b" "$b" || fail "a round re-check drives the named case"
 b=$(cli brief reviewer "$plan") || fail "brief reviewer on a round"
 from=$(json "print(c['rounds'][1]['from'])")
-grep -q "^Range: $from\.\.HEAD" "$b" || fail "the round reviewer's range starts where the round did: $(grep Range: "$b")"
+grep -q "^Range: $from\.\.$c3" "$b" || fail "the round reviewer's range starts where the round did: $(grep Range: "$b")"
 
 # a judge's round takes only the judge's notes, in the judge's words, source judge
 cli note add "$plan" --text "user waits" --cause bug >/dev/null || fail "note 5"
@@ -186,6 +190,7 @@ grep -q "judge note one — bug — judge — \`$(git rev-parse --short "$c4")\`
 grep -q "^5\. user waits — bug$" "$notes" || fail "the user's note waits under Open"
 out=$(cli status "$plan")
 assert_contains "$out" "Round 3 (judge)" "status shows the rounds" || exit 1
+complete_review "$plan" || fail "complete review"
 rb3=$(cli brief judge "$plan") || fail "brief judge after round 3"
 grep -q "Re-check verify: no case to drive" "$rb3" || fail "build#judge-reads-the-round: a round that touched no case says so: $(grep -i verify "$rb3")"
 h=$(cli verdict --help)
@@ -218,6 +223,7 @@ c=$(commit u1)
 cli round report "$plan" --became x --commit "$c" >/dev/null
 cli note edit "$plan" 7 --source missed >/dev/null
 cli round done "$plan" >/dev/null || fail "user round done"
+complete_review "$plan" || fail "complete review"
 out=$(cli verdict round "$plan" --report r --note e1 bug)
 assert_contains "$out" "verdict 5: round at" "the count starts afresh after a user's round" || exit 1
 case $out in *stopped*) fail "not stopped after a user's round";; esac
@@ -235,11 +241,13 @@ cli fix start "$plan" >/dev/null || fail "s2 fix"
 git rm -q src/red.txt && git commit -q -m fixred -- src/red.txt
 cli fix report "$plan" --became x --commit "$(git rev-parse HEAD)" >/dev/null
 cli fix done "$plan" | grep -q "checks at.*green" || fail "s2 green after the fix"
+complete_review "$plan" || fail "complete review"
 cli verdict round "$plan" --report r --note a1 bug "${vfirst[@]}" >/dev/null || fail "s2 v1"
 cli round start "$plan" >/dev/null || fail "s2 round"
 echo r > src/red.txt; git add src/red.txt; git commit -q -m again -- src/red.txt
 cli round report "$plan" --became x --commit "$(git rev-parse HEAD)" >/dev/null
 cli round done "$plan" | grep -q "red" || fail "s2 red again"
+complete_review "$plan" || fail "complete review"
 out=$(cli verdict round "$plan" --report r --note b1 bug --decide check-1 round x)
 assert_contains "$out" "a check fixed before is red again" "the second sign" || exit 1
 
@@ -252,6 +260,7 @@ cli finding "$plan" --kind defect --where src/a.txt:2 --source plan --text d2 >/
 cli fix start "$plan" >/dev/null || fail "s3 fix 2"
 c=$(commit s3b); cli fix report "$plan" --became x --commit "$c" >/dev/null; cli fix done "$plan" >/dev/null
 cli finding "$plan" --kind defect --where src/a.txt:2 --source plan --text d2again --again D2 >/dev/null
+complete_review "$plan" || fail "complete review"
 out=$(cli verdict round "$plan" --report r --note a1 bug --decide D2 round x "${vfirst[@]}")
 assert_contains "$out" "fixes are spent and a Defect stands: D2" "the third sign" || exit 1
 
@@ -261,6 +270,7 @@ for i in 1 2; do
   if [ $i = 1 ]; then cli verdict round "$plan" --report r --note "j$i" bug "${vfirst[@]}" >/dev/null; else cli verdict round "$plan" --report r --note "j$i" bug --note "k$i" bug --note "l$i" bug >/dev/null; fi
   cli round start "$plan" >/dev/null || fail "stop: round $i"
   c=$(commit "q$i"); cli round report "$plan" --became x --commit "$c" >/dev/null; cli round done "$plan" >/dev/null
+  complete_review "$plan" || fail "complete review"
 done
 cli verdict round "$plan" --report r --note "stopped note" bug --note s2 bug --note s3 bug | grep -q "round stopped" || fail "the third verdict stops converging"
 cli round start "$plan" >/dev/null && fail "build#caps-in-code: a stopped verdict's notes start no round"
@@ -285,6 +295,7 @@ cli fix report "$plan" --became x --commit "$(git rev-parse HEAD)" >/dev/null
 cli fix done "$plan" >/dev/null
 assert_contains "$(cli status "$plan")" "check-1 (open, survived fix 1)" "build#survivor-to-open: the check red again is open" || exit 1
 cli result "$plan" --case 1 --outcome passed --capture a.png >/dev/null; cli result "$plan" --case 2 --outcome passed --capture b.png >/dev/null
+complete_review "$plan" || fail "complete review"
 out=$(cli verdict pass "$plan" --report r --decide D1 let-through x "${vfirst[@]}" 2>&1)
 assert_contains "$out" "check-1 has no decision" "build#survivor-to-open: a verdict must decide the check red again" || exit 1
 
@@ -324,6 +335,9 @@ for n in "evidence recorded" ""; do
 done
 cli verdict round "$plan" --report r --note "make it greener" feel-ui "${vfirst[@]}" >/dev/null || fail "a verdict after the answer"
 cli round start "$plan" >/dev/null || fail "a round after the answer"
+cli round report "$plan" --became "checked the answer" >/dev/null || fail "round report"
+cli round done "$plan" >/dev/null || fail "round done after answer"
+complete_review "$plan" || fail "complete review"
 b=$(cli brief judge "$plan") || fail "a round brief after the next verdict needs no note"
 ! grep -q "Question asked" "$b" || fail "a brief after the next verdict does not print the old question"
 

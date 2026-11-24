@@ -80,9 +80,10 @@ PY
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   echo 1 >> src/a.txt; git commit -q -m c1 -- src/a.txt
   echo b > src/b.txt; echo c > src/c.txt; git add src; git commit -q -m c2 -- src
-  cli phase report "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
+  report_phase "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
   cli phase done "$plan" 1 >/dev/null || fail "phase done"
   cli gate start "$plan" >/dev/null || fail "gate start"
+  complete_review "$plan" || fail "complete review"
   cli verdict pass "$plan" --report ok --predicted pass --engine claude >/dev/null || fail "verdict"
   shape=${plan%.md}.shape.toml
 }
@@ -149,6 +150,7 @@ out=$(cli status "$plan") && cli phase start "$plan" 1 --note x >/dev/null || fa
 # re-land: the last shape, a new path apart, backup-2, one section with range-diff and since
 echo d > src/d.txt; git add src/d.txt; git commit -q -m round -- src/d.txt
 cli gate start "$plan" --note "fixture recheck of reopened phase" >/dev/null || fail "recheck"
+complete_review "$plan" || fail "complete review"
 cli verdict pass "$plan" --report "reviewed added path" >/dev/null || fail "fresh judge"
 cli land draft "$plan" >/dev/null || fail "re-draft"
 python3 - "$shape" <<'PY' || fail "the re-draft: $(cat "$shape")"
@@ -266,13 +268,19 @@ out=$(cli verdict evidence-owed "$plan" --report "the cases have no capture" --d
 assert_eq 1 "$rc" "evidence-owed takes no decisions" || exit 1
 cli verdict evidence-owed "$plan" --owed verify --report "the cases have no capture" >/dev/null || fail "evidence-owed with an Open entry undecided"
 assert_contains "$(statuses)" "owed by verify: the cases have no capture" "status lists it" || exit 1
-b=$(cli brief judge "$plan") || fail "brief judge"
+complete_review "$plan" || fail "complete review"
+out=$(cli brief judge "$plan"); rc=$?
+assert_eq 1 "$rc" "build#review-completion: an unscoped Verify request still requires resolution" || exit 1
+assert_contains "$out" "result-missing" "the refusal identifies Verify evidence" || exit 1
+b=$(cli brief judge "$plan" --note 'The fixture cannot capture the assigned case') || fail "brief judge with an explicit exception"
 grep -q "^Owed: verify" "$b" && grep -q "^Case: at the gate" "$b" || fail "the next brief is the same case"
 [ ! -e "${plan%.md}.judge.md" ] || fail "no judge file from an owed verdict"
 cli verdict evidence-owed "$plan" --owed reviewer --report "the range was not reviewed" >/dev/null || fail "evidence-owed names the judge's word: reviewer"
 assert_contains "$(statuses)" "owed by reviewer: the range was not reviewed" "status lists the reviewer" || exit 1
-out=$(cli verdict pass "$plan" --report r --decide D1 let-through x); rc=$?
+complete_review "$plan" || fail "complete the newly requested review"
+out=$(cli verdict pass "$plan" --report r --decide D1 let-through x --evidence-note 'The fixture cannot capture the assigned case'); rc=$?
 assert_eq 1 "$rc" "the first real verdict still needs the Prediction" || exit 1
+assert_contains "$out" "no-prediction" "neither evidence-owed verdict writes the Prediction" || exit 1
 
 # land#backup-first: a tree on another branch than the plan's is refused by every action, naming both
 newrepo
@@ -305,6 +313,7 @@ newrepo
 echo '*.gen' >> .git/info/exclude
 echo g > src/x.gen; git add -f src/x.gen; git commit -q -m gen -- src/x.gen
 cli gate start "$plan" >/dev/null || fail "recheck generated file"
+complete_review "$plan" || fail "complete review"
 cli verdict pass "$plan" --report "reviewed generated file" >/dev/null || fail "fresh judge"
 write_shape "" src/a.txt docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md -- src/b.txt src/c.txt src/x.gen
 out=$(cli land "$plan") || fail "land ignored: $out"

@@ -81,10 +81,13 @@ PY
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   echo 1 >> src/a.txt; git commit -q -m c1 -- src/a.txt
   echo b > src/b.txt; echo c > src/c.txt; git add src; git commit -q -m c2 -- src
-  cli phase report "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
+  report_phase "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
   cli phase done "$plan" 1 >/dev/null || fail "phase done"
   cli gate start "$plan" >/dev/null || fail "gate start"
-  [ "${1:-}" = nopass ] || cli verdict pass "$plan" --report ok --predicted pass --engine claude >/dev/null || fail "verdict"
+  if [ "${1:-}" != nopass ]; then
+    complete_review "$plan" || fail "complete review"
+    cli verdict pass "$plan" --report ok --predicted pass --engine claude >/dev/null || fail "verdict"
+  fi
   shape=${plan%.md}.shape.toml
 }
 # shape A B...: two commits, the first holding the paths of $1, the second the rest
@@ -114,6 +117,7 @@ cli decision "$plan" --question "Q1" --from plan --answer "A1" --why "W1" --cost
 cli phase start "$plan" 1 --note "restarted for the page" >/dev/null || fail "phase start note"
 cli result "$plan" --case 1 --outcome passed --capture out1 >/dev/null || fail "result"
 cli finding "$plan" --kind observation --where src/a.txt:1 --source plan --text "an observation" >/dev/null || fail "finding"
+complete_review "$plan" || fail "complete review"
 cli verdict pass "$plan" --report "current records reviewed" >/dev/null || fail "fresh judge"
 land1
 out=$(cli page "$plan" --note "run it"); rc=$?
@@ -142,9 +146,13 @@ echo d > src/d.txt; git add src/d.txt; git commit -q -m round -- src/d.txt
 cli result "$plan" --case 1 --outcome passed --capture out2 >/dev/null || fail "result 2"
 cli finding "$plan" --kind observation --where src/a.txt:1 --source plan --text "second" >/dev/null
 cli gate start "$plan" --note "fixture recheck" >/dev/null || fail "recheck"
+complete_review "$plan" || fail "complete review"
 out=$(cli verdict pass "$plan" --report again) || fail "verdict 2: $out"
 write_shape "d added" src/a.txt docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md -- src/b.txt src/c.txt src/d.txt
+reviewed=$(git rev-parse HEAD)
 cli land "$plan" >/dev/null || fail "re-land"
+landed=$(git rev-parse HEAD)
+[ "$reviewed" != "$landed" ] || fail "the fixture must rewrite history"
 g=$(sed -n '/^## Human gate/,$p' "$plan")
 assert_contains "$g" "1. a → b — passed — out2 — at" "the page draws the latest result" || exit 1
 case "$(echo "$g" | grep 'out2')" in *"[taken on"*) fail "a result on the pre-land head is flagged: $g";; esac
@@ -156,9 +164,22 @@ st = json.load(open(sys.argv[1]))
 st["cycles"][0]["results"].append({**st["cycles"][0]["results"][0], "commit": None, "capture": "nocommit"})
 json.dump(st, open(sys.argv[1], "w"))
 PY
+out=$(cli brief judge "$plan") || fail "build#review-completion: the landed tip retains its review: $out"
+assert_contains "$(cat "$out")" "Review complete (2 findings in cycle): gate $(git rev-parse v0)..$reviewed" "build#review-completion: the brief shows the authorized pre-land range" || exit 1
+git commit -q --allow-empty -m 'unrelated same-tree rewrite' || fail "rewrite fixture history"
+out=$(cli brief judge "$plan"); rc=$?
+assert_eq 1 "$rc" "build#review-completion: a different same-tree tip needs its own review" || exit 1
+assert_contains "$out" "review-missing" "build#review-completion: a different tip cannot reuse the pre-land review" || exit 1
+out=$(cli verdict pass "$plan" --report "unrelated rewrite"); rc=$?
+assert_eq 1 "$rc" "build#review-completion: verdict also rejects the unrelated tip" || exit 1
+git reset -q --hard "$landed" || fail "restore authorized land"
 cli verdict pass "$plan" --report "reviewed unknown capture provenance" >/dev/null || fail "judge unknown capture"
+out=$(statuses | sed -n '/^Next:/,/^Gate:/p')
+assert_contains "$out" 'render `page`' "build#workflow-progress: a provenance refresh asks for a page" || exit 1
 cli page "$plan" --note "open src and read" --message "feat: the merge" >/dev/null || fail "redraw"
 assert_contains "$(sed -n '/^## Human gate/,$p' "$plan")" "unknown commit" "a record with no commit is flagged" || exit 1
+out=$(statuses | sed -n '/^Next:/,/^Gate:/p')
+assert_contains "$out" 'Review the current page' "build#workflow-progress: redrawing returns to human review" || exit 1
 first=$(git rev-parse backup/l-1)
 python3 - "${plan%.md}.json" "$first" <<'PY'
 import json, sys
@@ -185,18 +206,24 @@ assert t.endswith("## Human gate\n\nhand written: keep\n"), t[-80:]
 PY
 # build#page-from-records: Open holds only what is open; a closed item shows once, under the round that took it; a flag names the paths changed since
 newrepo nopass
+out=$(cli verdict pass "$plan" --report 'Small gate without review' --predicted pass --engine fixture); rc=$?
+assert_eq 1 "$rc" "build#review-completion: small still needs a completed review" || exit 1
+assert_contains "$out" "review-missing" "build#review-completion: small names the missing review" || exit 1
 cli finding "$plan" --kind convention --where src/a.txt:1 --source AGENTS.md --text "closed convention" >/dev/null || fail "C1"
 cli finding "$plan" --kind convention --where src/a.txt:2 --source AGENTS.md --text "kept convention" >/dev/null || fail "C2"
 cli finding "$plan" --kind observation --where src/a.txt:3 --source plan --text "an observation" >/dev/null || fail "O1"
+complete_review "$plan" || fail "complete review"
 cli verdict round "$plan" --report "first verdict report" --decide C1 round "fix it" --decide C2 let-through "style only" --note "the note text" bug --predicted pass --engine claude >/dev/null || fail "verdict round"
 cli round start "$plan" >/dev/null || fail "round start"
 echo r > src/r.txt; git add src/r.txt; git commit -q -m round -- src/r.txt
 cli round report "$plan" --became "did the note" --commit "$(git rev-parse HEAD)" >/dev/null || fail "round report"
 cli round done "$plan" >/dev/null || fail "round done"
+complete_review "$plan" || fail "complete review"
 cli verdict pass "$plan" --report "second verdict report" >/dev/null || fail "verdict pass"
 write_shape "" src/a.txt docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md -- src/b.txt src/c.txt src/r.txt
 cli land "$plan" >/dev/null || fail "land"
 cli page "$plan" --note "run it" --message "feat: m" >/dev/null || fail "page"
+assert_contains "$(sed -n '/^## Human gate/,$p' "$plan")" '1. a → b — you check' "build#review-completion: the small gate hands cases to the user" || exit 1
 python3 - "$plan" <<'PY' || fail "the page: $(sed -n '/^## Human gate/,$p' "$plan")"
 import sys, re
 t = open(sys.argv[1]).read()

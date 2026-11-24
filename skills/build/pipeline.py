@@ -9,22 +9,24 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py run approve PLAN --by NAME --words TEXT
        pipeline.py summary approve PLAN --file PATH --by NAME --words TEXT [--acceptor NAME --authority TEXT]
        pipeline.py accept PLAN --by NAME --words TEXT
-       pipeline.py status [--json] [PLAN]
+       pipeline.py status [--json] [--current | PLAN]
+       pipeline.py workflow [--json]
        pipeline.py plan status [--note TEXT] PLAN VALUE
        pipeline.py plan base [--note TEXT] PLAN REF
        pipeline.py build start --base REF [--worktree PATH] [--note TEXT] PLAN
        pipeline.py phase start|done [--note TEXT] PLAN N
-       pipeline.py phase report --became T --commit SHA [...] PLAN N
+       pipeline.py phase report --became T --commit SHA [...] [--check COMMAND OUTCOME ...] PLAN N
        pipeline.py owner PLAN PATH
        pipeline.py grant [--note TEXT] PLAN N PATH
        pipeline.py decision --question Q --from S --answer A --why W --cost C PLAN
        pipeline.py brief implementer PLAN N | brief judge|round|reviewer|fix PLAN | brief verify [--cases N,N] PLAN   --provider NAME [--note TEXT]
        pipeline.py gate start [--note TEXT] PLAN
        pipeline.py finding --kind K --text T [--where F:L] [--source S] [--again ID] PLAN
+       pipeline.py review complete --assignment NAME --range BASE..HEAD PLAN
        pipeline.py result --case N --outcome passed|failed|not-reached [--capture C] [--detail T] PLAN
        pipeline.py fix start|done PLAN | fix report --became T [--commit SHA ...] PLAN
        pipeline.py verdict pass|round|question PLAN --report T [--decide ID ACTION REASON] [--note T CAUSE] [--evidence-note TEXT]
-       pipeline.py verdict evidence-owed PLAN --owed reviewer|verify --report T
+       pipeline.py verdict evidence-owed PLAN --owed reviewer|verify [--case N ...] --report T
        pipeline.py land draft PLAN | land [now] PLAN | land accept --note T PLAN | land revert [--note T] PLAN
        pipeline.py page --note T [--message T] PLAN
        pipeline.py note add|edit|drop PLAN ...
@@ -48,7 +50,7 @@ gate start, fix done and round done run the plan's `[checks].full` outside the p
 lock, recording each command's result as it ends in a run that is unfinished until
 the last one; other commands work meanwhile. A run whose call is gone stays
 unfinished and runs again at the next of these commands; fix start, verdict and
-the reviewer, fix and judge briefs refuse while the newest run is unfinished.
+the reviewer, fix and judge briefs refuse while the selected run is unfinished.
 build start, compilation and run approval pick a port under one project-wide lock.
 
 run new copies the newest run file beside the plan (else the shipped example) to
@@ -92,6 +94,7 @@ import io
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import shutil
@@ -1518,15 +1521,13 @@ def require_judge(plan, st):
     v = (st.get("verdicts") or [None])[-1]
     if not v or not (v["kind"] == "pass" or v.get("stop")):
         raise Refuse("no-pass", "the judge's last verdict is not a pass or stopped round", "run the judge on the current evidence")
-    require_results(st, v.get("evidence_note"))
     tree = tree_of(plan, st)
-    current = tree_id(tree, "HEAD")
-    allowed = {tree_id(tree, v["head"])} - {None}
+    current = head_sha(None, tree)
     last = (st.get("lands") or [None])[-1]
-    if last and last.get("judge") == v["n"] and last["accepted"]:
-        allowed.add(tree_id(tree, last["tip"]))
-    if v.get("evidence") != judge_evidence(st) or v.get("contract") != contract_digest(plan, st) or current not in allowed:
-        raise Refuse("judge-stale", "the judge does not cover the current tree, planning content or evidence", "run current checks and the judge, then land and page again")
+    landed = (last and last.get("judge") == v["n"] and current == last["tip"]
+              and (last["accepted"] or (not last["difference"] and tree_id(tree, current) == tree_id(tree, v["head"]))))
+    if v.get("evidence") != judge_evidence(st) or v.get("contract") != contract_digest(plan, st) or not (current and (current == v["head"] or landed)):
+        raise Refuse("judge-stale", "the judge does not cover the current commit, planning content or evidence", "run current checks and the judge, then land and page again")
     if st.get("rounds") and not st["rounds"][-1]["done"]:
         raise Refuse("round-open", "a round is still running", "finish the round and run the judge")
     return v
@@ -1663,20 +1664,260 @@ def stale_evidence(plan, st):
     return []
 
 
-def summary(plan, st, head, tail=None):
+WORKFLOW_STAGES = (
+    ("grill", "Grill (optional)"),
+    ("prototype", "Prototype (optional)"),
+    ("plan", "Plan"),
+    ("build", "Build"),
+    ("build-verification", "Build verification"),
+    ("judge", "Judge"),
+    ("human-review", "Human review"),
+    ("finish", "Finish"),
+)
+
+
+def workflow_view(plan, stage, actions, optional=None):
+    current = next(i for i, (key, _) in enumerate(WORKFLOW_STAGES) if key == stage)
+    states = [(optional or {}).get(key, "complete" if i < current or (i == current and not actions) else "current" if i == current else "upcoming")
+              for i, (key, _) in enumerate(WORKFLOW_STAGES)]
+    return {"plan": plan, "stage": stage,
+            "stages": [{"id": key, "label": label, "state": state} for (key, label), state in zip(WORKFLOW_STAGES, states)],
+            "actions": [{"owner": owner, "action": action} for owner, action in actions]}
+
+
+def show_workflow(view):
+    print("Workflow" + (f" for {view['plan']}" if view["plan"] else "") + ":")
+    for stage in view["stages"]:
+        print(f"  {stage['label']} — {stage['state']}")
+    show_next(view["actions"])
+
+
+def show_next(actions):
+    if actions:
+        print("Next:")
+        for step in actions:
+            print(f"  {step['owner']} — {step['action']}")
+
+
+def cmd_workflow(as_json):
+    view = workflow_view(None, "grill", [("user and planner", "Discuss open decisions in a grill, or continue to planning. Offer an optional prototype before writing the plan.")])
+    if as_json:
+        print(json.dumps(view, ensure_ascii=False))
+    else:
+        show_workflow(view)
+    return 0
+
+
+def optional_workflow_history(head):
+    history = {"grill": "unknown", "prototype": "unknown"}
+    header = header_of(head)
+    for line, masked in zip(header, fenced(header)):
+        if masked:
+            continue
+        label, _, value = line.partition(":")
+        value = value.strip()
+        if label == "Grill" and value in ("done", "skipped"):
+            history["grill"] = value
+        elif label == "Prototype" and value:
+            history["prototype"] = "skipped" if value == "none" else "done"
+    return history
+
+
+def phase_checks(st):
+    return fill(st["run"], st.get("alloc"))["checks"]["phase"] if "run" in st else []
+
+
+def missing_phase_checks(st, report):
+    return [command for command in phase_checks(st) if command not in report.get("check_outcomes", {})]
+
+
+def build_actions(st, ready):
+    done = {p["n"] for p in st["phases"] if p["status"] == "done"}
+    actions = []
+    for p in st["phases"]:
+        n = p["n"]
+        if p["status"] == "in progress":
+            if p.get("report") and (missing := missing_phase_checks(st, p["report"])):
+                actions.append((f"Implementer for phase {n}", f"Record the outcomes for {', '.join(missing)} with `phase report <plan> {n} --check COMMAND OUTCOME`."))
+            elif p.get("report"):
+                actions.append(("Coordinator", f"Check the report and run `phase done <plan> {n}`."))
+            else:
+                actions.append((f"Implementer for phase {n}", f"Work from the phase brief and record `phase report <plan> {n}`."))
+        elif n in ready:
+            actions.append(("Coordinator", f"Start phase {n} with `phase start <plan> {n}`, then issue its implementer brief."))
+        elif p["status"] == "waiting":
+            waits = ", ".join(str(k) for k in p["waits"] if k not in done)
+            actions.append(("Coordinator", f"Phase {n} waits for phase {waits} to finish."))
+    return actions
+
+
+def workflow_brief(st, role):
+    provider = " --provider PROVIDER" if "executors" in st.get("run", {}) else ""
+    return f"brief {role}{provider} <plan>"
+
+
+def verification_workflow(st, c, tree):
+    checked = checks_current(st, c, tree)
+    actions = []
+    if not checked:
+        recovery = ("Refresh the checks with `gate start <plan>`." if c["kind"] == "gate"
+                    else "Restore the checked round tree or obtain authorization for another round.")
+        actions.append(("Coordinator", "Full checks are missing or stale. " + recovery))
+    target = review_target(st, c, tree, head_sha(None, tree))
+    reviewed = review_is_current(c, target)
+    after_checks = " Wait for current full checks first." if not checked else ""
+    if not reviewed:
+        issue = "stale" if c.get("reviews") else "unrecorded"
+        actions.append(("Reviewer", f"Review completion is {issue}.{after_checks} Use `{workflow_brief(st, 'reviewer')}` and record `review complete`."))
+    pending = pending_results(st, c, tree)
+    if pending:
+        cases = ", ".join(f"Done {n}" for n in pending)
+        actions.append(("Verify", f"Current evidence is missing for {cases}.{after_checks} Drive the cases from `{workflow_brief(st, 'verify')}` and record the results."))
+    owed = outstanding_evidence(st, c, tree)
+    for request, cases in owed:
+        role = request["owed"]
+        if role == "verify" and not cases:
+            actions.append(("Coordinator", f"{request['report']} No Done cases are assigned to Verify. Give the judge the reason for an explicit E2E exception."))
+            continue
+        owner = "Reviewer" if role == "reviewer" else "Verify"
+        scope = " --cases " + ",".join(map(str, cases)) if cases else ""
+        actions.append((owner, f"{request['report']} Use `{workflow_brief(st, role)}{scope}` to record the requested evidence."))
+    if checked and reviewed and len(c["fixes"]) < FIXES_PER_CYCLE and any(not taken(c, i["id"]) for i in items(c)):
+        actions.append(("Coordinator", "Open a fix for the outstanding items with `fix start <plan>`."))
+    elif checked and reviewed and not any(v["owed"] == "reviewer" for v, _ in owed):
+        judge = workflow_brief(st, "judge")
+        if pending or owed:
+            actions.append(("Coordinator", f"For an explicit E2E exception, issue `{judge} --note REASON`. Record the reason with `verdict --evidence-note REASON`."))
+        else:
+            actions.append(("Coordinator", f"Issue `{judge}`."))
+    return "build-verification", actions
+
+
+def finish_workflow(st, tip):
+    status = st["status"]
+    request = st.get("request") or {}
+    current_request = request.get("tip") == tip and request.get("acceptance") == digest(st["acceptance"])
+    if status.startswith("http"):
+        if not current_request:
+            return "finish", [("Coordinator", "The linked request has no current finish record. Recover its accepted tip and authorization before confirming a merge.")]
+        confirm = "finish" if forge_of(status) == "github" else "finish --merged"
+        return "finish", [("Coordinator", f"Wait for {status} to merge, then confirm it with `{confirm} <plan>`.")]
+    if (st.get("pushed") or {}).get("tip") == tip:
+        return "finish", [("Coordinator", "Find the outstanding request and record its link with `plan status <plan> LINK`.")]
+    if current_request:
+        return "finish", [("Coordinator", "Open the request on the forge and record its link with `plan status <plan> LINK`.")]
+    fin = st["run"]["finish"]
+    return "finish", [("Coordinator", f"Use `finish <plan>` for the approved ending, {fin['how']} into {fin['target']}.")]
+
+
+def land_workflow(plan, st, tree, c, verdict):
+    land = (st.get("lands") or [None])[-1]
+    current_land = land and (land["judge"] == verdict["n"] or same_tree_land(st, c, tree, land, verdict["head"]))
+    if current_land and land["difference"] and not land["accepted"]:
+        return "judge", [("Judge", "Decide the land hook's changes with `land accept <plan> --note WHY` or `land revert <plan>`.")]
+    if current_land and st["status"] == "at the human gate" and st.get("page") and any(n["by"] == "user" for n in open_notes(st)):
+        return "human-review", [("User", "Review the open notes. If you authorize a round, the coordinator runs `round start <plan>`.")]
+    try:
+        if current_land:
+            page = require_page(plan, st)
+        else:
+            require_judge(plan, st)
+    except Refuse as error:
+        code = error.diags[0][0]
+        if code in ("land-stale", "no-page", "page-stale"):
+            owner = "Judge" if code == "land-stale" else "Coordinator"
+            return "judge", [(owner, fix) for _, _, fix in error.diags]
+        return verification_workflow(st, c, tree)
+    if not current_land:
+        if dirty := dirty_lines(tree):
+            paths = ", ".join(line[3:] for line in dirty)
+            return "judge", [("Coordinator", f"Resolve the uncommitted paths before land: {paths}.")]
+        if not os.path.isfile(shape_path(plan)):
+            return "judge", [("Judge", "Create and edit the commit shape with `land draft <plan>`, then run `land <plan>`.")]
+        return "judge", [("Judge", "Prepare the current commit shape with `land draft <plan>` if needed, then run `land <plan>`.")]
+    status = st["status"]
+    if status == "building":
+        return "judge", [("Coordinator", "Return to human review with `page <plan>`.")]
+    accepted = (st.get("acceptance") or {}).get("page") == digest(page)
+    if status == "at the human gate" and accepted:
+        return "human-review", [("Coordinator", "Restore the accepted status with `plan status <plan> passed`.")]
+    if not accepted:
+        if status.startswith("http"):
+            return "human-review", [("Coordinator", 'Restore human review with `plan status <plan> "at the human gate"` and obtain current acceptance.')]
+        acceptor = st["approvals"]["summary"]["acceptor"]
+        return "human-review", [(acceptor, f"Review the current page at {plan_paths(plan)[0]}#human-gate. Record authorized approval with `accept <plan>`.")]
+    return finish_workflow(st, land["tip"])
+
+
+def workflow_next(plan, st, tree, ready, plan_drift, consent):
+    if st["status"] == "merged":
+        return "finish", []
+    if plan_drift:
+        return "plan", [("Planner", fix) for _, _, fix in plan_drift]
+    if consent:
+        return "plan", [("User and planner", fix) for _, _, fix in consent]
+    if st["status"] in ("draft", "approved"):
+        return "plan", [("Coordinator", "Wait for the user's separate start instruction, then run `build start <plan> --base REF`.")]
+    try:
+        on_branch(st, tree_of(plan, st))
+    except Refuse as error:
+        return "build", [("Coordinator", fix) for _, _, fix in error.diags]
+    if not st.get("cycles"):
+        if actions := build_actions(st, ready):
+            return "build", actions
+        return "build-verification", [("Coordinator", "Open build verification with `gate start <plan>`.")]
+    c = cycle_of(st)
+    checked = selected_run(c)
+    if checked and not checked.get("done", True) and checked.get("pid") and alive(checked["pid"]):
+        return "build-verification", [("Coordinator", "Wait for the full checks to finish.")]
+    round_ = (st.get("rounds") or [None])[-1]
+    if round_ and not round_["done"]:
+        if not round_["report"]:
+            return "build", [("Round implementer", f"Work from the round {round_['n']} brief and record `round report <plan>`.")]
+        return "build", [("Coordinator", f"Check round {round_['n']}'s report and note sources, then run `round done <plan>`.")]
+    fix = (c["fixes"] or [None])[-1]
+    if fix and not fix["done"]:
+        if not fix["report"]:
+            return "build-verification", [("Fix implementer", f"Work from the fix {fix['n']} brief and record `fix report <plan>`.")]
+        return "build-verification", [("Coordinator", f"Check fix {fix['n']}'s report and run `fix done <plan>`.")]
+    v = (st.get("verdicts") or [None])[-1]
+    if not v or v["cycle"] != cycle_label(c):
+        return verification_workflow(st, c, tree)
+    if v["kind"] == "pass" or v.get("stop"):
+        return land_workflow(plan, st, tree, c, v)
+    if v["kind"] == "question":
+        return "judge", [("User", f"Answer the judge's question: {v['question']}"), ("Coordinator", f"Relay the user's answer with `{workflow_brief(st, 'judge')} --note ANSWER`.")]
+    if v["kind"] == "round":
+        return "judge", [("Coordinator", "Open the judge-ordered round with `round start <plan>`, then issue the round brief.")]
+    return verification_workflow(st, c, tree)
+
+
+def status_workflow(plan, head, stage, actions):
+    return workflow_view(plan_paths(plan)[0], stage, actions, optional_workflow_history(head))
+
+
+def summary(plan, st, head, tail=None, *, workflow=False):
     """-> the dict `status --json` prints."""
-    return {**{k: st.get(k) for k in ("title", "status", "branch", "base", "epic", "level", "phases", "history", "decisions")},
-            "done": st.get("done", []), "verdicts": st.get("verdicts", []), "rounds": st.get("rounds", []), "notes": st.get("notes", []), "lands": st.get("lands", []), "land_stops": land_stops(st), "cycles": [{**c, "list": items(c)} for c in st.get("cycles", [])], "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st), "alloc": st.get("alloc"),
-            "stale": stale_evidence(plan, st), "page": st.get("page"), "approvals": st.get("approvals", {}), "acceptance": st.get("acceptance"),
-            "drift": [f"{m} — fix: {f}" for _, m, f in drift_diags(plan, st, head, tail) + run_drift(plan, st) + ([] if st["status"] == "merged" else consent_diags(plan, st))]}
+    plan_drift = drift_diags(plan, st, head, tail)
+    consent = [] if st["status"] == "merged" else consent_diags(plan, st)
+    out = {**{k: st.get(k) for k in ("title", "status", "branch", "base", "epic", "level", "phases", "history", "decisions")},
+           "done": st.get("done", []), "verdicts": st.get("verdicts", []), "rounds": st.get("rounds", []), "notes": st.get("notes", []), "lands": st.get("lands", []), "land_stops": land_stops(st), "cycles": [{**c, "list": items(c)} for c in st.get("cycles", [])], "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st), "alloc": st.get("alloc"),
+           "stale": stale_evidence(plan, st), "page": st.get("page"), "approvals": st.get("approvals", {}), "acceptance": st.get("acceptance"),
+           "drift": [f"{m} — fix: {f}" for _, m, f in plan_drift + run_drift(plan, st) + consent]}
+    if workflow:
+        out["workflow"] = status_workflow(plan, head, *workflow_next(plan, st, out["tree"], out["ready"], plan_drift, consent))
+    return out
 
 
-def cmd_status(plan, as_json, cwd):
+def cmd_status(plan, as_json, cwd, current=False):
     if plan is None:
         root = git("rev-parse", "--show-toplevel", check=False, cwd=cwd)
         if root.returncode:
             raise Refuse("no-repo", "not inside a git repository", "run it in the project")
-        d = os.path.join(root.stdout.strip(), ".ai-workflow", "plans")
+        checkout = os.path.realpath(root.stdout.rstrip("\n"))
+        main = main_worktree(checkout)
+        scoped = current and checkout != os.path.realpath(main)
+        d = os.path.join(main, ".ai-workflow", "plans")
         names = [f for f in sorted(os.listdir(d)) if is_plan_file(f)] if os.path.isdir(d) else []
         rows = []
         for fn in names:
@@ -1686,33 +1927,57 @@ def cmd_status(plan, as_json, cwd):
             if st is None:
                 m = next((STATUS_LINE.match(l) for l, f in zip(head, fenced(head)) if not f and STATUS_LINE.match(l)), None)
                 if m and m[1] in LIVE:
-                    rows.append({"plan": fn[:-3], "status": None, "ready": [], "nostate": True})
-            elif st["status"] in LIVE:
-                rows.append({**summary(full, st, head, tail)})
+                    if scoped and (not (tree := branch_tree(main, m[2])) or os.path.realpath(tree) != checkout):
+                        continue
+                    rows.append(({"plan": fn[:-3], "status": None, "ready": [], "nostate": True, "path": full}, None))
+            elif st["status"] in LIVE or (current and (st["status"] == "approved" or st["status"].startswith("http"))):
+                if scoped and os.path.realpath(tree_fact(full, st)) != checkout:
+                    continue
+                rows.append((summary(full, st, head, tail, workflow=current), st))
         if as_json:
-            print(json.dumps([{k: r.get(k) for k in ("plan", "status", "ready", "drift", "stale")} for r in rows], ensure_ascii=False))
-        for r in rows:
-            if not as_json:
-                if r.get("nostate"):
-                    print(f"{r['plan']} — no state — fix: run `pipeline.py approve` on it")
-                else:
-                    done = sum(p["status"] == "done" for p in r["phases"])
-                    print(f"{r['plan']} — {r['status']} · {done}/{len(r['phases'])} phases done · ready: {', '.join(map(str, r['ready'])) or 'none'}"
-                          + ("".join(f"\n  {x}" for x in r["drift"])))
+            fields = ("plan", "status", "ready", "drift", "stale")
+            print(json.dumps([r if current else {k: r.get(k) for k in fields} for r, _ in rows], ensure_ascii=False))
+            return 0
+        for i, (r, st) in enumerate(rows):
+            if current and i:
+                print()
+            if r.get("nostate"):
+                print(f"{r['plan']} — no state — fix: run `pipeline.py approve` on " + (r["path"] if current else "it"))
+            elif current:
+                show_status(r, st)
+            else:
+                done = sum(p["status"] == "done" for p in r["phases"])
+                print(f"{r['plan']} — {r['status']} · {done}/{len(r['phases'])} phases done · ready: {', '.join(map(str, r['ready'])) or 'none'}"
+                      + ("".join(f"\n  {x}" for x in r["drift"])))
         return 0
     md = plan_paths(plan)[0]
     st = load_state(plan)
-    if st is None:
-        raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
     head, tail = read_plan(md)
-    s = summary(plan, st, head, tail)
+    if st is None:
+        draft, _ = parse_plan(head, plan_root(md))
+        if draft["status"] != "draft":
+            raise Refuse("not-compiled", f"{plan} has no state file", f"run `pipeline.py approve {plan}`")
+        view = status_workflow(plan, head, "plan", [("Planner", "Validate the draft with `approve <plan>` before obtaining run and summary approval.")])
+        if as_json:
+            print(json.dumps({**draft, "plan": os.path.basename(md)[:-3], "workflow": view}, ensure_ascii=False))
+        else:
+            print(f"Status: draft · branch `{draft['branch']}` · base `{draft['base']}`")
+            show_workflow(view)
+        return 0
+    s = summary(plan, st, head, tail, workflow=True)
     if as_json:
         print(json.dumps(s, ensure_ascii=False))
-        return 0
+    else:
+        show_status(s, st)
+    return 0
+
+
+def show_status(s, st):
     print(f"{plan_slug(st)} — {st['title']}")
     print(f"Status: {st['status']} · branch `{st['branch']}` · base `{st['base']}`")
-    t = tree_fact(plan, st)
+    t = s["tree"]
     print(f"Tree: {t}" + ("" if os.path.isdir(t) else " (gone)"))
+    show_workflow(s["workflow"])
     if st.get("epic"):
         print(f"Epic: {st['epic']['path']} · row {st['epic']['row']}")
     if st.get("alloc"):
@@ -1720,8 +1985,8 @@ def cmd_status(plan, as_json, cwd):
     for c in st.get("cycles", []):
         if c["kind"] == "gate":
             print(f"Gate: {c['level']}" + (f" (raised by {', '.join(c['raised_by'])})" if c["raised_by"] else ""))
-        if c["runs"]:
-            print("\n".join(show_run(c["runs"][-1], True)).replace("checks at", "Checks at", 1).replace(" (reused, run", " (run", 1))
+        if run_ := selected_run(c):
+            print("\n".join(show_run(run_, True)).replace("checks at", "Checks at", 1).replace(" (reused, run", " (run", 1))
         lines = show_cycle(c, st)
         if lines:
             print(f"Cycle {cycle_label(c)}:")
@@ -1738,6 +2003,8 @@ def cmd_status(plan, as_json, cwd):
             print(f"     grants: {', '.join(p['grants'])}")
         if p.get("report"):
             print(f"     report: {p['report']['became']} (commits: {', '.join(c[:7] for c in p['report']['commits'])})")
+            for command, outcome in p["report"].get("check_outcomes", {}).items():
+                print(f"     check: {command} — {outcome}")
     print(f"Ready: {', '.join(map(str, s['ready'])) or 'none'}")
     notes = [h for h in st["history"] if h.get("note")]
     if notes:
@@ -1753,7 +2020,6 @@ def cmd_status(plan, as_json, cwd):
         print(f"Drift: {d}")
     for d in s["stale"]:
         print(f"Evidence: {d}")
-    return 0
 
 
 def cmd_plan(command, plan, value, note):
@@ -1796,6 +2062,11 @@ def phase_of(st, n):
     if ph is None:
         raise Refuse("no-phase", f"the plan has no phase {n}", "phases: " + ", ".join(str(p["n"]) for p in st["phases"]))
     return ph
+
+
+def main_worktree(root):
+    return next((line[9:] for line in git("worktree", "list", "--porcelain", check=False, cwd=root).stdout.splitlines()
+                 if line.startswith("worktree ")), root)
 
 
 def branch_tree(root, branch):
@@ -1911,8 +2182,16 @@ def cmd_phase_report(plan, n, a):
         ph = phase_of(st, n)
         if ph["status"] != "in progress":
             raise Refuse("not-running", f"phase {n} is {ph['status']}", f"`pipeline.py phase start {plan} {n}` first")
+        configured, outcomes = phase_checks(st), {}
+        for command, outcome in a.check:
+            if command not in configured or command in outcomes:
+                raise Refuse("bad-phase-check", f"{command!r} is not a distinct configured phase check", "give each configured command once; use --checks for additional checks")
+            outcome = outcome.strip()
+            if outcome != "passed" and not (outcome.startswith("failed:") and outcome[7:].strip()):
+                raise Refuse("bad-phase-outcome", f"{command!r} has no meaningful outcome", "use `passed` or `failed: REASON`")
+            outcomes[command] = outcome
         ph["report"] = {"at": now(), "became": a.became, "skills": a.skills, "interfaces": a.interfaces,
-                        "checks": a.checks, "commits": a.commit}
+                        "checks": a.checks, "check_outcomes": outcomes, "commits": a.commit}
         print(f"phase report: {n} recorded, {len(a.commit)} commit(s)")
     return 0
 
@@ -1928,6 +2207,9 @@ def cmd_phase_done(plan, n, note):
         if not rep:
             bad.append(("no-report", f"phase {n} has no recorded report", f"`pipeline.py phase report {plan} {n} --became … --commit <sha>`"))
         else:
+            if missing := missing_phase_checks(st, rep):
+                bad.append(("phase-checks-missing", f"phase {n} is missing outcomes for {', '.join(missing)}",
+                            f"the implementer reissues `phase report {plan} {n}` with `--check COMMAND OUTCOME` for each configured check"))
             ref = st["branch"] if g("rev-parse", "--verify", "-q", f"refs/heads/{st['branch']}").returncode == 0 else "HEAD"
             for c in rep["commits"]:
                 r = g("rev-parse", "--verify", "-q", f"{c}^{{commit}}")
@@ -1957,6 +2239,8 @@ def cmd_phase_done(plan, n, note):
         set_phase(plan, st, n, "done", note)
         new = sorted(set(ready_phases(st)) - before)
         print(f"phase done: {n} {ph['title']}\nready: {', '.join(map(str, new)) or 'none'}")
+    head, tail = read_plan(plan_paths(plan)[0])
+    show_next(summary(plan, st, head, tail, workflow=True)["workflow"]["actions"])
     return 0
 
 
@@ -2030,6 +2314,7 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
         raise r
     cli = f'python3 "{os.path.realpath(__file__)}"'
     head = git("rev-parse", "HEAD", check=False, cwd=tree).stdout.strip()
+    review = review_target(st, cycle_of(st), tree, head) if kind == "reviewer" else None
     out = [f"# Brief: {kind} — {st['title']}", "",
            f"Plan: {md}", f"Tree: {tree}", f"CLI: {cli}",
            f"Branch: {st['branch']}", f"Base: {st['base']}", f"HEAD: {head}",
@@ -2051,11 +2336,7 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
         raise Refuse("provider-required", "a brief with executor presets requires --provider", "supply the current provider; no provider is inferred from a model")
     if provider is not None:
         selected = executor_selection(plan, provider)
-        tier = "primary" if kind == "judge" else "secondary"
-        if kind == "reviewer":
-            cycle = cycle_of(st)
-            if cycle["kind"] == "gate" and not any(f["done"] for f in cycle["fixes"]):
-                tier = "primary"
+        tier = "primary" if kind == "judge" or (review and review[0] == "gate") else "secondary"
         profile = selected[tier]
         out += [f"Executor provider: {provider}", f"Executor source: {selected['source']}", f"Executor tier: {tier}",
                 f"Executor model: {profile['model']}"]
@@ -2075,6 +2356,11 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
         out += [f"## Phase {n}, verbatim from the plan", "", *lines[i:j], "",
                 f"Grants: {', '.join(ph.get('grants', [])) or 'none'}",
                 f"Skills to read first: {', '.join(sk) or 'none'}", f"Spec area files: {', '.join(sp) or 'none'}", ""]
+        out += ["## Checks for this phase", "", "Red before green. First show the public behaviour failing, then make it pass and run the affected fixtures.",
+                "Run each configured phase check below for your territory. Report `--check 'COMMAND' passed` or `--check 'COMMAND' 'failed: REASON'` for each.",
+                "Fix failures in your territory. For a failure outside it, name the path and failure in the outcome and proceed. Use `--checks` for fixture results and any other checks.", ""]
+        out += [f"- `{command}`" for command in phase_checks(st)] or ["No configured phase checks."]
+        out.append("")
         if "run" in st:
             v = fill(st["run"], st.get("alloc"))
             out += ["## The run", "", "[checks].phase = " + json.dumps(v["checks"]["phase"], ensure_ascii=False), ""]
@@ -2087,16 +2373,28 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
             if r.get("report"):
                 x = r["report"]
                 out += [f"Became true: {x['became']}", f"Skills: {x['skills']}", f"Interfaces: {x['interfaces']}",
-                        f"Checks: {x['checks']}", f"Commits: {', '.join(x['commits'])}", ""]
+                        f"Checks: {x['checks']}"]
+                out += [f"- {command} — {outcome}" for command, outcome in x.get("check_outcomes", {}).items()]
+                out += [f"Commits: {', '.join(x['commits'])}", ""]
             else:
                 out += ["no report recorded", ""]
         out += ["## Record", "",
-                f"- Your report: {cli} phase report {md} {n} --became … --skills … --interfaces … --checks … --commit <sha> (repeat --commit)",
+                f"- Your report: {cli} phase report {md} {n} --became … --skills … --interfaces … --checks … --commit <sha> [--check COMMAND OUTCOME] (repeat --commit and --check)",
                 f"- A ruling or product call: {cli} decision {md} --phase {n} --by implementer --question … --from … --answer … --why … --cost …",
                 f"- A path outside the territory you need: ask the orchestrator; it runs `{cli} grant {md} {n} <path>`", ""]
         name = f"{plan_slug(st)}.brief-implementer-{n}.md"
     elif kind in ("reviewer", "verify", "fix"):
-        body, name = brief_cycle(plan, st, kind, cli, md, tree, cases)
+        if kind == "verify" and cases:
+            with writing(plan) as w:
+                c = cycle_of(w)
+                assignment, fix = verify_target(c, tree)
+                for case in cases:
+                    done_text(w, case)
+                if c["level"] != "small" and (fix or c["kind"] == "round"):
+                    scopes = c.setdefault("verify_cases", {})
+                    scopes[assignment] = sorted(set(scopes.get(assignment, [])) | set(cases))
+                st = w
+        body, name = brief_cycle(st, kind, cli, md, tree, cases, review)
         out += body + [f"Drift: {m} — fix: {f}" for _, m, f in drift]
     elif kind == "round":
         body, name = brief_round(plan, st, cli, md, tree)
@@ -2111,7 +2409,7 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
     out += ["## Orchestrator's note", "", note or "none", ""]
     path = os.path.join(os.path.dirname(md), name)
     k = 1
-    while kind == "verify" and os.path.exists(path):
+    while kind in ("reviewer", "verify") and os.path.exists(path):
         k += 1
         path = os.path.join(os.path.dirname(md), f"{name[:-3]}-{k}.md")
     open(path, "w", encoding="utf-8").write("\n".join(out))
@@ -2172,11 +2470,16 @@ def begin_run(plan, st, cycle, tree):
         elif alive(r.get("pid", 0)) and r["pid"] != os.getpid():
             raise Refuse("checks-running", f"the checks at {r['head'][:7]} are running (pid {r['pid']})", "wait for that call to end")
     cycle["runs"] = keep
-    for r in keep:
-        if r["head"] == head and r["full"] == cmds and r.get("done", True):
+    for i, r in enumerate(keep):
+        if r["head"] == head and r["full"] == cmds:
+            if i == len(keep) - 1:
+                cycle.pop("current_run", None)
+            else:
+                cycle["current_run"] = i
             return r, True
     run_ = {"at": now(), "head": head, "full": cmds, "commands": [], "done": not cmds, "pid": os.getpid()}
     cycle["runs"].append(run_)
+    cycle.pop("current_run", None)
     return run_, False
 
 
@@ -2193,12 +2496,35 @@ def run_checks(plan, cycle, run_, tree):
     return run_
 
 
+def selected_run(c):
+    return c["runs"][c.get("current_run", -1)] if c["runs"] else None
+
+
 def settled(c):
-    """Refuse while the cycle's newest run has not finished."""
-    r = c["runs"][-1] if c["runs"] else None
+    """Refuse while the cycle's selected run has not finished."""
+    r = selected_run(c)
     if r and not r.get("done", True):
         raise Refuse("checks-unfinished", f"the checks at {r['head'][:7]} did not finish ({len(r['commands'])} of {len(r['full'])} ran)",
                      "run `gate start`, `fix done` or `round done` again; it runs them again")
+
+
+def checks_current(st, c, tree):
+    r = selected_run(c)
+    current = tree_id(tree, "HEAD")
+    return bool(current and r and r.get("done", True) and r["full"] == checks_of(st) and current == tree_id(tree, r["head"]))
+
+
+def require_current_checks(plan, st, c):
+    settled(c)
+    if st.get("rounds") and not st["rounds"][-1]["done"]:
+        raise Refuse("round-open", "a round is still running", "finish its report and re-check")
+    if c["fixes"] and not c["fixes"][-1]["done"]:
+        raise Refuse("fix-open", "a fix is still running", "finish its report and re-check")
+    tree = tree_of(plan, st)
+    if not checks_current(st, c, tree):
+        fix = "run `gate start` again" if c["kind"] == "gate" else "restore the checked round tree or obtain authorization for another round"
+        raise Refuse("checks-stale", "the newest cycle has no current full check run", fix)
+    return tree
 
 
 def show_run(r, reused):
@@ -2288,11 +2614,119 @@ def cycle_label(c):
     return "gate" if c["kind"] == "gate" else f"{c['kind']}-{c['n']}"
 
 
-def latest_results(c):
-    last = {}
-    for r in c["results"]:
-        last[r["case"]] = r
-    return last
+def last_finished_fix(c):
+    return next((f for f in reversed(c["fixes"]) if f["done"]), None)
+
+
+def fix_assignment(c, fix):
+    return f"{cycle_label(c)}-fix-{fix['n']}"
+
+
+def verify_target(c, tree):
+    last = last_finished_fix(c)
+    if last and (current := tree_id(tree, "HEAD")) and tree_id(tree, last["done"]["head"]) == current:
+        return fix_assignment(c, last), last
+    return cycle_label(c), None
+
+
+def same_tree_land(st, c, tree, land, head):
+    return (head == land["tip"] and not land["difference"]
+            and any(v["n"] == land["judge"] and v["cycle"] == cycle_label(c) for v in st.get("verdicts", []))
+            and (current := tree_id(tree, head)) and current == tree_id(tree, land["pre"]))
+
+
+def review_target(st, c, tree, head):
+    lands = st.get("lands", [])
+    if lands and head == lands[-1]["tip"]:
+        # Only the recorded land rewrite can carry a review across commits.
+        for land in reversed(lands):
+            if same_tree_land(st, c, tree, land, head):
+                head = land["pre"]
+    label = cycle_label(c)
+    start = st["rounds"][c["n"] - 1]["from"] if c["kind"] == "round" else st["base"]
+    last = last_finished_fix(c)
+    if last and head == last["done"]["head"]:
+        # A fix-only review needs a completed chain from the start of this cycle.
+        covered = set()
+        for review in c.get("reviews", []):
+            lower, _, upper = review["range"].partition("..")
+            if (review["assignment"] == label and lower == start) or lower in covered:
+                covered.add(upper)
+        if last["from"] in covered:
+            return fix_assignment(c, last), f"{last['from']}..{head}", last
+    return label, f"{start}..{head}", None
+
+
+def review_is_current(c, target):
+    last = (c.get("reviews") or [{}])[-1]
+    return (last.get("assignment"), last.get("range"), last.get("findings")) == (*target[:2], len(c["findings"]))
+
+
+def require_review(c, target):
+    if not review_is_current(c, target):
+        issue = "stale" if c.get("reviews") else "unrecorded"
+        raise Refuse("review-missing", f"review completion is {issue} for {target[0]} ({target[1]})",
+                     "the reviewer uses `brief reviewer` and records `review complete`")
+
+
+def require_review_target(plan, st, c, a):
+    tree = require_current_checks(plan, st, c)
+    target = review_target(st, c, tree, head_sha(None, tree))
+    if (a.assignment, a.range) != target[:2]:
+        raise Refuse("review-target", f"the assigned range is {target[1]} for {target[0]}", "use `brief reviewer` for the current assignment")
+    return target
+
+
+def cmd_review(plan, a):
+    with writing(plan) as st:
+        require_consent(plan, st)
+        c = cycle_of(st)
+        target = require_review_target(plan, st, c, a)
+        owed = outstanding_evidence(st, c, tree_of(plan, st))
+        if review_is_current(c, target) and not any(v["owed"] == "reviewer" for v, _ in owed):
+            print(f"review: {target[0]} already complete")
+        else:
+            c.setdefault("reviews", []).append({"at": now(), "assignment": target[0], "range": target[1], "findings": len(c["findings"])})
+            print(f"review: {target[0]} complete")
+    return 0
+
+
+def latest_results(c, start=0):
+    return {r["case"]: r for r in c["results"][start:]}
+
+
+def human_case(c, case):
+    return c["level"] == "small" or case["you_check"]
+
+
+def required_result_cases(st, c, tree):
+    if c["level"] == "small":
+        return set()
+    assignment, fix = verify_target(c, tree)
+    want = set(c.get("verify_cases", {}).get(assignment, []))
+    if fix and "verify_cases" in fix:
+        want.update(fix["verify_cases"])
+    elif c["kind"] == "gate":
+        want.update(d["n"] for d in st.get("done", []) if not human_case(c, d))
+    elif fix:
+        want.update(int(item.removeprefix("done-")) for item in fix["items"] if item.startswith("done-"))
+    return want
+
+
+def pending_results(st, c, tree):
+    if not (want := required_result_cases(st, c, tree)):
+        return []
+    current, results = tree_id(tree, "HEAD"), latest_results(c)
+    checked_trees = {commit: tree_id(tree, commit) for commit in {results[n]["commit"] for n in want if n in results and results[n].get("commit")}}
+    return sorted(n for n in want if not current or n not in results or checked_trees.get(results[n].get("commit")) != current)
+
+
+def verify_case_scope(st, c, tree, cases=(), *, recapture=False):
+    if verify_target(c, tree)[1] or c["kind"] == "round":
+        recheck = required_result_cases(st, c, tree) if recapture else pending_results(st, c, tree)
+        failed = {n for n, r in latest_results(c).items() if r["outcome"] == "failed"}
+        return set(cases) | set(recheck) | failed
+    return set(cases) or {d["n"] for d in st.get("done", []) if not d["you_check"]}
 
 
 def items(c):
@@ -2300,7 +2734,7 @@ def items(c):
     out = []
     if c.get("spec_refusal"):
         out.append({"id": "spec", "kind": "spec", "text": "spec write refused: " + "; ".join(c["spec_refusal"])})
-    for i, x in enumerate(c["runs"][-1]["commands"] if c["runs"] else [], 1):
+    for i, x in enumerate((selected_run(c) or {}).get("commands", []), 1):
         if x["red"]:
             out.append({"id": f"check-{i}", "kind": "check", "text": f"{x['command']} — exit {x['exit']}" + (", changed the tree" if x["changed_tree"] else ""),
                         "tail": x.get("tail", "")})
@@ -2335,6 +2769,8 @@ def cmd_finding(plan, a):
         raise Refuse("no-place", f"a {a.kind} needs --where file:line", "give the place, or record it as `--kind unjudged`")
     with writing(plan) as st:
         c = cycle_of(st)
+        if a.assignment is not None or a.range is not None:
+            require_review_target(plan, st, c, a)
         if a.again:
             f = next((f for f in c["fixes"] if f["done"] and a.again in f["items"] and a.again.startswith("D")), None)
             if f is None:
@@ -2352,6 +2788,13 @@ def cmd_result(plan, a):
     with writing(plan) as st:
         c = cycle_of(st)
         text = done_text(st, a.case)
+        tree = tree_of(plan, st)
+        head = head_sha(plan_paths(plan)[0], tree)
+        if a.cycle is not None or a.head is not None:
+            assigned = git("rev-parse", "--verify", "--end-of-options", f"{a.head}^{{commit}}", check=False, cwd=tree).stdout.strip() if a.head else None
+            if a.cycle != cycle_label(c) or not assigned or tree_id(tree, assigned) != tree_id(tree, head):
+                raise Refuse("result-target", "the use case was assigned in a different cycle or on a different tree", "use `brief verify` to drive the case on the current tree")
+            head = assigned
         do, _, see = text.partition(" → ")
         if a.outcome != "not-reached" and not a.capture:
             raise Refuse("no-capture", f"a {a.outcome} result has no capture", "pass --capture with the screenshot path or the command's output")
@@ -2359,7 +2802,7 @@ def cmd_result(plan, a):
             raise Refuse("no-detail", f"a {a.outcome} result has no detail", "pass --detail: what was seen, or what is needed")
         c["results"].append({"at": now(), "case": a.case, "do": a.do or do, "see": a.see or see, "width": a.width or "-",
                              "outcome": a.outcome.replace("-", " "), "detail": a.detail, "capture": a.capture,
-                             "commit": head_sha(plan_paths(plan)[0], tree_of(plan, st))})
+                             "commit": head})
         if a.outcome == "failed":
             i = f"done-{a.case}"
             f = next((f for f in c["fixes"] if f["done"] and i in f["items"]), None)
@@ -2393,7 +2836,10 @@ def cmd_fix(plan, a):
             if not take:
                 raise Refuse("nothing-open", "no open item for a fix",
                              "an item a fix took stays with it" if items(c) else "the one list is empty: skip `fix start`")
-            c["fixes"].append({"n": len(c["fixes"]) + 1, "at": now(), "from": head_sha(md, tree), "items": take, "report": None, "done": None, "survived": []})
+            recheck = set(pending_results(st, c, tree))
+            recheck.update(n for n, r in latest_results(c).items() if r["outcome"] == "failed")
+            c["fixes"].append({"n": len(c["fixes"]) + 1, "at": now(), "from": head_sha(md, tree), "items": take,
+                               "report": None, "done": None, "survived": [], "verify_cases": sorted(recheck)})
             print(f"fix {len(c['fixes'])}: takes {', '.join(take)}")
             return 0
         f = open_fix(c)
@@ -2454,6 +2900,9 @@ def closed_by(st, c, i):
 
 def show_cycle(c, st=None):
     out = []
+    if c.get("reviews"):
+        review = c["reviews"][-1]
+        out.append(f"Review complete ({review['findings']} findings in cycle): {review['assignment']} {review['range']}")
     for kind, title in LISTS:
         fs = [f for f in c["findings"] if f["kind"] == kind]
         if fs:
@@ -2480,7 +2929,7 @@ def show_cycle(c, st=None):
 AS_PRINTED = "Run each command below as printed, in full, never through a shell variable."
 
 
-def brief_cycle(plan, st, kind, cli, md, tree, cases):
+def brief_cycle(st, kind, cli, md, tree, cases, review):
     """The body and file name of a reviewer, verify or fix brief for the newest cycle."""
     c = cycle_of(st)
     if kind != "verify":
@@ -2490,34 +2939,36 @@ def brief_cycle(plan, st, kind, cli, md, tree, cases):
     last = done[-1] if done else None
     out, name = [], f"{plan_slug(st)}.brief-{kind}-{label}" + (f"-fix-{last['n']}" if last and kind != "fix" else "") + ".md"
     if kind == "reviewer":
+        assignment, range_, last = review
+        name = f"{plan_slug(st)}.brief-reviewer-{assignment}.md"
         if last:
-            made = (last["report"] or {}).get("commits", [])
-            out += ([f"Range: {last['from']}..{last['done']['head']} (fix {last['n']}'s commits; a re-check reads only these)", "Commits: " + ", ".join(x[:7] for x in made)]
-                    if made else [f"Range: none (fix {last['n']} made no commit)"])
+            commits = git("rev-list", "--reverse", range_, cwd=tree).stdout.split()
+            out += ([f"Range: {range_} (fix {last['n']}'s commits; a re-check reads only these)", "Commits: " + ", ".join(x[:7] for x in commits)]
+                    if commits else [f"Range: none (fix {last['n']} made no commit)"])
             out += ["Items the fix took:"] + [f"- {i['id']} {i.get('where', '')} {i['text']}".replace("  ", " ") for i in items_of(c, last["items"])]
         elif c["kind"] == "round":
-            rr = st["rounds"][c["n"] - 1]
-            out += [f"Range: none (round {rr['n']} made no commit)" if rr["report"] and not rr["report"]["commits"] else f"Range: {rr['from']}..HEAD (the round's commits)", f"Level: {c['level']}"]
+            has_commits = git("rev-list", "-1", range_, cwd=tree).stdout
+            out += [f"Range: {range_} (the round's commits)" if has_commits else f"Range: none (round {c['n']} made no commit)", f"Level: {c['level']}"]
         else:
-            out += [f"Range: {st['base']}..HEAD", f"Level: {c['level']}"]
-        if c["runs"]:
-            out += [""] + show_run(c["runs"][-1], True)
+            out += [f"Range: {range_}", f"Level: {c['level']}"]
+        if run_ := selected_run(c):
+            out += [""] + show_run(run_, True)
+        bind = f"--assignment {assignment} --range {range_}"
         out += ["", "## Record", "", AS_PRINTED, "",
-                f"- Each finding: {cli} finding {md} --kind defect|convention|observation --where <file:line> --source <rule or plan line> --text …",
-                f"- What you could not judge, only when there is one (with none, record nothing): {cli} finding {md} --kind unjudged --text <what and why>"]
+                f"- Each finding: {cli} finding {md} --kind defect|convention|observation {bind} --where <file:line> --source <rule or plan line> --text …",
+                f"- What you could not judge, only when there is one (with none, record nothing): {cli} finding {md} --kind unjudged {bind} --text <what and why>"]
         if last:
             out += [f"- A Defect the fix took, found again: add --again <its ID>"]
-        out += ["", "With no brief you return the three lists; with this one, record and return nothing longer.", ""]
+        out += [f"- Complete the review: {cli} review complete {shlex.quote(md)} {bind}", "",
+                "Record completion after all findings, including when the review is clean or the assigned range is empty. Return one line.", ""]
     elif kind == "verify":
-        failed = sorted(n for n, r in latest_results(c).items() if r["outcome"] == "failed")
-        if last or c["kind"] == "round":
-            want = sorted(set(failed) | set(cases))
-        else:
-            want = sorted(cases) or [d["n"] for d in st.get("done", []) if not d["you_check"]]
+        owed_cases = {n for _, cases in outstanding_evidence(st, c, tree) for n in cases}
+        want = sorted(verify_case_scope(st, c, tree, set(cases) | owed_cases))
+        bind = f"--cycle {label} --head {head_sha(md, tree)}"
         out += ["## Cases to drive", ""]
         out += [f"{n}. {done_text(st, n)}" for n in want] or ["no case to drive"]
         out += ["", f"How to run the system: {cli} run show {md}", "", "Run each case's command exactly as written, one shell call per case.", "", "## Record", "", AS_PRINTED, "",
-                f"- Each case: {cli} result {md} --case <n> --outcome passed|failed|not-reached --capture <path or output> [--detail <what was seen, or why not reached>] [--width <w>]", ""]
+                f"- Each case: {cli} result {md} --case <n> {bind} --outcome passed|failed|not-reached --capture <path or output> [--detail <what was seen, or why not reached>] [--width <w>]", ""]
     else:
         f = c["fixes"][-1] if c["fixes"] else None
         if f is None or f["done"]:
@@ -2745,11 +3196,54 @@ def render_judge(st, v, a):
             "## Verdict\n" + "\n".join(body) + "\n\n## Prediction\n" + "\n".join(pred) + "\n")
 
 
-def require_results(st, note=None):
-    c = cycle_of(st)
-    left = [d["n"] for d in st.get("done", []) if not d["you_check"] and d["n"] not in latest_results(c)] if c["kind"] == "gate" else []
-    if left and c["level"] != "small" and not (note or "").strip():
-        raise Refuse("result-missing", f"Done {', '.join(map(str, left))} has no result at level {c['level']}", "record each result, or name the reason with `verdict --evidence-note TEXT`")
+def require_evidence(st, c, tree, note):
+    require_review(c, review_target(st, c, tree, head_sha(None, tree)))
+    owed = outstanding_evidence(st, c, tree)
+    if review := next((v for v, _ in owed if v["owed"] == "reviewer"), None):
+        raise Refuse("review-missing", f"the judge requested a new review: {review['report']}",
+                     "the reviewer uses `brief reviewer` and records `review complete`")
+    left = sorted(set(pending_results(st, c, tree)) | {n for _, cases in owed for n in cases})
+    if (left or owed) and not (note or "").strip():
+        exception = "the judge names the reason with `verdict --evidence-note TEXT`"
+        if left:
+            raise Refuse("result-missing", f"Done {', '.join(map(str, left))} lacks current E2E evidence at level {c['level']}",
+                         "Verify drives the cases from `brief verify`, or " + exception)
+        raise Refuse("result-missing", "the Verify request has no assigned Done cases", exception)
+    return owed
+
+
+def requested_result_cases(st, c, tree, report):
+    named = set(re.findall(r"\bDone\s+(\d+)\b", report, re.IGNORECASE))
+    return {d["n"] for d in st.get("done", []) if str(d["n"]) in named} or verify_case_scope(st, c, tree, recapture=True)
+
+
+def outstanding_evidence(st, c, tree):
+    requests = []
+    label = cycle_label(c)
+    for v in st.get("verdicts", []):
+        if v["cycle"] != label:
+            continue
+        if v["kind"] == "evidence-owed":
+            requests.append(v)
+        elif (v.get("evidence_note") or "").strip():
+            requests = [r for r in requests if r["owed"] != "verify"]
+    owed = []
+    for v in requests:
+        if v["owed"] == "reviewer":
+            reviews = c.get("reviews", [])
+            recorded = len(reviews) > v["review_count"] if "review_count" in v else reviews and reviews[-1]["at"] > v["at"]
+            if not recorded or not review_is_current(c, review_target(st, c, tree, head_sha(None, tree))):
+                owed.append((v, []))
+            continue
+        cases = v.get("owed_cases") or requested_result_cases(st, c, tree, v["report"])
+        results = latest_results(c, v.get("result_count", 0))
+        current = tree_id(tree, "HEAD") if cases and results else None
+        captured = {n for n in cases if (r := results.get(n)) and ("result_count" in v or r["at"] > v["at"]) and r.get("capture")
+                    and current and r.get("commit") and tree_id(tree, r["commit"]) == current}
+        missing = sorted(set(cases) - captured)
+        if missing or not cases:
+            owed.append((v, missing))
+    return owed
 
 
 def cmd_verdict(plan, a):
@@ -2761,16 +3255,13 @@ def cmd_verdict(plan, a):
         settled(c)
         owed = a.kind == "evidence-owed"
         if not owed:
-            tree = tree_of(plan, st)
-            checked = c["runs"][-1] if c["runs"] else None
-            if not checked or checked["full"] != checks_of(st) or tree_id(tree, checked["head"]) != tree_id(tree, "HEAD"):
-                raise Refuse("checks-stale", "the newest cycle has no current full check run", "run `gate start`, `fix done` or `round done` before the judge")
-            if st.get("rounds") and not st["rounds"][-1]["done"]:
-                raise Refuse("round-open", "a round is still running", "finish its report and re-check before judging")
-            require_results(st, a.evidence_note)
+            tree = require_current_checks(plan, st, c)
+            require_evidence(st, c, tree, a.evidence_note)
         first = all(x["kind"] == "evidence-owed" for x in st.get("verdicts", []))
         if owed and (a.decide or not a.owed):
             raise Refuse("bad-owed", "an evidence-owed verdict names --owed reviewer|verify and takes no decisions", "record who owes what; decide when the evidence is in")
+        if a.case and not (owed and a.owed == "verify"):
+            raise Refuse("bad-owed-case", "--case applies only to evidence owed by Verify", "use `verdict evidence-owed --owed verify --case N`")
         if first and not owed and not (a.predicted and a.engine):
             raise Refuse("no-prediction", "the first verdict records the Prediction and the engine", "pass --predicted pass|round, --predict TEXT CAUSE (repeat) and --engine IDENTIFIER (nonblank, single-line)")
         if a.kind == "round" and not a.note:
@@ -2795,6 +3286,13 @@ def cmd_verdict(plan, a):
         v = {"n": len(st.get("verdicts", [])) + 1, "at": now(), "head": head_sha(md, tree_of(plan, st)), "cycle": cycle_label(c), "kind": a.kind,
              "epoch": epoch(st), "report": a.report, "evidence_note": a.evidence_note, "owed": a.owed if owed else None, "decisions": [{"id": i, "action": x, "reason": r} for i, x, r in a.decide or []],
              "notes": [], "stopped_notes": [], "question": a.question, "round": None, "stop": stop}
+        if owed and a.owed == "reviewer":
+            v["review_count"] = len(c.get("reviews", []))
+        elif owed:
+            for case in a.case:
+                done_text(st, case)
+            cases = set(a.case) or requested_result_cases(st, c, tree_of(plan, st), a.report)
+            v.update(owed_cases=sorted(cases), result_count=len(c["results"]))
         ns = st.setdefault("notes", [])
         for text, cause in a.note or []:
             if stop:
@@ -2818,6 +3316,8 @@ def show_judging(st):
     for v in st.get("verdicts", []):
         out.append(f"Verdict {v['n']}: {v['kind']} at {v['head'][:7]} ({v['cycle']})")
         out += [f"  {d['id']} {d['action']} — {d['reason']}" for d in v["decisions"]]
+        if v.get("evidence_note"):
+            out.append(f"  evidence exception: {v['evidence_note']}")
         if v["kind"] == "evidence-owed":
             out.append(f"  owed by {v['owed']}: {v['report']}")
         out += [f"  note {n}" for n in v["notes"]] + ([f"  question: {v['question']}"] if v["question"] else [])
@@ -2836,7 +3336,8 @@ def show_judging(st):
 
 def brief_judge(plan, st, cli, md, note):
     c = cycle_of(st)
-    settled(c)
+    tree = require_current_checks(plan, st, c)
+    owed = require_evidence(st, c, tree, note)
     ref = os.path.join(os.path.dirname(os.path.realpath(__file__)), "references", "judge.md")
     if not os.path.isfile(ref):
         raise Refuse("no-judge-md", f"{ref} does not exist", "reinstall the plugin")
@@ -2848,21 +3349,19 @@ def brief_judge(plan, st, cli, md, note):
     if asked and not answer:
         raise Refuse("no-answer", "the last verdict asked the user a question", "pass --note with the user's answer, in their words")
     out = [f"Judge rules: {ref}", f"Plan: {slug} — {st['title']}"]
-    if asked_owed := next((v for v in st.get("verdicts", [])[-1:] if v["kind"] == "evidence-owed"), None):
-        out.append(f"Owed: {asked_owed['owed']} — {asked_owed['report']}")
+    out += [f"Owed: {v['owed']} — {v['report']}" for v, _ in owed]
     if st.get("epic"):
         out.append("Epic: " + os.path.join(plan_root(md), st["epic"]["path"]))
     if c["kind"] == "gate":
-        require_results(st, note)
         out += ["Case: " + ("after the user's answer" if asked else "at the gate")] + ([f"Judge file: {jf}"] if asked else []) + [f"Level: {c['level']}" + (f" (raised by {', '.join(c['raised_by'])})" if c["raised_by"] else ""), ""]
-        if c["runs"]:
-            out += show_run(c["runs"][-1], True)
+        if run_ := selected_run(c):
+            out += show_run(run_, True)
         if asked:
             out += [f"Question asked: {asked['question']}", f"The user's answer: {answer}", ""]
         out += show_cycle(c, st)
         out += ["Open:"] + [f"  {i['id']} " + (f"{i['where']} — " if i.get("where") else "") + i["text"] for i in items(c) if fate(c, i["id"]).startswith("open")]
         out += [f"Conventions: {', '.join(f['id'] for f in c['findings'] if f['kind'] == 'convention') or 'none'}",
-                "You check: " + (", ".join(str(d["n"]) for d in st.get("done", []) if d["you_check"]) or "none")]
+                "You check: " + (", ".join(str(d["n"]) for d in st.get("done", []) if human_case(c, d)) or "none")]
     else:
         if not os.path.exists(jf):
             raise Refuse("no-verdict", "no judge file exists yet", "the gate's `verdict` writes it")
@@ -2871,8 +3370,8 @@ def brief_judge(plan, st, cli, md, note):
         out += [note_line(st, n) for n in st["notes"] if n["round"] == r["n"]] + [""]
         if asked:
             out += [f"Question asked: {asked['question']}", f"The user's answer: {answer}", ""]
-        if c["runs"]:
-            out += show_run(c["runs"][-1], True)
+        if run_ := selected_run(c):
+            out += show_run(run_, True)
         out += show_cycle(c, st)
         out += ["Re-check verify: " + (e2e_text(st, r["n"]) or "no case to drive")]
     return out + [""], f"{slug}.brief-judge-{cycle_label(c)}.md"
@@ -3223,13 +3722,12 @@ def gate_e2e(st, flag):
     if gate:
         out += [f"Level: {gate['level']}" + (f", raised by {', '.join(gate['raised_by'])}" if gate["raised_by"] else ""), ""]
     for c in st.get("cycles", []):
-        if c["runs"]:
-            r = c["runs"][-1]
+        if r := selected_run(c):
             out.append(f"- Checks ({cycle_label(c)}) at `{r['head'][:7]}`: {'red' if any(x['red'] for x in r['commands']) else 'green'}{flag(r['head'])}")
     last = last_results(st)
     for mine in (False, True):
         for d in st.get("done", []):
-            if bool(d["you_check"]) != mine:
+            if bool(human_case(gate, d) if gate else d["you_check"]) != mine:
                 continue
             r = last.get(d["n"])
             if r is None:
@@ -3381,7 +3879,7 @@ def request_merged(plan, st, link, merged):
 def clean_up(plan, st, root, fin):
     """After a merge: the worktree (never forced), the data directory, the backups (deleted only when the run file says so)."""
     branch = st["branch"]
-    main = next((l[9:] for l in git("worktree", "list", "--porcelain", check=False, cwd=root).stdout.splitlines() if l.startswith("worktree ")), root)
+    main = main_worktree(root)
     wt = branch_tree(root, branch)
     if wt and os.path.realpath(wt) not in (os.path.realpath(root), os.path.realpath(main)):
         r = git("worktree", "remove", wt, check=False, cwd=root)
@@ -3476,9 +3974,13 @@ def main():
     s = top.add_parser("approve", help="compile a plan into its state, with a strict check")
     s.add_argument("--json", action="store_true", help="print the result as JSON")
     s.add_argument("plan", help="the plan file")
-    s = top.add_parser("status", help="one plan's state, or the plans from building to passed")
+    s = top.add_parser("status", help="one plan's state, the live inventory, or current workflow guidance")
     s.add_argument("--json", action="store_true", help="print as JSON")
-    s.add_argument("plan", nargs="?", help="the plan file, any status; omit for the plans in .ai-workflow/plans/ from building to passed")
+    status_scope = s.add_mutually_exclusive_group()
+    status_scope.add_argument("plan", nargs="?", help="the plan file, any status; omit for the plans in .ai-workflow/plans/ from building to passed")
+    status_scope.add_argument("--current", action="store_true", help="show the steps for relevant plans from the current checkout")
+    s = top.add_parser("workflow", help="show the workflow before there is a plan")
+    s.add_argument("--json", action="store_true", help="print the workflow as JSON")
     pp = top.add_parser("plan", help="the plan's own status and base")
     psub = pp.add_subparsers(dest="command", required=True)
     for name, what in (("status", "set status only when its required evidence exists; merged belongs to finish"),
@@ -3507,10 +4009,11 @@ def main():
     s.add_argument("--skills", default="none", help="the skills read")
     s.add_argument("--interfaces", default="none", help="interfaces changed that later phases use")
     s.add_argument("--checks", default="none", help="the checks run and their result")
+    s.add_argument("--check", nargs=2, action="append", metavar=("COMMAND", "OUTCOME"), default=[], help="a configured phase command and its outcome: passed or 'failed: REASON'; repeat for each")
     s.add_argument("--commit", action="append", required=True, help="a commit of this phase; repeat for each")
     s.add_argument("plan", help="the plan file")
     s.add_argument("n", type=int, help="the phase number")
-    s = hsub.add_parser("done", help="check the report, its commits, their paths and the territory's tree, then mark the phase done")
+    s = hsub.add_parser("done", help="verify the report's check outcomes and commits against the territory, then mark the phase done")
     s.add_argument("--note", help="why")
     s.add_argument("plan", help="the plan file")
     s.add_argument("n", type=int, help="the phase number")
@@ -3537,7 +4040,7 @@ def main():
     s.add_argument("--note", help="what only the orchestrator knows")
     s.add_argument("plan", help="the plan file")
     s.add_argument("n", type=int, help="the phase number")
-    s = bsub.add_parser("judge", help="the judge's case, from the state: at the gate its checks, lists, results, fixes and Open; after a round the judge file, the round's notes and its re-check. At a level above small, refused while a case has no result unless --note")
+    s = bsub.add_parser("judge", help="the current review and E2E evidence for the gate or round; refused while the review is incomplete, or required results are missing without --note")
     s.add_argument("--note", help="what only the orchestrator knows; also the reason to brief without a result")
     s.add_argument("plan", help="the plan file")
     s = bsub.add_parser("round", help="the running round's notes file, the notes it takes, and the command to record its report")
@@ -3566,6 +4069,13 @@ def main():
     s.add_argument("--source", help="the rule or plan line it comes from")
     s.add_argument("--text", required=True, help="the finding")
     s.add_argument("--again", metavar="ID", help="a Defect a finished fix took, found again: it goes to Open")
+    s.add_argument("--assignment", help="the review assignment from the brief; use with --range")
+    s.add_argument("--range", help="the pinned review range from the brief; use with --assignment")
+    s.add_argument("plan", help="the plan file")
+    review = top.add_parser("review", help="review evidence for an assigned range")
+    s = review.add_subparsers(dest="command", required=True).add_parser("complete", help="complete a review, including a clean review")
+    s.add_argument("--assignment", required=True, help="the review assignment from the brief")
+    s.add_argument("--range", required=True, help="the pinned BASE..HEAD from the brief")
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("result", help="record a Done case's result; passed and failed need a capture")
     s.add_argument("--case", required=True, type=int, help="the Done item's number")
@@ -3575,6 +4085,8 @@ def main():
     s.add_argument("--width", help="the width driven")
     s.add_argument("--do", help="default: the Done item's text before the arrow")
     s.add_argument("--see", help="default: the Done item's text after the arrow")
+    s.add_argument("--cycle", help="the check cycle from the brief; use with --head")
+    s.add_argument("--head", help="the commit driven from the brief; use with --cycle")
     s.add_argument("plan", help="the plan file")
     xp = top.add_parser("fix", help="a fix of the newest cycle: takes every open item, is capped per cycle, re-runs the full checks when done")
     xsub = xp.add_subparsers(dest="command", required=True)
@@ -3592,6 +4104,7 @@ def main():
     s = top.add_parser("verdict", help="the judge's verdict on the newest cycle: a decision for every Open entry and Convention, each --decide action one of let-through, round or question; the first one writes .judge.md and alone takes --predicted, --predict and --engine. A round verdict past the cap, or on an early-stop sign, records the stop and opens no round")
     s.add_argument("kind", choices=["pass", "round", "question", "evidence-owed"])
     s.add_argument("--owed", choices=["reviewer", "verify"], help="evidence-owed: who owes the evidence; the verdict takes no decisions")
+    s.add_argument("--case", type=int, action="append", default=[], help="evidence owed by Verify: Done case to drive again; repeat for each case")
     s.add_argument("--evidence-note", help="the reason to judge with missing gate results; recorded on the acceptance page")
     s.add_argument("--report", required=True, help="what was let through and why, in the judge's words")
     s.add_argument("--decide", nargs=3, action="append", metavar=("ID", "ACTION", "REASON"), help="let-through, round or question for an Open entry or a Convention; repeat for each")
@@ -3700,7 +4213,9 @@ def main():
         if a.group == "approve":
             return cmd_approve(a.plan, a.json)
         if a.group == "status":
-            return cmd_status(a.plan, a.json, os.getcwd())
+            return cmd_status(a.plan, a.json, os.getcwd(), a.current)
+        if a.group == "workflow":
+            return cmd_workflow(a.json)
         if a.group == "plan":
             return cmd_plan(a.command, a.plan, a.value, a.note)
         if a.group == "build":
@@ -3716,6 +4231,8 @@ def main():
             return cmd_gate_start(a.plan, a.note)
         if a.group == "finding":
             return cmd_finding(a.plan, a)
+        if a.group == "review":
+            return cmd_review(a.plan, a)
         if a.group == "result":
             return cmd_result(a.plan, a)
         if a.group == "fix":

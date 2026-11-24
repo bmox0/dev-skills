@@ -84,7 +84,7 @@ PY
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   echo r > src/p.txt
   git add src && git commit -q -m p1 -- src
-  cli phase report "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
+  report_phase "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
   cli phase done "$plan" 1 >/dev/null || fail "phase done"
 }
 json() { cli status --json "$plan" | python3 -c "import json,sys; c=json.load(sys.stdin); $1"; }
@@ -140,6 +140,7 @@ cmp -s "$b1" "$repo/b1.keep" || fail "the first brief is unchanged"
 grep -q '^2\. ' "$b2" || fail "the second brief holds case 2"
 cli result "$plan" --case 1 --outcome passed --capture 'fixture output 1' >/dev/null || fail "fixture result 1"
 cli result "$plan" --case 2 --outcome passed --capture 'fixture output 2' >/dev/null || fail "fixture result 2"
+complete_review "$plan" || fail "complete review"
 cli verdict round "$plan" --report r1 --note "first" bug --predicted round --predict p bug --engine claude >/dev/null || fail "verdict 1"
 cli verdict round "$plan" --report r2 --note "second" feel-ui >/dev/null || fail "verdict 2"
 out=$(cli round start "$plan"); rc=$?

@@ -122,9 +122,10 @@ PY
   cli phase start "$plan" 1 >/dev/null || fail "phase start"
   echo 1 >> "$tree/src/a.txt"; git -C "$tree" commit -q -m c1 -- src/a.txt
   echo b > "$tree/src/b.txt"; echo c > "$tree/src/c.txt"; git -C "$tree" add src; git -C "$tree" commit -q -m c2 -- src
-  cli phase report "$plan" 1 --became x --commit "$(git -C "$tree" rev-parse HEAD)" >/dev/null || fail "report"
+  report_phase "$plan" 1 --became x --commit "$(git -C "$tree" rev-parse HEAD)" >/dev/null || fail "report"
   cli phase done "$plan" 1 >/dev/null || fail "phase done"
   cli gate start "$plan" >/dev/null || fail "gate start"
+  complete_review "$plan" || fail "complete review"
   cli verdict pass "$plan" --report ok --predicted pass --engine claude >/dev/null || fail "verdict"
   shape=${plan%.md}.shape.toml
   spec="docs/spec/README.md docs/spec/archive/2026-11-16-l.md docs/spec/land.md"
@@ -132,6 +133,7 @@ PY
   cli land "$plan" >/dev/null || fail "land 1"
   echo d > "$tree/src/d.txt"; git -C "$tree" add src/d.txt; git -C "$tree" commit -q -m round -- src/d.txt
   cli gate start "$plan" >/dev/null || fail "recheck second land"
+  complete_review "$plan" || fail "complete review"
   cli verdict pass "$plan" --report again >/dev/null || fail "verdict 2"
   write_shape "d added" src/a.txt $spec -- src/b.txt src/c.txt src/d.txt
   cli land "$plan" >/dev/null || fail "land 2"
@@ -368,6 +370,7 @@ g=$(sed -n '/^## Human gate/,$p' "$plan")
 assert_contains "$g" "Round 1 (user): nothing to rebase (no commit)" "a round with no commit renders whole" || exit 1
 case "$g" in *"(commits )"*) fail "the commits section renders (commits ): $g";; esac
 cli round done "$plan" >/dev/null || fail "round done"
+complete_review "$plan" || fail "complete review"
 b=$(cli brief judge "$plan") || fail "brief judge"
 grep -q "main moved on src/a.txt" "$b" || fail "brief judge carries the conflict text: $(cat "$b")"
 
@@ -382,6 +385,7 @@ assert_contains "$out" "run-stale" "names stale run" || exit 1
 approve_plan "$plan" >/dev/null || fail "approve changed ending"
 cli accept "$plan" --by user --words yes >/dev/null && fail "reapproval cannot replace fresh judge"
 cli gate start "$plan" >/dev/null || fail "recheck changed contract"
+complete_review "$plan" || fail "complete review"
 cli verdict pass "$plan" --report "reviewed new ending" >/dev/null || fail "fresh judge"
 cli page "$plan" --note "run it" >/dev/null || fail "page again"
 passed

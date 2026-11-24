@@ -118,6 +118,7 @@ delete_backups = false
     git('commit', '-qam', 'after checks')
     unchanged('verdict', 'pass', plan, '--report', 'ready', '--predicted', 'pass', '--engine', 'codex', code='checks-stale')
     cli('gate', 'start', plan)
+    cli('review', 'complete', plan, '--assignment', 'gate', '--range', f"{git('rev-parse', 'main')}..{git('rev-parse', 'HEAD')}")
     unchanged('verdict', 'pass', plan, '--report', 'ready', '--predicted', 'pass', '--engine', 'codex', code='result-missing')
     cli('result', plan, '--case', '1', '--outcome', 'passed', '--capture', 'CLI output')
     cli('verdict', 'pass', plan, '--report', 'ready', '--predicted', 'pass', '--engine', 'codex', '--decide', 'check-1', 'let-through', 'deliberately failing fixture check')

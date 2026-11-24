@@ -95,7 +95,7 @@ phase() { # phase N DIR
   cli phase start "$plan" "$1" >/dev/null || fail "phase start $1"
   echo "p$1" > "$2/f$1.txt"
   git add "$2/f$1.txt" && git commit -q -m "p$1" -- "$2/f$1.txt"
-  cli phase report "$plan" "$1" --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report $1"
+  report_phase "$plan" "$1" --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report $1"
   cli phase done "$plan" "$1" >/dev/null || fail "phase done $1"
 }
 phase 1 src

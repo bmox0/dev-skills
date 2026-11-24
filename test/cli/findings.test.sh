@@ -81,7 +81,7 @@ cli build start "$plan" --base v0 >/dev/null || fail "build start"
 cli phase start "$plan" 1 >/dev/null || fail "phase start"
 echo r > src/red.txt
 git add src/red.txt && git commit -q -m p1 -- src/red.txt
-cli phase report "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
+report_phase "$plan" 1 --became x --commit "$(git rev-parse HEAD)" >/dev/null || fail "report"
 cli gate start "$plan" >/dev/null && fail "gate start with a phase open is refused"
 cli gate start --note "early" "$plan" >/dev/null || fail "gate start --note opens the gate with a phase open"
 assert_contains "$(cli status "$plan")" "early" "status shows the gate's note" || exit 1
@@ -133,6 +133,7 @@ sed -n '/## Record/,$p' "$b" | grep -q '\$' && fail "the reviewer's brief uses n
 grep -q "only when there is one" "$b" && grep -q "record nothing" "$b" || fail "the reviewer records an unjudged item only when there is one: $(grep unjudged "$b")"
 
 # build#survivor-to-open: fix 1 takes everything open
+complete_review "$plan" || fail "complete the gate review"
 cli fix report "$plan" --became x --commit abc >/dev/null && fail "no fix to report on"
 cli fix start "$plan" >/dev/null || fail "fix start"
 cli fix start "$plan" >/dev/null && fail "a second fix while one is open is refused"
@@ -167,6 +168,7 @@ assert_contains "$out" "survived fix 1" "status shows the fate" || exit 1
 assert_contains "$out" "taken by fix 1" "an item taken, not yet found again" || exit 1
 
 # the next fix takes only the new Defect
+complete_review "$plan" || fail "complete the first fix review"
 cli fix start "$plan" >/dev/null || fail "fix 2"
 json "c=c['cycles'][0]; assert c['fixes'][1]['items'] == ['D4'], c['fixes']" || fail "fix 2 takes the new Defect only"
 cli fix report "$plan" --became y --commit deadbeef >/dev/null || fail "report with a commit"
