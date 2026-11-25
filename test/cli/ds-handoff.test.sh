@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import tempfile
 import tomllib
@@ -44,27 +45,26 @@ with tempfile.TemporaryDirectory() as folder:
     for name in ("Session and dispatch rules", "Workflow paths", "Human review", "implementer", "reviewer"):
         assert reference(name).strip()
 
-    installer = source / "scripts/install-skill"
-    for host, root in (("codex", ".agents"), ("claude", ".claude")):
-        skill = home / root / "skills/ds-cli-skill/SKILL.md"
-        assert not skill.exists(), "distribution#system-cli: the CLI install must not register native skills"
-        assert installer.is_file(), "distribution#system-cli: no separate skill install from a local worktree"
-        run(installer, host)
-        original = skill.read_text()
-        assert "используй ds" in original and "ds help agents" in original
-        assert list(skill.parent.iterdir()) == [skill] and not skill.is_symlink()
-        assert run(installer, host).strip().endswith(str(skill))
-        skill.write_text("Local notes. Do not overwrite.\n")
-        assert str(skill) in run(installer, host, ok=False)
-        assert skill.read_text() == "Local notes. Do not overwrite.\n"
-        skill.unlink()
-        sentinel = home / "do-not-touch"
-        sentinel.write_text("unrelated\n")
-        skill.symlink_to(sentinel)
-        assert str(skill) in run(installer, host, ok=False)
-        assert skill.is_symlink() and sentinel.read_text() == "unrelated\n"
-        skill.unlink()
-        run(installer, host, cwd=source)
+    entry = source / "ds-cli-skill"
+    assert [p.name for p in entry.iterdir()] == ["SKILL.md"]
+    assert (bundle / "ds-cli-skill/SKILL.md").read_bytes() == (entry / "SKILL.md").read_bytes()
+    assert "ds help agents" in (entry / "SKILL.md").read_text()
+    assert not (home / ".agents/skills").exists() and not (home / ".claude/skills").exists()
+
+    # A local Git remote exercises the piped installer without contacting GitHub.
+    upstream = home / "upstream"
+    shutil.copytree(bundle, upstream)
+    run("git", "init", "-qb", "main", cwd=upstream)
+    run("git", "add", ".", cwd=upstream)
+    run("git", "commit", "-qm", "fixture release", cwd=upstream)
+    prefix = home / "custom prefix"
+    bootstrap_env = dict(env, GIT_CONFIG_COUNT="1",
+                         GIT_CONFIG_KEY_0=f"url.{upstream.as_uri()}.insteadOf",
+                         GIT_CONFIG_VALUE_0="https://github.com/bmox0/dev-skills.git")
+    with (source / "install.sh").open() as script:
+        subprocess.run(["bash", "-s", "--", "--prefix", str(prefix)], stdin=script,
+                       cwd=home, env=bootstrap_env, check=True, timeout=30)
+    assert run(prefix / "bin/ds", "--version").strip() == release
 
     codex, claude = home / "Codex checkout", home / "Claude clone"
     codex.mkdir()

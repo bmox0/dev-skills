@@ -5,47 +5,49 @@ review, and human approval. You can use the CLI directly from a terminal. To
 use it from a coding agent, give the agent one entry skill, `ds-cli-skill`.
 The installed release supplies the stage instructions and worker roles.
 
-## Install the standalone CLI
+## Quick start
 
-You need Git and Python 3.11 or later on a Unix-like system. To install from a
-published revision that includes `scripts/install-ds`, clone the repository.
-
-```sh
-git clone https://github.com/bmox0/dev-skills.git
-cd dev-skills
-```
-
-Check out the tag or commit you want, or use an existing local worktree for
-an unreleased build. Run the installer from the **dev-skills source checkout**.
-The installer reads the current files, including any local edits.
+Run these three commands from the Git project where you want to use `ds`.
+The project needs at least one commit. For a project that
+already uses the legacy plugin, read [the migration steps](#migrate-from-the-legacy-plugin)
+before running `ds init`.
 
 ```sh
-ds_source="$(pwd -P)"
-"$ds_source/scripts/install-ds"
-export PATH="$HOME/.local/bin:$PATH"
-ds --version
+curl -fsSL https://raw.githubusercontent.com/bmox0/dev-skills/main/install.sh | bash
+npx skills add https://github.com/bmox0/dev-skills/tree/main/ds-cli-skill
+ds init
 ```
 
-`ds --version` prints the version and content digest. Keep the `PATH` export
-in your shell startup file so new terminals and agents can find `ds`. For a
-separate installation, pass `--prefix DIR` and use `DIR/bin` on `PATH`.
+The first command installs the CLI for your user. It requires Bash, Git,
+curl, and Python 3.11+ available as `python3` on a Unix-like system.
+Make sure `~/.local/bin` is on your `PATH`. If `ds` is not found, run
+`export PATH="$HOME/.local/bin:$PATH"` and add that line to your shell
+startup file. Run `ds --version` to see the installed release and digest.
+
+The second command uses the [Skills CLI](https://github.com/vercel-labs/skills)
+and requires `npx`. It installs into the project by default. Select your agent
+when prompted, or add `-g` for a personal installation.
+If your harness has its own skill installer, give it the same GitHub
+directory instead. In a Codex session, you can ask the built-in installer.
+
+```text
+$skill-installer Install https://github.com/bmox0/dev-skills/tree/main/ds-cli-skill
+```
+
+The directory contains one [SKILL.md](ds-cli-skill/SKILL.md). Your skill
+manager handles installation and updates. Terminal-only users can skip this step. To try the CLI and skill
+from an unpublished checkout, run `./scripts/install-ds` there and point
+your skill manager at that checkout's `ds-cli-skill/` directory.
 
 ## Initialize your project
 
-In the **project you want to work on**, open a Git checkout with at least one
-commit. If it already uses the dev-skills plugin, follow the
-[migration steps](#migrate-from-the-legacy-plugin) first.
-
-```sh
-ds init
-ds workflow
-```
-
-At the prompt, confirm the provider, enter its primary and secondary models,
+Run `ds init` in the target project. At the prompt, confirm the provider, enter its primary and secondary models,
 and choose the project's checks and merge policy. Commit `.ds/config.toml`,
 `.ds/ds.lock`, and the changes to `AGENTS.md` and `.gitignore`. The lock pins
-the exact release. Plans, run records, and evidence stay local under the
-ignored `.ds/workflow/` directory.
+the exact CLI release. If you installed the skill into the project, also
+commit the skill and any lock file its manager created (for example,
+`skills-lock.json`). This makes the skill available in clones and new task
+worktrees. Plans, run records, and evidence stay local under `.ds/workflow/`.
 
 A teammate installs the matching release, clones the project, and runs
 `ds init` to add their provider's model pair. The existing profiles and
@@ -76,38 +78,12 @@ instruction to build. After review, you receive an acceptance guide. Accept
 the result and authorize finish when you are ready to integrate it.
 [Workflow stages and command output](#the-pipeline)
 
-## Connect one entry skill to your agent
+## Use the skill
 
-Choose the command for your host. Run it from the shell where you set
-`ds_source`, or set that variable to the same dev-skills source checkout.
-
-| Host | Personal installation |
-|---|---|
-| Codex | `"$ds_source/scripts/install-skill" codex` installs to `~/.agents/skills/ds-cli-skill/`. |
-| Claude Code | `"$ds_source/scripts/install-skill" claude` installs to `~/.claude/skills/ds-cli-skill/`, or under `$CLAUDE_CONFIG_DIR/skills/` when configured. |
-
-The installer copies one `SKILL.md`. Rerunning it accepts identical content.
-If the installed copy differs, compare the files and move the existing copy
-aside before retrying.
-
-For **Antigravity**, or a **project-only Codex** setup, install the same file
-in the target project's skill directory. Run this once from the project root.
-
-```sh
-mkdir -p .agents/skills
-mkdir .agents/skills/ds-cli-skill &&
-  cp "$ds_source/ds-cli-skill/SKILL.md" .agents/skills/ds-cli-skill/
-```
-
-If the directory already exists, compare its `SKILL.md` with the source.
-Commit a project-scoped skill if you want it available in clones and new
-task worktrees. Use one installation scope per host.
-
-Start a fresh agent session in the project with `ds` on its `PATH`. Say
-**“Use ds”**. The agent should read `ds-cli-skill`, run `ds help agents`, and
-follow the instructions for the selected release. To start actual work, say
-**“Use ds to start a task called fix-login.”**
-[Codex skills](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills) · [Claude Code skills](https://code.claude.com/docs/en/skills#choose-where-skills-load) · [Antigravity skills](https://antigravity.google/docs/skills)
+After `ds init`, open a fresh agent session in the project with `ds` on its
+`PATH` and say **“Use ds.”** The agent reads the entry skill, runs
+`ds help agents`, and follows the instructions from the selected release.
+To start work, say **“Use ds to start a task called fix-login.”**
 
 ## Migrate from the legacy plugin
 
@@ -145,7 +121,18 @@ plan path and arguments**. The current CLI uses the existing approval.
 
 ## Update or repair a release
 
-To try a new release, install its source revision, then run `ds update` in
+For a project with an existing lock, install the Git revision that produced
+its release ID. Set `revision` to that published tag or commit, then run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bmox0/dev-skills/main/install.sh | DS_REF="$revision" bash
+```
+
+To install into a separate prefix, pass `--prefix DIR` via
+`bash -s -- --prefix DIR`. The project lock stores the release ID. It does
+not fetch source code or select a Git revision for the installer.
+
+To use the newly installed release for new work, run `ds update` in
 the project and commit the updated `.ds/ds.lock`. This selects the most
 recently installed release for new tasks. Use `ds update RELEASE` to select
 an exact installed ID. Existing versioned runs keep their recorded release.
