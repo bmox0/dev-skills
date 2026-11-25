@@ -1,89 +1,160 @@
 # dev-skills
 
-A provider-neutral workflow with optional Claude Code, Codex and Qoder adapters: skills and three agents for building a
-change — discussion, a plan file, implementation by subagents, a review and an
-e2e check, and your approval before merge. The user or designated orchestrator coordinates the run;
-a chosen build session coordinates implementation. Neither edits code.
+`ds` takes a change from planning in its own Git worktree through implementation,
+review, and human approval. You can use the CLI directly from a terminal. To
+use it from a coding agent, give the agent one entry skill, `ds-cli-skill`.
+The installed release supplies the stage instructions and worker roles.
 
 ## Install the standalone CLI
 
-Get the dev-skills source revision you want to install. For a normal install:
+You need Git and Python 3.11 or later on a Unix-like system. To install from a
+published revision that includes `scripts/install-ds`, clone the repository.
 
 ```sh
 git clone https://github.com/bmox0/dev-skills.git
-ds_source="$(cd dev-skills && pwd)"
+cd dev-skills
+```
+
+Check out the tag or commit you want, or use an existing local worktree for
+an unreleased build. Run the installer from the **dev-skills source checkout**.
+The installer reads the current files, including any local edits.
+
+```sh
+ds_source="$(pwd -P)"
 "$ds_source/scripts/install-ds"
 export PATH="$HOME/.local/bin:$PATH"
 ds --version
 ```
 
-For an unreleased branch, set `ds_source` to the absolute path of its existing
-local worktree and run the same installer. It copies the current files, so use
-a clean worktree at the intended revision. No push or publish is needed.
-Python 3.11+ is required. `ds --version` prints the version and content digest.
-To test without changing an existing install, pass `--prefix DIR` and put
-that prefix's `bin/` first on `PATH`.
+`ds --version` prints the version and content digest. Keep the `PATH` export
+in your shell startup file so new terminals and agents can find `ds`. For a
+separate installation, pass `--prefix DIR` and use `DIR/bin` on `PATH`.
 
-In the project, run:
+## Initialize your project
+
+In the **project you want to work on**, open a Git checkout with at least one
+commit. If it already uses the dev-skills plugin, follow the
+[migration steps](#migrate-from-the-legacy-plugin) first.
 
 ```sh
 ds init
-ds help agents
+ds workflow
 ```
 
-That is enough for CLI-only use. It installs no skills or hooks. Commit
-`.ds/config.toml`, `.ds/ds.lock` and the generated changes to `AGENTS.md`
-and `.gitignore`. A colleague installs the source revision matching the
-lock, clones your project and runs `ds init` to add only their provider's
-pair. Project checks are shared. Plans, worktrees and evidence are local.
+At the prompt, confirm the provider, enter its primary and secondary models,
+and choose the project's checks and merge policy. Commit `.ds/config.toml`,
+`.ds/ds.lock`, and the changes to `AGENTS.md` and `.gitignore`. The lock pins
+the exact release. Plans, run records, and evidence stay local under the
+ignored `.ds/workflow/` directory.
 
-### Install the one entry skill separately
+A teammate installs the matching release, clones the project, and runs
+`ds init` to add their provider's model pair. The existing profiles and
+checks are retained. For scripted setup, see `ds init --help` and the
+[non-interactive example](skills/run-file/references/project-config.md).
 
-From the same source checkout, run the installer for your host:
+## Start and resume a task
 
 ```sh
-"$ds_source/scripts/install-skill" codex
-"$ds_source/scripts/install-skill" claude
+ds task start fix-login
 ```
 
-The commands copy one file, [ds-cli-skill/SKILL.md](ds-cli-skill/SKILL.md),
-to the host's personal skills directory. Codex uses `~/.agents/skills/`.
-Claude Code uses `~/.claude/skills/` or the `skills/` directory under the
-launch environment's `CLAUDE_CONFIG_DIR`. You can rerun the installer. If a
-different skill exists there, it prints the path and leaves it untouched.
-Compare it and move it aside before updating.
-[Codex skills](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills) · [Claude Code skills](https://code.claude.com/docs/en/skills#choose-where-skills-load).
+This creates the task branch and worktree before planning and prints
+`Tree`, `Plan`, and `Artifacts`. Change into the printed tree and run
+`ds status --current` for the next step. Use the printed plan path when a
+command asks for `PLAN`. The agent can handle the same steps if you ask it
+to start a task.
 
-Start a new host session from the project with the installed `ds` on its
-`PATH`, then say “используй ds” or “use ds”. The agent reads `ds help agents`
-and the current task instructions. To check standalone discovery without the
-legacy plugin, add these options when opening the session:
+| From a terminal | What you get |
+|---|---|
+| `ds status` | Project inventory across linked worktrees |
+| `ds task resume fix-login` | The existing task, its tree, and its next step |
+| `ds status --current` | Workflow guidance for the current checkout |
+| `ds help agents --plan "$plan"` | Instructions from that run's release, with `plan` set to the absolute plan path |
+
+Approve the proposed run and plan summary, then give the coordinator the
+instruction to build. After review, you receive an acceptance guide. Accept
+the result and authorize finish when you are ready to integrate it.
+[Workflow stages and command output](#the-pipeline)
+
+## Connect one entry skill to your agent
+
+Choose the command for your host. Run it from the shell where you set
+`ds_source`, or set that variable to the same dev-skills source checkout.
+
+| Host | Personal installation |
+|---|---|
+| Codex | `"$ds_source/scripts/install-skill" codex` installs to `~/.agents/skills/ds-cli-skill/`. |
+| Claude Code | `"$ds_source/scripts/install-skill" claude` installs to `~/.claude/skills/ds-cli-skill/`, or under `$CLAUDE_CONFIG_DIR/skills/` when configured. |
+
+The installer copies one `SKILL.md`. Rerunning it accepts identical content.
+If the installed copy differs, compare the files and move the existing copy
+aside before retrying.
+
+For **Antigravity**, or a **project-only Codex** setup, install the same file
+in the target project's skill directory. Run this once from the project root.
 
 ```sh
-codex -c 'plugins.dev-skills@dev-skills.enabled=false'
-claude --settings '{"enabledPlugins":{"dev-skills@dev-skills":false}}'
+mkdir -p .agents/skills
+mkdir .agents/skills/ds-cli-skill &&
+  cp "$ds_source/ds-cli-skill/SKILL.md" .agents/skills/ds-cli-skill/
 ```
 
-### Update or adopt a project
+If the directory already exists, compare its `SKILL.md` with the source.
+Commit a project-scoped skill if you want it available in clones and new
+task worktrees. Use one installation scope per host.
 
-Install the new source revision, then run `ds update` in the project. It
-selects the most recently installed release for new work. Use `ds update RELEASE`
-to select an exact installed ID. Commit the changed lock. Prior runs and issued
-commands stay on their exact release. Use `ds help agents --plan PLAN` for their
-instructions. If that release is missing or damaged, reinstall from the source
-revision that produced its ID. If that installer is older than the one you
-normally use, rerun your newer installer afterward to restore the shared
-launcher and install default. Neither reinstall changes the project lock.
-You do not need to run `ds update` to repair a release. A failed update also
-leaves the lock unchanged.
+Start a fresh agent session in the project with `ds` on its `PATH`. Say
+**“Use ds”**. The agent should read `ds-cli-skill`, run `ds help agents`, and
+follow the instructions for the selected release. To start actual work, say
+**“Use ds to start a task called fix-login.”**
+[Codex skills](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills) · [Claude Code skills](https://code.claude.com/docs/en/skills#choose-where-skills-load) · [Antigravity skills](https://antigravity.google/docs/skills)
 
-In a checkout with legacy plugin history, run `ds init` there. It registers
-the existing local history under `.ds/workflow/legacy/` and keeps the old
-paths available while their checkouts exist. Linked checkout history stays in
-the shared archive when Git removes the checkout.
-Keep active legacy workers on their issued commands and paths. Inspect the
-combined inventory with `ds status`. New tasks use `ds task start ID` and
-their private records stay under `.ds/workflow/`.
+## Migrate from the legacy plugin
+
+1. **Install the CLI and the entry skill** as above. Keep the old engine and
+   its files available to any workers still using previously issued commands.
+2. **Disable the old plugin for new sessions.** Use the command for your host
+   below. If you previously copied individual skills such as `build`, `plan`,
+   or `grill` into a personal or project skills directory, disable those
+   copies too, or move them outside the host's skill search paths. A plugin
+   toggle only controls the skills that the plugin supplies. In Codex you
+   can disable a standalone copy by its `SKILL.md` path.
+   [Disable local Codex skills](https://learn.chatgpt.com/docs/build-skills#enable-or-disable-local-codex-skills)
+3. **Adopt the existing history.** Run `ds init` in the main project checkout
+   while the old linked worktrees still exist, then run `ds status`. Check
+   that your old plans appear and an active plan shows the expected stage.
+   The main checkout's `.ai-workflow/` stays in place. Linked checkout history
+   moves under `.ds/workflow/legacy/`, with links at the old paths. Leave
+   those links in place. If init reports a collision, inspect the named path,
+   move the conflicting item aside, and retry.
+4. **Switch new work to the CLI.** Commit the shared project files listed
+   under [initialization](#initialize-your-project). Start a fresh session
+   and say **“Use ds”**. Once outstanding legacy workers have finished,
+   you can uninstall the old plugin.
+
+| Host | Disable the old plugin |
+|---|---|
+| Codex | Start the session with `codex -c 'plugins.dev-skills@dev-skills.enabled=false'`. |
+| Claude Code | Start the session with `claude --settings '{"enabledPlugins":{"dev-skills@dev-skills":false}}'`. |
+| Antigravity CLI | Run `agy plugin disable dev-skills`, then start a fresh session. Use `agy plugin enable dev-skills` to restore it. |
+
+**Active 7.0.0 runs.** If the approved summary was a relative symlink to a
+file outside a linked checkout, a previously issued `pipeline.py build start`
+can report `no-summary` after adoption. Run `ds build start` with the **same
+plan path and arguments**. The current CLI uses the existing approval.
+
+## Update or repair a release
+
+To try a new release, install its source revision, then run `ds update` in
+the project and commit the updated `.ds/ds.lock`. This selects the most
+recently installed release for new tasks. Use `ds update RELEASE` to select
+an exact installed ID. Existing versioned runs keep their recorded release.
+
+To repair a missing or damaged release, reinstall the source revision that
+produced its exact ID. If you had to use an older installer, rerun your
+current installer afterward to restore the shared launcher. Reinstalling
+preserves the project lock. Use `ds help agents --plan "$plan"` to verify
+that the original run can read its instructions again.
 
 ## The pipeline
 
@@ -125,9 +196,9 @@ and the CLI still applies each command's own checks.
    isolation and how it ends, asked once so nothing pulls you in mid-run. Then
    the plan, always a file, one screen: Result, Approach, Out of scope, Phases,
    Checks, Done, `## Spec` (the rules added, changed, removed) and the prototype's
-   link, in the language named by the `Language` line of your `AGENTS.md`; `pipeline.py spec check` runs before you see it. Each phase names its territory, the
+   link, in the language named by the `Language` line of your `AGENTS.md`; `ds spec check` runs before you see it. Each phase names its territory, the
    skills its code follows, the spec files it reads, and what it waits for; territories and waits form
-   the graph. `pipeline.py approve` compiles the plan into its state, a JSON
+   the graph. `ds approve` compiles the plan into its state, a JSON
    file beside it; from then on the CLI keeps the state and renders the plan,
    its notes, the judge's file and the gate page from it. Status runs `draft` →
    `approved` → `building` → `at the human gate` → `passed` → `merged`, via
@@ -173,6 +244,9 @@ and the CLI still applies each command's own checks.
    comes from the plan's Result. The branch stays.
 
 ## What you type
+
+These are workflow requests you can make to the agent. Use `ds --help` to
+list shell commands.
 
 | You type | It does |
 |---|---|
