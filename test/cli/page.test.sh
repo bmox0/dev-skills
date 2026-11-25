@@ -16,7 +16,7 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER
 newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
-  git init -q
+  git init -q -b main
   mkdir -p .ai-workflow/plans skills/tdd src
   touch skills/tdd/SKILL.md
   echo a > src/a.txt

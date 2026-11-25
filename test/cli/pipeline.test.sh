@@ -190,8 +190,13 @@ last=$(printf '%s\n' "$out" | tail -1)
 [[ "$last" =~ ^"1 → 2 ∥ 3 · normal · "[0-9]+" words"$ ]] || fail "the last line: $last"
 [ -f "${plan%.md}.json" ] || fail "the JSON exists"
 python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "${plan%.md}.json" || fail "the JSON parses"
-changed=$(diff <(printf '%s\n' "$draft") "$plan" | grep '^[<>]' | cut -c1-17)
-assert_eq "$(printf '< Status: draft ·\n> Status: approve\n> Rendered from `')" "$changed" "the render touches only Status and its line: $changed" || exit 1
+changed=$(diff <(printf '%s\n' "$draft") "$plan" | sed -nE '
+  /^[<>]/ {
+    s/^(< Status: draft ·|> Status: approved ·|> Rendered from `).*/\1/
+    p
+  }
+')
+assert_eq "$(printf '< Status: draft ·\n> Status: approved ·\n> Rendered from `')" "$changed" "the render touches only Status and its line: $changed" || exit 1
 assert_eq "approved · \`.ai-workflow/plans/2026-11-16-x.md\`" "$(sed -n 7p .ai-workflow/epics/e.md | awk -F'|' '{gsub(/^ +| +$/,"",$5); print $5}')" "the epic row follows approve" || exit 1
 assert_eq "$(sed -n 1,6p .ai-workflow/epics/e.md)" "$(printf '%s\n' "$epic_before" | sed -n 1,6p)" "the epic is otherwise untouched" || exit 1
 assert_eq "| 2 | Two | 1 | |" "$(sed -n 8p .ai-workflow/epics/e.md)" "the other row is untouched" || exit 1
