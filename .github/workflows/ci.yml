@@ -1,0 +1,91 @@
+# PRs and pushes to main run shared checks and all three fast fixture groups.
+# PR labels test:functional, test:uix (CLI/UI) and test:e2e (including installed ds)
+# run only the selected groups. Combine them to run multiple groups.
+# ci:full overrides group labels. Actions > CI > Run workflow also runs the full
+# scripts/test suite, including the recursive harness. No mode calls live AI clients.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Shared resource checks
+    runs-on: ubuntu-24.04
+    outputs:
+      groups: ${{ steps.profile.outputs.groups }}
+    steps:
+      - id: profile
+        name: Select fixture groups
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          groups = ["functional", "uix", "e2e"]
+          with open(os.environ["GITHUB_EVENT_PATH"]) as event:
+              pull_request = json.load(event).get("pull_request", {})
+          labels = {label["name"] for label in pull_request.get("labels", [])}
+          if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" or "ci:full" in labels:
+              groups = ["full"]
+          else:
+              groups = [group for group in groups if f"test:{group}" in labels] or groups
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"groups={json.dumps(groups)}", file=output)
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/check
+
+  fixtures:
+    name: Fixtures (${{ matrix.group }})
+    needs: check
+    if: ${{ !cancelled() && needs.check.outputs.groups != '' }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(needs.check.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run fixtures
+        shell: bash
+        env:
+          FIXTURE_GROUP: ${{ matrix.group }}
+        run: |
+          if [[ "$FIXTURE_GROUP" == full ]]; then
+            exec scripts/test
+          fi
+
+          # The harness reruns the entire fixture suite by design.
+          files=$(find test -type f -name '*.test.sh' ! -path 'test/cli/harness.test.sh' | LC_ALL=C sort)
+          test -n "$files"
+          status=0
+          while IFS= read -r file; do
+            case "${file##*/}" in
+              ds-*.test.sh | check-recovery.test.sh)
+                group=e2e ;;
+              build.test.sh | finish.test.sh | land.test.sh | page.test.sh | pipeline.test.sh | tab-shim.test.sh | usage.test.sh)
+                group=uix ;;
+              *)
+                group=functional ;;
+            esac
+            if [[ "$group" == "$FIXTURE_GROUP" ]]; then
+              scripts/test "$file" || status=1
+            fi
+          done <<< "$files"
+          exit "$status"
