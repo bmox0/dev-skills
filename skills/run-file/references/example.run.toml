@@ -1,6 +1,8 @@
 # The run file: what this run may do, how it checks and ends. Every key of the
-# fixed sections is required, except `dev` and `url`. `run new` inserts all
-# AGENTS.md Executors profiles before [run], using this shape for each provider:
+# fixed sections is required, except `dev` and `url`. Standalone ds takes
+# settings from .ds/config.toml and pins its release at [workflow].release.
+# Legacy run new copies this example or the previous run and inserts the
+# project AGENTS.md profiles. Each provider has this shape:
 # [executors."PROVIDER".primary]
 # model = "model identifier"
 # effort = "optional effort"

@@ -367,6 +367,8 @@ git worktree remove --force "$w6"
 # run#isolated: a host without IPv6 still has free ports; only "address in use" counts as busy
 python3 -B - "$pipeline" "$p6" <<'PY' || fail "a host without IPv6 found no free port"
 import errno, importlib.util, socket, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
 spec = importlib.util.spec_from_file_location("pipeline", sys.argv[1])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 real = socket.socket

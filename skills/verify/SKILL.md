@@ -12,9 +12,8 @@ Coordinators dispatch a fresh secondary worker. The assigned worker drives
 the cases from the brief and records their results.
 
 **Receives:** the plan's Done use cases, or the ones the user names; how e2e
-drives the system and where it runs (the plan's Checks, and the plan's run
-file through `python3 "<this skill's directory>/../build/pipeline.py" run show
-<plan>`; without a plan, the project's `AGENTS.md`); the prototype when the plan links one.
+drives the system and where it runs (the plan's Checks and `CLI run show PLAN`
+using the brief; without a plan, `AGENTS.md`); the prototype when linked.
 
 1. **Find the running system.** If the user's dev instance of the tree is
    up, use it; never start a second or restart theirs. If none, start it with the run file's `dev`, on the port and data directory `run show`

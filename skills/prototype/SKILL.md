@@ -7,7 +7,8 @@ description: Build a throwaway prototype to answer a design question before the 
 
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
-Run `python3 "<this skill's directory>/../build/pipeline.py" workflow` for the route.
+Use the current [task paths](../../references/WORKFLOW-PATHS.md) before handing
+work to a prototype author.
 
 After a grill or discussion, offer a prototype in one line. "A prototype?
 An HTML file, inside the app with real data, or code
@@ -25,13 +26,12 @@ answers one question, in the shape the user picked:
 ## A worker draws it
 
 Dispatch a secondary subagent with the question, the shape and the variants in the
-user's words, and the output path under `.ai-workflow/prototypes/`:
+user's words, and the output path in the task's `prototypes` artifacts:
 `YYYY-MM-DD-<topic>.html` for the HTML file, a `YYYY-MM-DD-<topic>/` directory
 for code. It draws what it is handed and never designs: a control, a screen or
 wording the conversation never named comes back as a question, not an
 invention. Nothing reaches outside the HTML file: no remote script, style, font
-or image. If `git check-ignore -q .ai-workflow` fails, add `.ai-workflow` to
-`$(git rev-parse --git-path info/exclude)`.
+or image. Confirm Git ignores the output before writing.
 
 Open it for the user yourself: `open <path>` on macOS, `xdg-open <path>`
 elsewhere.

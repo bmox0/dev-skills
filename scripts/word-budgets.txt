@@ -1,14 +1,16 @@
-# Word budgets: every markdown file under skills/, agents/ and references/.
+# Word budgets for all instruction resources, including the standalone skill.
 # scripts/check fails when a file is over its budget or has no line here.
 # A change that raises a budget names what it removes. Words are counted as
 # whitespace-separated tokens, the way wc -w counts them.
 
+ds-cli-skill/SKILL.md 130
 agents/implementer.md 482
 agents/judge.md 100
 agents/reviewer.md 100
 references/CODEX.md 400
 references/SESSIONS.md 650
 references/VOCABULARY.md 705
+references/WORKFLOW-PATHS.md 320
 skills/browser-test/SKILL.md 1100
 skills/browser-test/references/WEBSOCKETS.md 300
 skills/bug/SKILL.md 455
@@ -43,6 +45,7 @@ skills/retro/SKILL.md 300
 skills/review/SKILL.md 315
 skills/review/references/CRITERIA.md 613
 skills/run-file/SKILL.md 294
+skills/run-file/references/project-config.md 215
 skills/spec/SKILL.md 353
 skills/spec/references/FORMAT.md 1233
 skills/tdd/SKILL.md 315

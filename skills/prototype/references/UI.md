@@ -43,7 +43,7 @@ param and the same floating bar.
    starting the dev server first if needed, then surface the `?variant=`
    keys.
 6. **Capture the answer** the way [SKILL](../SKILL.md) describes, with a
-   screenshot of each variant under `.ai-workflow/prototypes/` first. Then
+   screenshot of each variant under the assigned prototype artifact path first. Then
    remove every variant, the switcher and any throwaway route — the plan's
    build writes the winner properly.
 

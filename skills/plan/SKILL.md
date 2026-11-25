@@ -10,8 +10,10 @@ Read shared `AGENTS.md` and the executor contract:
 
 Planning uses primary; research helpers use secondary. This session plans and never edits code.
 
-`CLI` is `python3 "<this skill's directory>/../build/pipeline.py"`.
-Run `CLI workflow` at entry or `CLI status <plan>` with a plan.
+Use `ds` as `CLI` for installed workflows, or
+`python3 "<this skill's directory>/../build/pipeline.py"` for legacy plugin runs.
+For ds, [enter or resume the task](../../references/WORKFLOW-PATHS.md)
+before planning. Use `CLI status <plan>` once its plan exists.
 
 A plan is always a file, about 1000 words. It holds only what an
 implementer cannot decide alone: the product decisions with a reason each, the
@@ -32,19 +34,19 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   including paths outside the repository that decisions refer to. For each
   territory the worker matches applicable project and session skills and
   `CLI spec list` areas by description.
-- The run file exists, `.ai-workflow/plans/YYYY-MM-DD-<slug>.run.toml`
-  (`dev-skills:run-file`); if not, write it first. The plan takes its name with
-  `.md`. `approve` validates without recording consent.
-- Get Checks from the run file's `[checks]` via `CLI run show <plan>`.
-  The Environment block of `AGENTS.md` fills only what the run
-  file lacks: [environment-contract.md](references/environment-contract.md).
+- The task's run file exists beside the plan (`dev-skills:run-file`); if not,
+  write it first. `approve` validates without recording consent.
+- Get Checks from `CLI run show <plan>`. For a legacy example, fill missing
+  checks from the [Environment block](references/environment-contract.md).
 - Write the plan in the project's document language from
   [environment-contract.md](references/environment-contract.md). Use the original
   conversation language for user messages and the gate guide, per [SESSIONS.md](../../references/SESSIONS.md).
 
 ## The file
 
-The run file's name with `.md`. It is written with Status `draft` and base `—`; build writes the SHA. A worked example: [example.md](references/example.md).
+Use the run file's name with `.md`, written with Status `draft`. For a ds
+task, use its branch and base. For legacy only, the base is `—` until build.
+A worked example: [example.md](references/example.md).
 
 ```markdown
 # Plan: <what the user gets, in a few words>

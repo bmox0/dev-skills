@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the reference layer of the dev-skills tree.
 
-Walks skills/, agents/ and references/ (recursively) plus the
+Walks the standalone skill, skills/, agents/ and references/ plus the
 repository root's own *.md files (root only, not recursive — this does not
 descend into .ai-workflow/ or other root-level directories), reads every .md
 file, and checks three things line by line (skipping anything inside a fenced
@@ -15,10 +15,10 @@ code block):
 
 and two things per file:
 
-  BUDGET               - every .md under skills/, agents/ and references/ has
+  BUDGET               - every .md under those resource directories has
                         exactly one line in scripts/word-budgets.txt and is
                         within it, and every line there names such a file
-  FRONT                - every skills/<name>/SKILL.md and agents/<name>.md
+  FRONT                - each entry skill and agent
                         opens with a frontmatter block of `key: value` lines,
                         quotes balanced, whose name is <name> and which has a
                         description
@@ -44,8 +44,7 @@ from collections import namedtuple
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-WALK_DIRS = ("skills", "agents", "references")
-BUDGET_DIRS = ("skills", "agents", "references")
+WALK_DIRS = ("skills", "agents", "references", "ds-cli-skill")
 ALLOWLIST_PATH = Path(__file__).resolve().parent / "link-allow.txt"
 BUDGETS_PATH = Path(__file__).resolve().parent / "word-budgets.txt"
 SKILLS_DIR = REPO_ROOT / "skills"
@@ -196,6 +195,8 @@ def check_r3(path, lineno, line, findings, allow_index, allow_matched):
     tokens = [m.group(0) for m in DS_TOKEN_RE.finditer(line)]
     tokens += [m.group(0) for m in LEGACY_WORD_RE.finditer(line)]
     for token in tokens:
+        if token == "ds-cli-skill":
+            continue
         idxs = allow_index.get((path_key, lineno, token))
         if idxs:
             for i in idxs:
@@ -219,7 +220,7 @@ def check_budgets(findings):
                 findings["BUDGET"].append(f"word-budgets.txt:{n}: second line for {parts[0]}")
             budgets[parts[0]] = int(parts[1])
     seen = set()
-    for d in BUDGET_DIRS:
+    for d in WALK_DIRS:
         base = REPO_ROOT / d
         for path in sorted(base.rglob("*.md")) if base.is_dir() else []:
             key = rel(path)
@@ -275,6 +276,9 @@ def check_frontmatter(path, expected_name, findings):
 
 
 def check_frontmatters(findings):
+    standalone = REPO_ROOT / "ds-cli-skill/SKILL.md"
+    if standalone.is_file():
+        check_frontmatter(standalone, standalone.parent.name, findings)
     for path in sorted(SKILLS_DIR.glob("*/SKILL.md")):
         check_frontmatter(path, path.parent.name, findings)
     for path in sorted(AGENTS_DIR.glob("*.md")):

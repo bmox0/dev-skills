@@ -12,19 +12,17 @@ This session is the orchestrator: it judges the evidence and never edits code.
 A bug adds one stage in front of the plan: its reproduction and its cause. The
 fix is built from a plan whose phase 1 is the red test.
 
-**No fix without a root cause.** A symptom fix is a failure, not a partial
-success, and it holds hardest when the fix looks obvious.
+**No fix without a root cause.** A symptom fix is a failure, even when it looks obvious.
 
 ## 1. A worker reproduces and traces
 
 Dispatch a worker, a secondary subagent, with the symptom in the user's words and
-a slug for it. It leaves the tree as it found it, and returns:
+its [task paths](../../references/WORKFLOW-PATHS.md). It leaves the tree as it found it and returns:
 
 - **A red test and the command that runs it**, red every time: a failing test
   if the project has a test framework, a script if it does not, with the whole
   failure read. It writes the test as a patch, new files included, to
-  `.ai-workflow/plans/<slug>.red.patch` (git-ignored, so the tree is as it
-  found it), and returns that path and the command.
+  the task's ignored artifacts as `<slug>.red.patch`, and returns its path and command.
 - **A candidate cause with its evidence**, stated as "X is the cause, because
   Y" and shown by the smallest experiment. It checks what changed lately,
   traces the bad value back to where it starts
@@ -44,7 +42,7 @@ command and the cause; the stage ends when the user agrees.
 ## 3. The plan
 
 `dev-skills:plan`, named with the same slug. Name
-`.ai-workflow/plans/<slug>.red.patch` and the red command in phase 1: it
+the returned red patch and command in phase 1: it
 applies the patch, sees it red, and commits it with the fix that turns it
 green at the root cause. Done drives the original symptom. No workaround, no
 retry or sleep over a race nobody has explained

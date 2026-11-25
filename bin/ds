@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Select an exact installed release, then run its existing pipeline CLI."""
+
+import os
+from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+store = Path(__file__).resolve().parents[1] / "lib" / "dev-skills"
+sys.path.insert(0, str(store))
+
+
+CURRENT_STATUS = """
+import inspect
+import os
+from pathlib import Path
+import sys
+
+engine, selected, *args = sys.argv[1:]
+selected = Path(selected)
+sys.path.insert(0, str(Path(engine).parent))
+import pipeline
+
+sys.argv = [engine, *args]
+if "current_task" in inspect.signature(pipeline.main).parameters:
+    sys.exit(pipeline.main(current_task=selected))
+
+# Retained engines own their status format but cannot read unrelated newer records.
+pipeline.inventory = lambda root: [selected] if os.path.lexists(selected) else []
+pipeline.task_rows = lambda root: [task] if (task := pipeline.task_for(selected, root)) else []
+sys.exit(pipeline.main())
+"""
+
+
+def main():
+    from ds_release import ReleaseError, command_plan, installed_default, project_root, read_lock, run_pin, update_project, verify_release, PROGRAM
+
+    argv = sys.argv[1:]
+    scoped = None
+    try:
+        # Issued commands already name their release and do not need the current parser to route.
+        if len(argv) >= 2 and argv[0] == "--release":
+            release, argv = argv[1], argv[2:]
+        else:
+            from route_pipeline import ParseExit, parse_cli
+            try:
+                _, args = parse_cli(argv, standalone=True, routing=True)
+            except ParseExit:
+                args = None
+            if args and args.group == "update":
+                update_project(store, args.version)
+                return 0
+            plan = command_plan(args, Path.cwd()) if args else None
+            release = run_pin(plan) if plan else None
+            if plan and args.group == "status" and args.current:
+                scoped = plan
+            if release is None:
+                project = project_root(Path(plan).absolute().parent if plan else Path.cwd())
+                if project is not None:
+                    release = read_lock(project)
+                    if release is None and (project / ".ds/config.toml").exists() and args and args.group not in ("init", "help"):
+                        raise ReleaseError(f"{project}/.ds/ds.lock is missing; run `ds init` to finish setup or restore the lock")
+            if release is None:
+                release = installed_default(store)
+        engine = verify_release(store, release) / PROGRAM
+        if scoped:
+            os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", CURRENT_STATUS, str(engine), str(scoped), *argv])
+        os.execv(sys.executable, [sys.executable, str(engine), *argv])
+    except ReleaseError as error:
+        print(f"ds: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (ImportError, OSError, SyntaxError) as error:
+        sys.exit(f"ds: cannot start the installed launcher ({error}); reinstall dev-skills")

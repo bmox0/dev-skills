@@ -61,10 +61,9 @@ never asserted.
 
 ## Handing it over
 
-**To a file:** `.ai-workflow/handoff/YYYY-MM-DD-<name>.md`. If
-`git check-ignore -q .ai-workflow` fails, add the line `.ai-workflow` to
-`$(git rev-parse --git-path info/exclude)`, never to a tracked file. Give
-the user the path and nothing else.
+**To a file:** Write beside the plan, or use the
+[project handoff directory](../../references/WORKFLOW-PATHS.md) without one.
+Name it `YYYY-MM-DD-<name>.md`. Give the user its path.
 
 **To the chat:** the whole document in one fenced block, with nothing around
 it; anything outside the fence gets copied with it.

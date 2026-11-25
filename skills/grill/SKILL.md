@@ -7,7 +7,7 @@ description: Question an idea with the user until both agree on what is being bu
 
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
-Run `python3 "<this skill's directory>/../build/pipeline.py" workflow` at entry.
+For ds, [enter or resume the task](../../references/WORKFLOW-PATHS.md) before the interview.
 
 This session remains the user’s orchestrator: it talks, decides with the user,
 and never edits code. Turn the idea into a design you and the user both agree
@@ -21,9 +21,8 @@ Run the interview in [INTERVIEW.md](references/INTERVIEW.md).
   worker, a secondary subagent that returns paths, abstractions and what it found.
   Keep asking the questions that do not wait on it.
 - **The rules come first.** At the start a second worker, a secondary subagent,
-  reads `docs/spec/` (`list`, the area files, `show` of a rule, through the
-  `python3 "<this skill's directory>/../build/pipeline.py" spec`, resolved to a path for the
-  worker; grammar in the `spec` skill's `references/FORMAT.md`) and returns
+  reads `docs/spec/` (use `CLI spec list`, the area files and `CLI spec show ID`;
+  see [FORMAT.md](../spec/references/FORMAT.md)) and returns
   the rules the task touches, each with its reason and any contradiction: with
   the task, between rules, with the code or an ADR. None is a normal answer.
 - **Decisions are the user's,** in prose. Put each one to them and wait.

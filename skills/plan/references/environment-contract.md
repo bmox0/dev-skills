@@ -1,10 +1,10 @@
 # The project's commands
 
 A plan's Checks names the commands each phase runs, the full commands run after
-all phases, and how e2e drives the system. They come from one block in the
-project's `AGENTS.md`, stated once so that no plan has to
-discover them. It fills a first run file's `[checks]`; later runs copy the last
-run file, and the run file is what plan and verify read:
+all phases, and how e2e drives the system. Plan and verify read the run file.
+For standalone `ds`, shared checks come from `.ds/config.toml`. The project's
+`AGENTS.md` environment block can suggest commands at `ds init` or fill a
+legacy example:
 
 ```markdown
 ## Environment

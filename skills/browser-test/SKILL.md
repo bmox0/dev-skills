@@ -73,7 +73,9 @@ tab help               tab down
 
 **It never touches the human's own browser.** Own profile at `~/.cache/tab-browser-profile`, own port 9222. Do not point `TAB_PROFILE` at their real profile. Brave, Chrome, Chromium and Edge are found in that order; `TAB_BROWSER` overrides.
 
-**Artifacts go to `.ai-workflow/browser-test/`** — screenshots and the state file, under `.ai-workflow/`, which git should ignore.
+**Artifacts use the [task's browser-test directory](../../references/WORKFLOW-PATHS.md).**
+Set `TAB_OUT` when the script cannot infer the task. The legacy script defaults
+to ignored `.ai-workflow/browser-test/`.
 
 **Nothing is injected into the app beyond the console/fetch/XHR hook.** Frames are read through CDP, where patching cannot mislead and cannot break the app under test.
 

@@ -8,7 +8,27 @@ import zlib from "node:zlib"
 
 const HERE = fileURLToPath(import.meta.url)
 
-const OUT = process.env.TAB_OUT ?? path.resolve(process.cwd(), ".ai-workflow", "browser-test")
+function artifactDirectory() {
+  if (process.env.DS_ARTIFACTS) return path.join(process.env.DS_ARTIFACTS, "browser-test")
+  const bundle = path.resolve(path.dirname(HERE), "../..")
+  if (!existsSync(path.join(bundle, "release.json"))) return path.resolve(".ai-workflow", "browser-test")
+  try {
+    const branch = execFileSync("git", ["branch", "--show-current"], {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim()
+    const task = branch.match(/^ds\/([a-z0-9][a-z0-9-]*)$/)?.[1]
+    const cli = path.resolve(bundle, "../../../../bin/ds")
+    const resolve = args => execFileSync(cli, args, {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim()
+    if (task) {
+      try {
+        return resolve(["task", "path", task, "browser-test"])
+      } catch {}
+    }
+    return resolve(["path", "browser-test"])
+  } catch {
+    return path.resolve(".ds", "workflow", "browser-test")
+  }
+}
+
+const OUT = process.env.TAB_OUT ?? artifactDirectory()
 const SHOTS = path.join(OUT, "shots")
 const STATE_FILE = path.join(OUT, "state.json")
 

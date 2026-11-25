@@ -5,12 +5,91 @@ change — discussion, a plan file, implementation by subagents, a review and an
 e2e check, and your approval before merge. The user or designated orchestrator coordinates the run;
 a chosen build session coordinates implementation. Neither edits code.
 
+## Install the standalone CLI
+
+Get the dev-skills source revision you want to install. For a normal install:
+
+```sh
+git clone https://github.com/bmox0/dev-skills.git
+ds_source="$(cd dev-skills && pwd)"
+"$ds_source/scripts/install-ds"
+export PATH="$HOME/.local/bin:$PATH"
+ds --version
+```
+
+For an unreleased branch, set `ds_source` to the absolute path of its existing
+local worktree and run the same installer. It copies the current files, so use
+a clean worktree at the intended revision. No push or publish is needed.
+Python 3.11+ is required. `ds --version` prints the version and content digest.
+To test without changing an existing install, pass `--prefix DIR` and put
+that prefix's `bin/` first on `PATH`.
+
+In the project, run:
+
+```sh
+ds init
+ds help agents
+```
+
+That is enough for CLI-only use. It installs no skills or hooks. Commit
+`.ds/config.toml`, `.ds/ds.lock` and the generated changes to `AGENTS.md`
+and `.gitignore`. A colleague installs the source revision matching the
+lock, clones your project and runs `ds init` to add only their provider's
+pair. Project checks are shared. Plans, worktrees and evidence are local.
+
+### Install the one entry skill separately
+
+From the same source checkout, run the installer for your host:
+
+```sh
+"$ds_source/scripts/install-skill" codex
+"$ds_source/scripts/install-skill" claude
+```
+
+The commands copy one file, [ds-cli-skill/SKILL.md](ds-cli-skill/SKILL.md),
+to the host's personal skills directory. Codex uses `~/.agents/skills/`.
+Claude Code uses `~/.claude/skills/` or the `skills/` directory under the
+launch environment's `CLAUDE_CONFIG_DIR`. You can rerun the installer. If a
+different skill exists there, it prints the path and leaves it untouched.
+Compare it and move it aside before updating.
+[Codex skills](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills) · [Claude Code skills](https://code.claude.com/docs/en/skills#choose-where-skills-load).
+
+Start a new host session from the project with the installed `ds` on its
+`PATH`, then say “используй ds” or “use ds”. The agent reads `ds help agents`
+and the current task instructions. To check standalone discovery without the
+legacy plugin, add these options when opening the session:
+
+```sh
+codex -c 'plugins.dev-skills@dev-skills.enabled=false'
+claude --settings '{"enabledPlugins":{"dev-skills@dev-skills":false}}'
+```
+
+### Update or adopt a project
+
+Install the new source revision, then run `ds update` in the project. It
+selects the most recently installed release for new work. Use `ds update RELEASE`
+to select an exact installed ID. Commit the changed lock. Prior runs and issued
+commands stay on their exact release. Use `ds help agents --plan PLAN` for their
+instructions. If that release is missing or damaged, reinstall from the source
+revision that produced its ID. If that installer is older than the one you
+normally use, rerun your newer installer afterward to restore the shared
+launcher and install default. Neither reinstall changes the project lock.
+You do not need to run `ds update` to repair a release. A failed update also
+leaves the lock unchanged.
+
+In a checkout with legacy plugin history, run `ds init` there. It registers
+the existing local history under `.ds/workflow/legacy/` and keeps the old
+paths available while their checkouts exist. Linked checkout history stays in
+the shared archive when Git removes the checkout.
+Keep active legacy workers on their issued commands and paths. Inspect the
+combined inventory with `ds status`. New tasks use `ds task start ID` and
+their private records stay under `.ds/workflow/`.
+
 ## The pipeline
 
-Run `python3 skills/build/pipeline.py workflow` from this repository to see the
-eight stages before planning. Use the installed CLI path in other repositories.
-Run `status <plan>` for its stage, owner and next action, or `status --current`
-to find relevant plans from your checkout.
+Run `ds workflow` to see the eight stages before planning. Run `ds status PLAN`
+for its stage, owner and next action, or `ds status --current` to find relevant
+plans from your checkout. For legacy, invoke the assigned `pipeline.py` instead.
 
 For automation, use `workflow --json` before there is a plan, or
 `status --json <plan>` and `status --current --json` during a run. Read
@@ -59,12 +138,11 @@ and the CLI still applies each command's own checks.
    consent to the current run, plan and Spec. Planning then stops.
 4. **Build.** Summary approval starts nothing. A subsequent instruction chooses
    herdr, a native independent session or manual handoff.
-   That session runs the graph and owns pipeline transitions. One branch and
-   one working tree per plan: this one, or a
-   worktree when another plan is building here. Every phase whose
+   That session runs the graph and owns pipeline transitions. On ds it reuses
+   the task's branch and worktree from planning. Every phase whose
    dependencies are met starts at once, as an implementer that writes only
    inside its territory and runs the project's checks on it. Before the gate and
-   each re-check, `pipeline.py spec write` runs and `docs/spec/` is committed alone.
+   each re-check, the CLI writes and commits `docs/spec/` alone.
 5. **Build verification.** The coordinator opens the gate after the last phase.
    At the level the plan names, small or normal, code runs
    the full checks, then at once a fresh review against the project's rules (and the `Spec:` areas' rules) and
@@ -128,14 +206,12 @@ words stay unchanged. The contract: [`references/SESSIONS.md`](references/SESSIO
 - **The judge** uses primary after every gate or round, decides what results
   mean, records its prediction and runs `land`.
 
-`AGENTS.md` is the shared source. Its Executors block defines each provider’s
-primary/secondary model and optional effort. `executor show --provider NAME`
-reads it before run approval; adding the plan selects the frozen snapshot
-afterward. New runs copy every provider. All new briefs require `--provider`
-and expose their assigned tier/model/effort; dispatch applies them explicitly.
-Provider and model names are open. A missing profile asks for configuration,
-never substitutes a provider. [`references/CODEX.md`](references/CODEX.md) is
-an optional host adapter.
+`AGENTS.md` supplies project rules. The shared `.ds/config.toml` holds each
+provider's primary and secondary model and optional effort (legacy runs read
+the `AGENTS.md` Executors block). `ds executor show --provider NAME` reads
+current defaults. Add the plan for its approved snapshot. Dispatch applies
+the model and effort in the brief. A missing profile asks for configuration,
+never substitutes a provider. [Codex adapter](references/CODEX.md).
 
 The state lives in code. `skills/build/pipeline.py` (the CLI) keeps each plan's
 state and the run file's approved values, renders the plan and the gate page,
@@ -158,10 +234,10 @@ registration. Host permissions and trust remain the user’s decision.
 
 ## The project's side
 
-The plugin reads the project's shared `AGENTS.md` and its style skills
-as the bar for the build and the review: the plan names the skills each
-phase's code follows, the project's and the global ones that fit the work.
-It reads one block in that file for the commands a plan's Checks names:
+The workflow uses the project's `AGENTS.md` and style skills for build
+and review. The plan names the skills each phase follows. `ds init` can
+suggest commands from the Environment block below. Check commands for new
+ds work then come from the shared config.
 
 ```markdown
 ## Environment
@@ -178,7 +254,7 @@ The full format is in
 `AGENTS.md` serves both hosts: Codex reads it, and Claude Code reads it where
 the project has no `CLAUDE.md`, or one that imports it with `@AGENTS.md`.
 
-## Install
+## Install the legacy native plugin
 
 In Claude Code:
 

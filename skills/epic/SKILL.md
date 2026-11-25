@@ -8,7 +8,7 @@ description: Keep work that needs more than one plan — the shared decisions an
 An epic exists only on the user's word; by default the work is one plan. It
 holds what the plans share and the order they go in.
 
-Write it to `.ai-workflow/epics/<topic>.md`:
+Write `<topic>.md` to the [project epics directory](../../references/WORKFLOW-PATHS.md):
 
 ```markdown
 # Epic: <topic>

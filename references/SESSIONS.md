@@ -5,10 +5,10 @@ are optional advice and confer no approval. Always run prescribed CLI checks.
 
 ## Select executors
 
-`CLI` is `python3 "<build skill directory>/pipeline.py"`.
-Before run approval, `CLI executor show --provider <provider>` reads literal
-project-root AGENTS Executors pairs; add `<plan>` afterward for the frozen
-snapshot. Missing profiles require user-supplied, approved choices.
+`CLI` is `ds` or, for legacy, `python3 "<build skill directory>/pipeline.py"`.
+`CLI executor show --provider NAME` reads project configuration (legacy:
+literal project-root AGENTS Executors). Add `PLAN` for the frozen snapshot.
+Request missing profiles.
 
 Planning, coordination, first review (including small gates) and judges use
 primary. Helpers, prototypes, implementation, fixes, verify/E2E, rechecks and

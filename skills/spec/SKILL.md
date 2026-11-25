@@ -7,7 +7,7 @@ description: Use when one finished task, built outside the pipeline, has to leav
 
 The project's rules live in `docs/spec/`, one file per area, each rule with its reason and its scenarios. `pipeline.py spec` writes them from a plan-shaped file; the grammar and the commands are in [`FORMAT.md`](references/FORMAT.md). A rule is changed through a plan or this skill, never by hand. The pipeline (`grill`, `plan` and `build`) calls `pipeline.py spec` itself; this skill's standalone mode is for work done outside it.
 
-The CLI is called as `python3 "<this skill's directory>/../build/pipeline.py" spec`. `<this skill's directory>` is the folder this `SKILL.md` sits in: Claude Code gives it as the skill's base directory, Codex in its skill list.
+Use `ds spec`, or for legacy `python3 "<this skill's directory>/../build/pipeline.py" spec`.
 
 ## Reading the rules
 
@@ -19,6 +19,6 @@ A short grill and the same script.
 
 1. **Read the task's diff and the existing rules**: `list`, then the area files it touches. Done when you can say which rules the diff keeps, changes or adds.
 2. **Decide the area, the rule ID, `+`, `~` or `-`, and the wording yourself; ask the user only what the code cannot show**: what must stay true here, and why. A rule that code structure, a word or a one-off check would carry goes elsewhere (FORMAT.md). Done when, for each rule step 1 found, the user has said what must stay true and why.
-3. **Write `.ai-workflow/spec/<date>-<slug>.md`**, in the project's language ([environment-contract.md](../plan/references/environment-contract.md)), with a title, Result, Done (use cases, each a scenario a rule can cite) and `## Spec`. Done when every added rule cites a Done item and every changed rule has its reason.
+3. **Write `<date>-<slug>.md` in the [spec scratch directory](../../references/WORKFLOW-PATHS.md)**, in the project's language ([environment-contract.md](../plan/references/environment-contract.md)), with title, Result, Done use cases and `## Spec`. Done when every added rule cites a Done item and every changed rule has its reason.
 4. **`check`** the file, fix every line it reports, run it again until it is silent; then **`write`**.
 5. **Show `git status --short docs/spec/`, `git diff` and any new file.** Commit only on the user's word.

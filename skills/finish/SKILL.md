@@ -5,11 +5,11 @@ description: Merge a plan's branch — a merge request, or local with --no-ff or
 
 # Finish
 
-The existing build writer runs it on the plan’s branch after current authorized
-acceptance: [SESSIONS.md](../../references/SESSIONS.md). If acceptance is missing, record
+The build writer runs finish after current authorized acceptance
+([SESSIONS.md](../../references/SESSIONS.md)). If missing, record
 `CLI accept <plan> --by <name> --words "<unchanged approval>"`.
-Use the approved run ending when instructed; do not ask it again.
-`CLI` is `python3 "<the build skill's directory>/pipeline.py"`.
+Use the approved ending when instructed; do not ask again.
+Use the run's installed `ds` or legacy CLI from its brief.
 
 ## 1. Merge it
 
@@ -29,5 +29,7 @@ is `passed` or a merge-request link. Read the result:
 
 ## 2. After
 
-Code removes the worktree and the data directory, deletes the backups the run
-file says to or lists them, and keeps the branch. Then offer a retro (`dev-skills:retro`); the user decides.
+Code removes the owned worktree and its data directory, follows the run's
+backup policy and keeps the branch and history. If unsaved files prevent
+cleanup, resolve the named paths and rerun `CLI finish <plan>` for cleanup only.
+Then offer a retro (`dev-skills:retro`); the user decides.

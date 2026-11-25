@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$repo_root/test/lib/harness.sh"
+. "$repo_root/test/cli/lifecycle.sh"
+
+sandbox=$(mktemp_dir)
+sandbox=$(cd "$sandbox" && pwd -P)
+
+prefix="$sandbox/install prefix"
+project="$sandbox/project with spaces"
+export PATH="$prefix/bin:$PATH"
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+
+# distribution#system-cli: a terminal outside the source tree uses standalone help and resources.
+if ! install=$(cd "$sandbox" && "$repo_root/scripts/install-ds" --prefix "$prefix" 2>&1); then
+  echo "distribution#system-cli: an outside terminal can install ds: $install" >&2
+  exit 1
+fi
+cli() { ds "$@"; }
+a=$(cd "$sandbox" && ds --version)
+engine_a="$prefix/lib/dev-skills/releases/$a"
+assert_contains "$(cd "$sandbox" && ds --help)" 'usage: ds' 'distribution#system-cli: ds uses terminal-facing help'
+assert_contains "$(cd "$sandbox" && ds help agents)" "$engine_a/references/SESSIONS.md" 'distribution#system-cli: help points to the installed protocol'
+assert_contains "$(node "$engine_a/skills/browser-test/tab.mjs" --help)" "one persistent tab" 'distribution#system-cli: the installed browser helper runs'
+[[ -r "$engine_a/agents/implementer.md" ]] || { echo 'distribution#system-cli: the release includes role instructions' >&2; exit 1; }
+
+mkdir -p "$project/.ds" "$project/.ai-workflow/plans"
+cd "$project"
+git init -q -b main
+git commit --allow-empty -qm base
+ds init --non-interactive --provider Test --primary-model primary --secondary-model secondary >/dev/null
+if out=$(ds run new docs/solo.md 2>&1); then
+  echo 'run#task-worktree: standalone run new cannot bypass task entry' >&2
+  exit 1
+fi
+assert_contains "$out" 'ds task start' 'run#task-worktree: standalone run new tells the user how to start a task'
+[[ ! -e docs/solo.run.toml && $(git branch --show-current) == main ]]
+base=$(git rev-parse HEAD)
+entry=$(ds task start run-a --json)
+plan="$project/.ds/workflow/plans/run-a.md"
+repo_worktree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$entry")
+cat > "$plan" <<PLAN
+# Plan: A run bound to its installed release
+
+Status: draft · branch \`ds/run-a\` · base \`$base\`
+
+## Result
+
+Keep the run on A.
+
+## Approach
+
+Use the installed workflow.
+
+## Out of scope
+
+- Host plugins.
+
+## Phases
+
+### 1. Add a fixture — \`waiting\`
+
+Territory: \`src/\`
+Skills: \`skills/tdd/SKILL.md\`
+Spec: none
+Waits for: nothing
+
+## Checks
+
+- Gate: small — fixture only
+
+## Done
+
+1. Install A → the run stays on A.
+
+## Spec
+
+none
+PLAN
+cp "${plan%.md}.run.toml" "$sandbox/run-a.toml"
+mkdir docs
+sed 's|ds/run-a|solo|' "$plan" > docs/solo.md
+cp "$sandbox/run-a.toml" docs/solo.run.toml
+refuse_solo() {
+  local out
+  if out=$(ds "$@" docs/solo.md 2>&1); then
+    echo "run#task-worktree: $* accepted a copied release pin for an unregistered draft" >&2
+    exit 1
+  fi
+  assert_contains "$out" 'ds task start' 'run#task-worktree: rejection directs the user to task entry'
+}
+refuse_solo run check
+refuse_solo approve
+refuse_solo run approve --by user --words 'Fixture consent'
+refuse_solo summary approve --by user --words 'Fixture consent' --file docs/solo.md
+refuse_solo build start --base main --note 'Fixture override'
+[[ ! -e docs/solo.json && $(git branch --show-current) == main ]]
+rm docs/solo.md docs/solo.run.toml
+approve_plan "$plan" >/dev/null
+ds build start "$plan" >/dev/null
+ds_task=$(ds task start release-task --json)
+ds_task_tree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$ds_task")
+ds_task_run="$project/.ds/workflow/plans/release-task.run.toml"
+cp "$ds_task_run" "$sandbox/task-a.toml"
+
+# run#starts-from-last: a draft cannot remove its registered release before compilation or approval.
+sed '/^\[workflow\]$/{N;d;}' "$sandbox/task-a.toml" > "$ds_task_run"
+if out=$(ds run check "${ds_task_run%.run.toml}.md" 2>&1); then
+  echo 'run#starts-from-last: a task without its entry pin cannot validate' >&2
+  exit 1
+fi
+assert_contains "$out" '[workflow].release' 'run#starts-from-last: a missing entry pin identifies the field to restore'
+cp "$sandbox/task-a.toml" "$ds_task_run"
+
+# distribution#project-lock: the preceding release stored only base, ready and branch.
+ds task start previous-record >/dev/null
+previous="$project/.ds/workflow/tasks/previous-record.json"
+python3 - "$previous" <<'PY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+row = json.loads(path.read_text())
+path.write_text(json.dumps({k: row[k] for k in ('base', 'ready', 'branch')}))
+PY
+cp "$previous" "$sandbox/previous-record.json"
+
+# distribution#project-lock: an interrupted entry retains A even if the project lock moves before retry.
+ds task start interrupted >/dev/null
+rm .ds/workflow/plans/interrupted.run.toml
+python3 - <<'PY'
+import json
+from pathlib import Path
+record = Path('.ds/workflow/tasks/interrupted.json')
+value = json.loads(record.read_text())
+value['ready'] = False
+record.write_text(json.dumps(value))
+PY
+
+# distribution#project-lock: a side-by-side install changes no project until explicit update.
+source_b="$sandbox/source b"
+mkdir "$source_b"
+cp -R "$repo_root/." "$source_b/"
+python3 - "$source_b/.claude-plugin/plugin.json" "$source_b/skills/build/pipeline.py" <<'PY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest['version'] = '9.99.0'
+path.write_text(json.dumps(manifest))
+engine = Path(sys.argv[2])
+old = 'show terminal help or the installed agent workflow'
+code = engine.read_text()
+assert old in code
+engine.write_text(code.replace(old, 'show terminal help from release B', 1)
+                  .replace('Continue in the task worktree with a grill or plan.', 'Continue using release B.'))
+PY
+# distribution#system-cli: neither advertised guides nor the instructions they link to are optional.
+for missing in references/WORKFLOW-PATHS.md skills/plan/references/environment-contract.md; do
+  mv "$source_b/$missing" "$sandbox/removed-resource"
+  if out=$("$source_b/scripts/install-ds" --prefix "$prefix" 2>&1); then
+    echo "distribution#system-cli: installation accepted an incomplete candidate missing $missing" >&2
+    exit 1
+  fi
+  assert_contains "$out" "$missing" 'distribution#system-cli: the rejected candidate names the missing guide'
+  assert_eq "$a" "$(cd "$sandbox" && ds --version)" 'distribution#project-lock: a rejected candidate does not become the default'
+  mv "$sandbox/removed-resource" "$source_b/$missing"
+done
+"$source_b/scripts/install-ds" --prefix "$prefix" >/dev/null
+b=$(cd "$sandbox" && ds --version)
+engine_b="$prefix/lib/dev-skills/releases/$b"
+[[ "$b" != "$a" ]] || { echo 'distribution#project-lock: A and B can be installed separately' >&2; exit 1; }
+assert_eq "$a" "$(cd "$repo_worktree" && ds --version)" 'distribution#project-lock: installing B does not change the lock in any worktree'
+assert_contains "$(cd "$repo_worktree" && ds help agents)" "$engine_a/agents/implementer.md" 'distribution#project-lock: linked help uses A before update'
+assert_contains "$(cd "$repo_worktree" && ds --help)" 'installed agent workflow' 'distribution#project-lock: terminal help uses the selected release parser'
+(cd "$repo_worktree" && ds update) >/dev/null
+assert_eq "$b" "$(ds --version)" 'distribution#project-lock: update changes the main checkout selection'
+assert_contains "$(ds help agents)" "$engine_b/agents/implementer.md" 'distribution#project-lock: project help now uses B'
+assert_contains "$(ds --help)" 'terminal help from release B' 'distribution#project-lock: terminal help uses B after update'
+assert_contains "$(ds task resume previous-record --json)" "$a" 'distribution#project-lock: a previous-format task still resumes on A'
+assert_eq "$project/.ds/workflow/artifacts/previous-record/browser-test" "$(ds task path previous-record browser-test)" 'distribution#project-lock: previous-format task paths still resolve'
+assert_contains "$(ds run show .ds/workflow/plans/previous-record.md --json)" "$a" 'distribution#project-lock: a previous-format run still shows A'
+assert_contains "$(ds status --json)" 'previous-record' 'distribution#project-lock: project inventory finds previous-format tasks'
+cmp "$previous" "$sandbox/previous-record.json"
+assert_contains "$(ds task start interrupted --json)" "$a" 'distribution#project-lock: retry retains the entry release after update'
+fresh="$project/.ds/workflow/plans/run-b.md"
+ds task start run-b >/dev/null
+assert_contains "$(ds run show "$fresh" --json)" "$b" 'run#starts-from-last: a new run snapshots the newly locked release B'
+assert_contains "$(cd "$ds_task_tree" && ds run show .ds/workflow/plans/release-task.md --json)" "$a" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
+assert_contains "$(cd "$ds_task_tree" && ds task resume release-task --json)" "$a" 'distribution#project-lock: resume reports the release captured at task entry'
+ds status --current --json | python3 -c '
+import json, sys
+rows = {r["plan"]: r for r in json.load(sys.stdin)}
+assert rows["release-task"]["workflow"]["actions"][0]["action"] == "Continue in the task worktree with a grill or plan."
+assert rows["previous-record"]["release"] == rows["release-task"]["release"]
+assert rows["run-b"]["workflow"]["actions"][0]["action"] == "Continue using release B."
+'
+sed "s/$a/$b/" "$sandbox/task-a.toml" > "$ds_task_run"
+if out=$(ds task resume release-task 2>&1); then
+  echo 'run#starts-from-last: an edited draft cannot move a registered task to the current project release' >&2
+  exit 1
+fi
+assert_contains "$out" "$a" 'run#starts-from-last: replacing the draft pin identifies its entry release'
+cp "$sandbox/task-a.toml" "$ds_task_run"
+
+# Approved snapshots take priority over edited run files and the new project lock.
+sed "s/$a/$b/" "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
+assert_contains "$(cd "$sandbox" && ds run show "$plan" --json)" "$a" 'distribution#project-lock: an approved run retains A'
+assert_contains "$(cd "$sandbox" && ds help agents --plan "$plan")" "$engine_a/agents/implementer.md" 'distribution#project-lock: help can follow the run from another directory'
+sed '/^\[workflow\]$/{N;d;}' "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
+if out=$(cd "$sandbox" && ds run approve "$plan" --by user --words 'Accept edited checks' 2>&1); then
+  echo 'run#changes-through-approve: approving other edits cannot unpin an active run' >&2
+  exit 1
+fi
+assert_contains "$out" '[workflow].release' 'run#changes-through-approve: the refusal identifies the removed pin'
+cp "$sandbox/run-a.toml" "${plan%.md}.run.toml"
+(cd "$sandbox" && ds phase start "$plan" 1) >/dev/null
+brief=$(cd "$sandbox" && ds brief implementer "$plan" 1 --provider Test)
+assert_contains "$(cat "$brief")" "$engine_a/agents/implementer.md" 'distribution#project-lock: run briefs still use A'
+assert_contains "$(cat "$brief")" "$engine_a/skills/tdd/SKILL.md" 'distribution#system-cli: a phase can depend on an installed skill'
+(cd "$repo_worktree" && ds status --current --json --provider Test) > "$sandbox/status.json"
+python3 - "$sandbox/status.json" "$sandbox" "$engine_a" <<'PY'
+import json, subprocess, sys
+from pathlib import Path
+view, cwd, release = sys.argv[1:]
+row, = json.loads(Path(view).read_text())
+step = next(s for s in row['workflow']['actions'] if s.get('role') == 'implementer' and s['kind'] == 'run')
+brief = subprocess.check_output(step['argv'], cwd=cwd, text=True).strip()
+assert f'{release}/agents/implementer.md' in Path(brief).read_text(), 'distribution#project-lock: advertised argv is bound to A from another directory'
+PY
+
+# Missing or changed contents must not select a fallback or alter the lock or run.
+cp .ds/ds.lock "$sandbox/lock-before"
+printf 'broken\n' > "$engine_a/references/SESSIONS.md"
+if out=$(ds update "$a" 2>&1); then
+  echo 'distribution#project-lock: a damaged candidate must not update the lock' >&2
+  exit 1
+fi
+assert_contains "$out" 'references/SESSIONS.md' 'distribution#project-lock: update identifies damaged contents'
+cmp .ds/ds.lock "$sandbox/lock-before"
+cp "${plan%.md}.json" "$sandbox/run-before"
+if out=$(cd "$sandbox" && ds phase done "$plan" 1 2>&1); then
+  echo 'distribution#project-lock: a damaged locked run cannot execute' >&2
+  exit 1
+fi
+assert_contains "$out" "$a" 'distribution#project-lock: a damaged run names its release'
+if out=$(cd "$ds_task_tree" && ds task resume release-task 2>&1); then
+  echo 'distribution#project-lock: a task resume cannot substitute the current release' >&2
+  exit 1
+fi
+assert_contains "$out" "$a" 'distribution#project-lock: resume identifies the damaged task release'
+if out=$(ds task path release-task browser-test 2>&1); then
+  echo 'distribution#project-lock: task artifact routing cannot substitute the current release' >&2
+  exit 1
+fi
+assert_contains "$out" "$a" 'distribution#project-lock: task path names the damaged entry release'
+if out=$(cd "$ds_task_tree" && ds status --current --json 2>&1); then
+  echo 'distribution#project-lock: current task guidance cannot substitute the current release' >&2
+  exit 1
+fi
+assert_contains "$out" "$a" 'distribution#project-lock: current task guidance names the damaged entry release'
+cmp "${plan%.md}.json" "$sandbox/run-before"
+if out=$(cd "$sandbox" && ds --release "$b" phase done "$plan" 1 2>&1); then
+  echo 'distribution#project-lock: an issued selector cannot override the run snapshot' >&2
+  exit 1
+fi
+assert_contains "$out" "this run selects $a" 'distribution#project-lock: an explicit mismatch must name the approved release'
+cmp "${plan%.md}.json" "$sandbox/run-before"
+mv "$engine_a" "$sandbox/missing-a"
+if out=$(cd "$sandbox" && ds brief implementer "$plan" 1 2>&1); then
+  echo 'distribution#project-lock: a missing run release must not fall back to B' >&2
+  exit 1
+fi
+assert_contains "$out" 'install' 'distribution#project-lock: a missing run release explains recovery'
+assert_contains "$out" "$a" 'distribution#project-lock: a missing run names its exact release'
+
+# Exact repair restores old issued commands without changing the project lock.
+mv "$sandbox/missing-a" "$engine_a"
+if ! out=$(cd "$sandbox" && "$repo_root/scripts/install-ds" --prefix "$prefix" 2>&1); then
+  echo "distribution#project-lock: reinstalling the exact damaged release repairs it: $out" >&2
+  exit 1
+fi
+cmp .ds/ds.lock "$sandbox/lock-before"
+assert_contains "$(cd "$sandbox" && ds help agents --plan "$plan")" "$engine_a/agents/implementer.md" 'distribution#project-lock: the repaired run can use A again'

@@ -363,6 +363,8 @@ cli accept "$plan" --by user --words "Accept revised guide" >/dev/null || fail "
 # build#human-check-guide: historical plain-note records keep their valid acceptance.
 python3 -B - "$pipeline" "$plan" <<'PY' || fail "prepare a historical page and acceptance"
 import hashlib, importlib.util, json, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
 spec = importlib.util.spec_from_file_location("pipeline", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

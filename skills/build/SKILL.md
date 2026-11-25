@@ -15,17 +15,15 @@ and never edits code. Select each worker's executor from the shared contract.
 ## 1. The branch
 
 Read the plan, its epic and the project's `AGENTS.md`.
-`CLI` is `python3 "<this skill's directory>/pipeline.py"`. It updates statuses,
-the base and the epic row. `CLI status` lists runs from `building` to `passed`.
-Report shared territories to the designated contact.
+`CLI` is the installed `ds` selected for the plan, or
+`python3 "<this skill's directory>/pipeline.py"` on the legacy path.
+`CLI status` lists project runs. Report shared territories to the contact.
 
-Run `CLI build start --base <ref> [--worktree <path>] <plan>`. You name the
-base. It reports the checked-out
-branch and a dirty tree as facts: when another plan's branch is checked out
-here, pass a worktree of its own. Every phase commits there.
-From a worktree, hand every implementer, worker and judge its path; the plan,
-its notes and the rest of `.ai-workflow/` stay in the main tree, and the app
-runs from the worktree on a port of its own.
+For a ds task, run `CLI build start <plan>` to reuse its registered checkout.
+For legacy, run `CLI build start --base <ref> [--worktree <path>] <plan>`.
+The command sets `building`. Every phase commits in the reported worktree.
+Give each worker that tree and the absolute plan path. See
+[workflow paths](../../references/WORKFLOW-PATHS.md) for history and setup.
 
 On resume, use `CLI status --current` to find plans or `CLI status <plan>`
 to see its tree, owner and next action. Reuse the existing writer. Follow

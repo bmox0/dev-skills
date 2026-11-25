@@ -31,7 +31,7 @@ like".
    Initialise state, render, read one keystroke at a time, dispatch to a
    handler, re-render the full frame after every action, loop until quit.
 5. **Make it runnable in one command**, kept under
-   `.ai-workflow/prototypes/`, with that command at the top of the main file
+   the assigned prototype artifact path, with that command at the top of the main file
    — the project's task runner stays untouched.
 6. **Hand it over**: give the user the run command and let them drive it. The
    moments they say "wait, that shouldn't be possible" are bugs in the idea.
@@ -39,7 +39,7 @@ like".
 7. **Capture the answer** the way [SKILL](../SKILL.md) describes: the plan
    links the prototype, a phase lifts the validated reducer / machine /
    function set into the real module, and the TUI shell stays under
-   `.ai-workflow/prototypes/`.
+   the assigned prototype artifact path.
 
 ## Anti-patterns
 

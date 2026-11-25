@@ -5,7 +5,7 @@ The build writer records unchanged feedback from the designated contact:
 
 ## The notes file
 
-`.ai-workflow/plans/<slug>.notes.md`, beside the plan, which code renders from
+`<slug>.notes.md`, beside the plan, which code renders from
 `CLI note`: each note numbered, in the user's words, with its cause. The
 build session proposes the cause; the user corrects it.
 

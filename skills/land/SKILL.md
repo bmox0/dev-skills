@@ -9,8 +9,8 @@ Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
 
 Run it on the plan's branch, in the tree where it is checked out (the
-worktree, when the plan has one). `CLI` is `python3 "<the build skill's
-directory>/pipeline.py"`; code does the git, you write the shape.
+worktree, when the plan has one). Use the brief's `CLI`; code does the git,
+you write the shape.
 
 Land rewrites the history, never the code: it ends on the tree the checks passed.
 
