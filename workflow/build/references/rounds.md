@@ -21,10 +21,9 @@ the human wanted), `feel-ui` (it works as planned but feels or looks wrong),
   intent is a round now.
 - An answer to an implementer's question is not a note: relay it.
 - Until a round starts, the human edits or drops notes (`CLI note edit|drop`).
-- The source of a note done: `P<n>`, a note the judge predicted
-  (`<slug>.judge.md`, read only to mark notes); `missed`, one it did not;
-  code sets `judge` on the judge's own notes. `round done` is refused while a
-  human's note has none.
+- Use `P<n>` from `<slug>.judge.md` for a predicted note or `missed` for one
+  unpredicted or taken before the first substantive verdict. Code marks the
+  judge's notes `judge`. `round done` refuses human notes without sources.
 
 ## A round
 

@@ -397,7 +397,35 @@ none
         capture.write_text((tree / "hello.txt").read_text())
         assert capture.read_text().splitlines() == [greeting.strip()]
         report("verify", ("result",), "--case", "1", "--outcome", "passed", "--capture", capture)
-        _, judge = brief("judge", "primary")
+        # distribution#system-cli, build#judge-reads-the-round: feedback can precede the first verdict.
+        feedback_before_verdict = "Capitalize the greeting."
+        run(cli, "note", "add", plan, "--text", feedback_before_verdict, "--cause", "feel-ui", cwd=tree)
+        run(cli, "round", "start", plan, cwd=tree)  # Fixture human authorizes the round.
+        brief("implementer", "secondary", "round")
+        greeting = greeting.capitalize()
+        (tree / "hello.txt").write_text(greeting)
+        run("git", "commit", "-qam", "capitalize the greeting", cwd=tree)
+        revision = run("git", "rev-parse", "HEAD", cwd=tree).strip()
+        report("implementer", ("round", "report"), "--became", feedback_before_verdict, "--commit", revision)
+        source_command, = actions()[0]["alternatives"]
+        follow(source_command, "--source", "missed")
+        advertised("round", "done")
+        brief("reviewer", "secondary")
+        report("reviewer", ("review", "complete"))
+        round_capture = artifacts / "first-round.txt"
+        round_capture.write_text(run("cat", "hello.txt", cwd=tree))
+        assert round_capture.read_text() == greeting
+        run(cli, "result", plan, "--cycle", "round-1", "--head", revision, "--case", "1", "--outcome",
+            "passed", "--capture", round_capture, cwd=tree)
+        assert not view(compare=True)["task"]["verdicts"]
+        judge_file = plan.with_suffix(".judge.md")
+        assert not judge_file.exists()
+        body, judge = brief("judge", "primary")
+        for evidence in ("First substantive verdict", "## Original gate evidence", "## Round 1 evidence (current)",
+                         str(capture), str(round_capture), feedback_before_verdict, f"checks at {fixed[:7]}",
+                         f"checks at {revision[:7]}", "You check: 2", "--predicted pass|round", "--engine NAME"):
+            assert evidence in body, body
+        assert "Judge file:" not in body and not judge_file.exists()
         assert Path(judge["Judge rules"]).is_relative_to(bundle)
         prediction = ("--predicted", "pass", "--engine", judge["Executor model"])
         report("judge", ("verdict", "question"), "--report", "Need the human's decision",
@@ -454,7 +482,8 @@ none
         brief("reviewer", "secondary")
         assert assignment_for("reviewer")["range"].endswith(".." + revision)
         report("reviewer", ("review", "complete"))
-        brief("judge", "primary")
+        body, _ = brief("judge", "primary")
+        assert str(judge_file) in body and str(capture) not in body and str(round_capture) not in body
         report("judge", ("verdict", "pass"), "--report", "The feedback round was reviewed")
         land_and_show(greeting)
         # Keep the ff-only target clean without an unrelated release-lock commit on it.

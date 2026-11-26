@@ -2890,6 +2890,10 @@ def cmd_plan_approval(plan, a):
     return 0
 
 
+def awaiting_first_verdict(st):
+    return all(v["kind"] == "evidence-owed" for v in st.get("verdicts", []))
+
+
 def judge_evidence(st):
     return digest({k: st.get(k, []) for k in ("cycles", "rounds", "notes", "phases")})
 
@@ -3315,8 +3319,9 @@ def bind_assignment(plan, st, brief, work, *, legacy=None):
         for record in reports:
             if "evidence-owed" not in record["argv"]:
                 record["options"]["decisions"] = "--decide ID ACTION REASON (for each open item or convention)"
-                if all(v["kind"] == "evidence-owed" for v in st.get("verdicts", [])):
-                    record["options"].update(predicted="--predicted pass|round", engine="--engine NAME")
+                if awaiting_first_verdict(st):
+                    record["options"].update(predicted="--predicted pass|round", engine="--engine NAME",
+                                             predict="--predict TEXT CAUSE (for each predicted note)")
     assignment.update(cwd=tree, role_source=str(bundle / source),
                       protocol=str(bundle / "references/SESSIONS.md"),
                       instructions=[[*cli_argv(plan, release=release), role, "--plan", md]], reports=reports,
@@ -5732,7 +5737,7 @@ def cmd_verdict(plan, a):
         if not owed:
             tree = require_current_checks(plan, st, c)
             require_evidence(st, c, tree, a.evidence_note)
-        first = all(x["kind"] == "evidence-owed" for x in st.get("verdicts", []))
+        first = awaiting_first_verdict(st)
         if owed and (a.decide or not a.owed):
             raise Refuse("bad-owed", "an evidence-owed verdict names --owed reviewer|verify and takes no decisions", "record who owes what; decide when the evidence is in")
         if a.case and not (owed and a.owed == "verify"):
@@ -5825,33 +5830,46 @@ def brief_judge(plan, st, cli, md, note):
     answer = (asked or {}).get("answer") or note
     if asked and not answer:
         raise Refuse("no-answer", "the last verdict asked the human a question", "pass --note with the human's answer, in their words")
-    if asked or c["kind"] == "round":
+    first = awaiting_first_verdict(st)
+    if not first and (asked or c["kind"] == "round"):
         check_judge_file(jf)
     out = [f"Judge rules: {ref}", f"Plan: {slug} — {st['title']}"]
     out += [f"Owed: {v['owed']} — {v['report']}" for v, _ in owed]
     if st.get("epic"):
         out.append("Epic: " + os.path.join(plan_checkout(md), st["epic"]["path"]))
-    if c["kind"] == "gate":
-        out += ["Case: " + ("after the human's answer" if asked else "at the gate")] + ([f"Judge file: {jf}"] if asked else []) + [f"Level: {c['level']}" + (f" (raised by {', '.join(c['raised_by'])})" if c["raised_by"] else ""), ""]
-        if run_ := selected_run(c):
-            out += show_run(run_, True)
-        if asked:
+    if first and c["kind"] == "round":
+        out += ["First substantive verdict: read the full plan, gate and round evidence, and record the Prediction and engine.",
+                "Decide only the current round's Open entries and Conventions."]
+    for evidence in st["cycles"] if first else [c]:
+        r = st["rounds"][evidence["n"] - 1] if evidence["kind"] == "round" else None
+        if first and c["kind"] == "round":
+            label = f"Round {r['n']}" if r else "Original gate"
+            out += ["", f"## {label} evidence" + (" (current)" if evidence is c else ""), ""]
+        if r:
+            out += [f"Case: after round {r['n']} ({author_role(r)})"]
+            if r.get("conflict"):
+                out.append(f"Conflict at finish: {r['conflict']}")
+            if not first:
+                out.append(f"Judge file: {jf}")
+            out += [*round_notes_file(md, st, r), "", f"### Round {r['n']}'s notes", ""]
+            out += [note_line(st, n) for n in st["notes"] if n["round"] == r["n"]] + [""]
+        else:
+            out += ["Case: " + ("after the human's answer" if asked else "at the gate")]
+            if asked:
+                out.append(f"Judge file: {jf}")
+            out += [f"Level: {evidence['level']}" + (f" (raised by {', '.join(evidence['raised_by'])})" if evidence["raised_by"] else ""), ""]
+        if asked and evidence is c:
             out += [f"Question asked: {asked['question']}", f"The human's answer: {answer}", ""]
-        out += show_cycle(c, st)
-        out += ["Open:"] + [f"  {i['id']} " + (f"{i['where']} — " if i.get("where") else "") + i["text"] for i in items(c) if fate(c, i["id"]).startswith("open")]
-        out += [f"Conventions: {', '.join(f['id'] for f in c['findings'] if f['kind'] == 'convention') or 'none'}",
-                "You check: " + (", ".join(str(d["n"]) for d in st.get("done", []) if human_case(c, d)) or "none")]
-    else:
-        r = st["rounds"][c["n"] - 1]
-        out += [f"Case: after round {r['n']} ({author_role(r)})"] + ([f"Conflict at finish: {r['conflict']}"] if r.get("conflict") else [])
-        out += [f"Judge file: {jf}", *round_notes_file(md, st, r), "", f"## Round {r['n']}'s notes", ""]
-        out += [note_line(st, n) for n in st["notes"] if n["round"] == r["n"]] + [""]
-        if asked:
-            out += [f"Question asked: {asked['question']}", f"The human's answer: {answer}", ""]
-        if run_ := selected_run(c):
+        if run_ := selected_run(evidence):
             out += show_run(run_, True)
-        out += show_cycle(c, st)
-        out += ["Re-check verify: " + (e2e_text(st, r["n"]) or "no case to drive")]
+        out += show_cycle(evidence, st)
+        if r:
+            out += ["Re-check verify: " + (e2e_text(st, r["n"]) or "no case to drive")]
+        else:
+            out += ["Open:"] + [f"  {i['id']} " + (f"{i['where']} — " if i.get("where") else "") + i["text"]
+                               for i in items(evidence) if fate(evidence, i["id"]).startswith("open")]
+            out += [f"Conventions: {', '.join(f['id'] for f in evidence['findings'] if f['kind'] == 'convention') or 'none'}",
+                    "You check: " + (", ".join(str(d["n"]) for d in st.get("done", []) if human_case(evidence, d)) or "none")]
     return out + [""], f"{slug}.brief-judge-{cycle_label(c)}.md"
 
 

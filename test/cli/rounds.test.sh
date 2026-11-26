@@ -95,6 +95,25 @@ json() { cli status --json "$plan" | python3 -c "import json,sys; c=json.load(sy
 commit() { echo "$1" >> src/a.txt; git commit -q -m "$1" -- src/a.txt; git rev-parse HEAD; }
 vfirst=(--predicted pass --predict n1 feel-ui --engine claude)
 
+# build#judge-reads-the-round: evidence-owed leaves the full read for the first real verdict.
+newrepo
+cli verdict evidence-owed "$plan" --owed reviewer --report "Review again" >/dev/null || fail "request evidence"
+for n in 1 2; do
+  cli note add "$plan" --text "Feedback before verdict $n" --cause bug >/dev/null || fail "note $n"
+  cli round start "$plan" >/dev/null || fail "start round $n"
+  c=$(commit "pre-verdict-$n")
+  cli round report "$plan" --became x --commit "$c" >/dev/null || fail "report round $n"
+  cli note edit "$plan" "$n" --source missed >/dev/null || fail "source $n"
+  cli round done "$plan" >/dev/null || fail "finish round $n"
+  cli result "$plan" --case 1 --outcome passed --capture "$(tail -n 1 src/a.txt)" >/dev/null || fail "result $n"
+  complete_review "$plan" || fail "review round $n"
+done
+b=$(cli brief judge "$plan") || fail "first judge after two rounds and an evidence request"
+for want in 'fixture output 2' 'Feedback before verdict 1' 'Feedback before verdict 2' 'pre-verdict-1' 'pre-verdict-2'; do
+  grep -qF "$want" "$b" || fail "first brief retains $want"
+done
+[ ! -e "${plan%.md}.judge.md" ] || fail "evidence owed and the brief do not create a judge file"
+
 # build#judge-file-by-code, build#notes-in-their-words
 newrepo missing
 out=$(cli brief judge "$plan"); rc=$?
@@ -174,6 +193,11 @@ grep -q "^## Round 2 · \`$(git rev-parse --short "$c2")..$(git rev-parse --shor
 # build#judge-reads-the-round: a new file with the judge file, the round's notes and its re-check only
 cli result "$plan" --case 1 --outcome passed --capture r2.png >/dev/null || fail "round 2 result"
 complete_review "$plan" || fail "complete review"
+mv "$judge" "$judge.saved"
+out=$(cli brief judge "$plan"); rc=$?
+mv "$judge.saved" "$judge"
+assert_eq 1 "$rc" "a scoped judge still needs the existing judge file" || exit 1
+assert_contains "$out" "no-verdict: $judge" "the refusal names the missing judge file" || exit 1
 rb2=$(cli brief judge "$plan") || fail "brief judge after a round"
 [ "$rb2" != "$b" ] || fail "a new file after a round"
 grep -q "2026-11-16-r.judge.md" "$rb2" && grep -q "third" "$rb2" && grep -q "r2.png" "$rb2" || fail "the round brief holds the judge file, the notes and the re-check"

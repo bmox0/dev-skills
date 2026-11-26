@@ -9,12 +9,13 @@ Why: judgment uses the approved provider preset
 - Complete phases, gate, judge, land, page and authorized acceptance, including a feedback round → ff-only finish uses the agreed ending and retains backups; existing judge dispositions and explicit land-hook exceptions remain visible and supported.
 - Read every core skill, role and generated brief → shared rules come from AGENTS; planning, build coordination, first review and judge use primary; helpers, code, E2E and rechecks use secondary; no fixed provider/model or herdr-only requirement remains.
 
-### judge-reads-the-round — After a round the judge reads only what the round was for and the re-check's results
+### judge-reads-the-round — After a substantive verdict the round judge reads only what the round was for and the re-check's results
 
 Why: what the round did not touch should not have changed, and the re-check, not the judge, finds regressions
 
 - The same plan after the round: the note has its commit and the targeted re-check is green. Run the judge → it reads the judge file, the round's notes and the re-check's results, but not the plan's other Done results or captures. It returns `pass:` after `land`, and the judge file is unchanged.
 - The same plan at the human gate, after a round on one user note → the judge after it reads that note and the round's re-check, then lands.
+- Finish an authorized human round before a substantive verdict → the advertised judge brief reads the original gate and completed round evidence, without requiring a judge file. The first substantive verdict still records the Prediction.
 
 ### state-through-commands — CLI writes reject rendered drift and missing or stale prerequisites, including direct status changes
 
