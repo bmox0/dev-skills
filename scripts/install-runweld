@@ -45,7 +45,7 @@ def main():
         for name in resources:
             shutil.copytree(source / name, stage / name, symlinks=True,
                             ignore=shutil.ignore_patterns("__pycache__", ".DS_Store"))
-        for name in ("README.md", "LICENSE"):
+        for name in ("README.md", "LICENSE", "install.sh"):
             shutil.copy2(source / name, stage / name)
         manifest = manifest_bytes(stage, version)
         for file in (*stage.rglob("*.py"), stage / "bin/runweld"):

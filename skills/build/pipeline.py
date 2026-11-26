@@ -2512,7 +2512,7 @@ def cmd_consent(plan, kind, a):
             proposed = values.get("workflow", {}).get("release")
             bundle = standalone_bundle()
             if (recorded and proposed != recorded) or (bundle and proposed and proposed != bundle.name):
-                raise Refuse("run-release", "the proposed release differs from the run's selected release", "restore [workflow].release; `runweld update` only selects the release for new runs")
+                raise Refuse("run-release", "the proposed release differs from the run's selected release", "restore [workflow].release; `runweld update --project` only selects the release for new runs")
             if "run" in st and (changes := run_changes(st["run"], values)):
                 record(plan, st, "run file", None, "changed", ", ".join(f"{x} {k}" for x, k in changes))
             st["run"] = values
@@ -5595,7 +5595,13 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     parser = RoutingParser if routing else argparse.ArgumentParser
     p = parser(prog="runweld" if standalone else "pipeline.py")
     if standalone:
-        p.add_argument("--version", action="version", version=version or "runweld", help="print the exact selected release")
+        release = version or "runweld"
+        cli_version = release.partition("@")[0]
+        if not routing and argv in (["--version", "--verbose"], ["--verbose", "--version"]):
+            print(f"CLI version: {cli_version}\nBuild ID: {release}")
+            p.exit()
+        p.add_argument("--version", action="version", version=cli_version,
+                       help="show the CLI and any pinned project version; add --verbose for build IDs")
     top = p.add_subparsers(dest="group", required=True)
     if standalone:
         help_parser = top.add_parser("help", help="show terminal help or the installed agent workflow")
@@ -5617,7 +5623,12 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
         init.add_argument("--dev", help="optional development server command")
         init.add_argument("--url", help="optional development server URL")
         init.add_argument("--setup", help="optional existing command to prepare a task's worktree when needed")
-        update_parser = top.add_parser("update", help="select an installed release for new project work")
+        update_parser = top.add_parser("update", help="update the CLI or this project's release")
+        scopes = update_parser.add_mutually_exclusive_group()
+        scopes.add_argument("--cli", dest="scope", action="store_const", const="cli",
+                            help="install the current upstream CLI in this launcher's prefix")
+        scopes.add_argument("--project", dest="scope", action="store_const", const="project",
+                            help="select an installed build for new tasks in this project")
         update_parser.add_argument("version", nargs="?", metavar="RELEASE", help="exact release ID (default: most recently installed)")
         paths = top.add_parser("path", help="print the shared local workflow path without creating it")
         paths.add_argument("area", nargs="?", help="optional category under the project workflow")
@@ -5912,13 +5923,13 @@ def main(*, current_task=None):
     try:
         plan_arg = getattr(a, "plan", None)
         if bundle is not None:
-            from ds_release import command_plan, run_pin, update_project
+            from ds_release import command_plan, run_pin, update_installation
             selected_plan = command_plan(a, Path.cwd())
             required = run_pin(selected_plan) if selected_plan else None
             if required is not None and required != bundle.name:
                 raise ReleaseError(f"this run selects {required}, not {bundle.name}; use `runweld` without a release override")
             if a.group == "update":
-                update_project(bundle.parents[1], a.version)
+                update_installation(bundle.parents[1], a.scope, a.version)
                 return 0
             if a.group == "init":
                 try:

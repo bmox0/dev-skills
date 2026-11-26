@@ -7,6 +7,28 @@ Run `./scripts/install-runweld` from the Runweld checkout and give its
 is `~/.local/bin/runweld`. Use `./scripts/install-runweld --prefix DIR` to choose
 another location.
 
+## Update the CLI
+
+Run `runweld update --cli` from any directory to install the current version
+from `main` into the same prefix as the CLI you invoked. Existing project locks
+and running tasks keep their selected builds. For an older CLI that lacks the
+scope flags, rerun the installer once:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bash
+```
+
+## Update a project
+
+Run `runweld update --project` in an initialized checkout to select the installed
+default for new tasks. Commit `.runweld/runweld.lock` to share the selection.
+Use `runweld update --project RELEASE` to select a specific installed build ID.
+
+In a terminal, `runweld update` asks you to choose `cli` or `project`.
+Scripts must pass a scope explicitly. Outside an initialized project,
+`runweld --version` prints the installed default version. Inside one, it prints both `CLI` (the installed default) and `Project`
+(the version in the project lock). Add `--verbose` for the exact build IDs.
+
 ## Update or repair a release
 
 For a project with an existing lock, install the Git revision that produced
@@ -19,11 +41,6 @@ curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | RUN
 To install into a separate prefix, pass `--prefix DIR` via
 `bash -s -- --prefix DIR`. The project lock stores the release ID. It does
 not fetch source code or select a Git revision for the installer.
-
-To use the newly installed release for new work, run `runweld update` in
-the project and commit the updated `.runweld/runweld.lock`. This selects the most
-recently installed release for new tasks. Use `runweld update RELEASE` to select
-an exact installed ID. Existing versioned runs keep their recorded release.
 
 To repair a missing or damaged release, reinstall the source revision that
 produced its exact ID. If you had to use an older installer, rerun your

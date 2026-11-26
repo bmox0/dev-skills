@@ -19,7 +19,10 @@ if ! install=$(cd "$sandbox" && "$repo_root/scripts/install-runweld" --prefix "$
   exit 1
 fi
 cli() { runweld "$@"; }
-a=$(cd "$sandbox" && runweld --version)
+a=$(cat "$prefix/lib/dev-skills/default")
+assert_eq "${a%%@*}" "$(cd "$sandbox" && runweld --version)" 'distribution#system-cli: show the ordinary CLI version'
+version_details() { printf 'CLI version: %s\nBuild ID: %s\n' "${1%%@*}" "$1"; }
+assert_eq "$(version_details "$a")" "$(cd "$sandbox" && runweld --version --verbose)" 'distribution#system-cli: label the exact build separately'
 engine_a="$prefix/lib/dev-skills/releases/$a"
 assert_contains "$(cd "$sandbox" && runweld --help)" 'usage: runweld' 'distribution#system-cli: runweld uses terminal-facing help'
 assert_contains "$(cd "$sandbox" && runweld help agents)" "$engine_a/references/SESSIONS.md" 'distribution#system-cli: help points to the installed protocol'
@@ -164,18 +167,22 @@ for missing in references/WORKFLOW-PATHS.md skills/plan/references/environment-c
     exit 1
   fi
   assert_contains "$out" "$missing" 'distribution#system-cli: the rejected candidate names the missing guide'
-  assert_eq "$a" "$(cd "$sandbox" && runweld --version)" 'distribution#project-lock: a rejected candidate does not become the default'
+  assert_eq "$(version_details "$a")" "$(cd "$sandbox" && runweld --version --verbose)" 'distribution#project-lock: a rejected candidate does not become the default'
   mv "$sandbox/removed-resource" "$source_b/$missing"
 done
 "$source_b/scripts/install-runweld" --prefix "$prefix" >/dev/null
-b=$(cd "$sandbox" && runweld --version)
+b=$(cat "$prefix/lib/dev-skills/default")
 engine_b="$prefix/lib/dev-skills/releases/$b"
 [[ "$b" != "$a" ]] || { echo 'distribution#project-lock: A and B can be installed separately' >&2; exit 1; }
-assert_eq "$a" "$(cd "$repo_worktree" && runweld --version)" 'distribution#project-lock: installing B does not change the lock in any worktree'
+project_versions() { printf 'CLI: %s\nProject: %s\n' "${1%%@*}" "${2%%@*}"; }
+assert_eq "$(project_versions "$b" "$a")" "$(cd "$repo_worktree" && runweld --version)" 'distribution#project-lock: show both the installed and pinned versions'
+assert_eq "$(project_versions "$b" "$a")
+CLI build ID: $b
+Project build ID: $a" "$(cd "$repo_worktree" && runweld --version --verbose)" 'distribution#project-lock: installing B does not change the lock in any worktree'
 assert_contains "$(cd "$repo_worktree" && runweld help agents)" "$engine_a/agents/implementer.md" 'distribution#project-lock: linked help uses A before update'
 assert_contains "$(cd "$repo_worktree" && runweld --help)" 'installed agent workflow' 'distribution#project-lock: terminal help uses the selected release parser'
-(cd "$repo_worktree" && runweld update) >/dev/null
-assert_eq "$b" "$(runweld --version)" 'distribution#project-lock: update changes the main checkout selection'
+(cd "$repo_worktree" && runweld update --project) >/dev/null
+assert_eq "$(project_versions "$b" "$b")" "$(runweld --version)" 'distribution#project-lock: update changes the main checkout selection'
 assert_contains "$(runweld help agents)" "$engine_b/agents/implementer.md" 'distribution#project-lock: project help now uses B'
 assert_contains "$(runweld --help)" 'terminal help from release B' 'distribution#project-lock: terminal help uses B after update'
 assert_contains "$(runweld task resume previous-record --json)" "$a" 'distribution#project-lock: a previous-format task still resumes on A'
@@ -233,7 +240,7 @@ PY
 # Missing or changed contents must not select a fallback or alter the lock or run.
 cp .runweld/runweld.lock "$sandbox/lock-before"
 printf 'broken\n' > "$engine_a/references/SESSIONS.md"
-if out=$(runweld update "$a" 2>&1); then
+if out=$(runweld update --project "$a" 2>&1); then
   echo 'distribution#project-lock: a damaged candidate must not update the lock' >&2
   exit 1
 fi

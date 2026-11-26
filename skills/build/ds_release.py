@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import tomllib
 
@@ -192,7 +193,7 @@ def read_lock(project):
     value = read_data(path, tomllib.loads)
     if value is not None:
         if set(value) != {"release"} or not valid_release(value["release"]):
-            raise ReleaseError(f"{path} needs one exact release ID as `release = \"…\"`; run `runweld update RELEASE` or restore the lock")
+            raise ReleaseError(f"{path} needs one exact release ID as `release = \"…\"`; run `runweld update --project RELEASE` or restore the lock")
         return value["release"]
 
 
@@ -281,10 +282,27 @@ def installed_default(store):
     return value
 
 
-def update_project(store, requested):
+def update_installation(store, scope, requested):
+    if scope is None:
+        if not sys.stdin.isatty():
+            raise ReleaseError("choose an update scope: --cli or --project")
+        try:
+            scope = input("Update the CLI or this project? Type cli or project: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            raise ReleaseError("update cancelled") from None
+        if scope not in ("cli", "project"):
+            raise ReleaseError("no update selected; choose --cli or --project")
+    if scope == "cli":
+        if requested is not None:
+            raise ReleaseError("an installed release ID applies to --project only")
+        bootstrap = verify_release(store, installed_default(store)) / "install.sh"
+        os.execlp("bash", "bash", str(bootstrap), "--prefix", str(store.parents[1]))
+
     project = project_root(Path.cwd())
-    if project is None or not os.path.lexists(lock_path(project)):
-        raise ReleaseError("no project lock; run `runweld init` in the project first")
+    if project is None:
+        raise ReleaseError("outside a Git repository; run `runweld update --project` from an initialized project checkout")
+    if not os.path.lexists(lock_path(project)):
+        raise ReleaseError(f"{lock_path(project)} is missing; run `runweld init` in this repository or restore its lock")
     release = requested if requested is not None else installed_default(store)
     verify_release(store, release)
     write_lock(project, release)

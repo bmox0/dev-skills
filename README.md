@@ -31,6 +31,8 @@ curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bas
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+For updates, use `runweld update --cli` to install the latest CLI from `main`. Use `runweld update --project` in a project to select the installed build for new tasks. In a terminal, `runweld update` asks which one you want. [CLI updates](docs/cli.md#update-the-cli)
+
 In your project’s Git checkout (at least one commit), install the agent skill with Node.js and initialize Runweld.
 
 ```sh

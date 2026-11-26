@@ -5,6 +5,7 @@ export SOURCE="$repo_root"
 python3 -B <<'PY'
 import json
 import os
+import pty
 from pathlib import Path
 import shlex
 import shutil
@@ -32,7 +33,7 @@ with tempfile.TemporaryDirectory() as folder:
     old_command.chmod(0o755)
     run(source / "scripts/install-runweld")
     assert run(old_command).strip() == "unrelated-tool"
-    release = run("runweld", "--version").strip()
+    release = (home / ".local/lib/dev-skills/default").read_text().strip()
     guide = run("runweld", "help", "agents")
     bundle = home / ".local/lib/dev-skills/releases" / release
 
@@ -69,8 +70,50 @@ with tempfile.TemporaryDirectory() as folder:
     with (source / "install.sh").open() as script:
         subprocess.run(["bash", "-s", "--", "--prefix", str(prefix)], stdin=script,
                        cwd=home, env=bootstrap_env, check=True, timeout=30)
-    assert run(prefix / "bin/runweld", "--version").strip() == release
+    assert run(prefix / "bin/runweld", "--version", "--verbose").splitlines() == [
+        f"CLI version: {release.partition('@')[0]}", f"Build ID: {release}"]
     assert not (prefix / "bin/ds").exists()
+    # distribution#project-lock: updating a custom prefix keeps the project's choice until explicit consent.
+    cli = prefix / "bin/runweld"
+    locked = home / "locked project"
+    locked.mkdir()
+    run("git", "init", "-qb", "main", cwd=locked)
+    assert "outside a Git repository" in run(cli, "update", "--project", cwd=home, ok=False)
+    assert not (home / ".runweld").exists()
+    assert "runweld init" in run(cli, "update", "--project", cwd=locked, ok=False)
+    assert not (locked / ".runweld").exists()
+    assert (prefix / "lib/dev-skills/default").read_text().strip() == release
+    run(cli, "init", "--non-interactive", "--provider", "Test", "--primary-model", "p", "--secondary-model", "s", cwd=locked)
+    lock = locked / ".runweld/runweld.lock"
+    before = lock.read_bytes()
+    (upstream / "README.md").write_text("Global update fixture\n")
+    run("git", "commit", "-qam", "second build", cwd=upstream)
+    subprocess.run([cli, "update", "--cli"], cwd=locked, env=bootstrap_env, check=True, timeout=30)
+    latest = (prefix / "lib/dev-skills/default").read_text().strip()
+    assert latest != release and lock.read_bytes() == before
+    assert (home / ".local/lib/dev-skills/default").read_text().strip() == release
+    bare = subprocess.run([cli, "update"], cwd=locked, env=env, stdin=subprocess.DEVNULL, capture_output=True)
+    assert bare.returncode and b"--cli or --project" in bare.stderr
+    assert "--project" in run(cli, "update", "--cli", "--project", cwd=locked, ok=False)
+    assert "release ID" in run(cli, "update", "--cli", release, cwd=locked, ok=False)
+    assert lock.read_bytes() == before
+    master, slave = pty.openpty()
+    try:
+        for answer, ok in ((b"\n", False), (b"project\n", True)):
+            os.write(master, answer)
+            choice = subprocess.run([cli, "update"], cwd=locked, env=env, stdin=slave,
+                                    capture_output=True, timeout=30)
+            assert (choice.returncode == 0) == ok and b"cli or project" in choice.stdout
+            assert (lock.read_bytes() != before) == ok
+    finally:
+        os.close(master)
+        os.close(slave)
+    assert latest in lock.read_text()
+    nested = locked / "src"
+    nested.mkdir()
+    run(cli, "update", "--project", release, cwd=nested)
+    assert not (nested / ".runweld").exists()
+    assert lock.read_bytes() == before
     foreign = prefix / "bin/runweld"
     foreign.write_text("another launcher\n")
     assert "not a managed Runweld launcher" in run(source / "scripts/install-runweld", "--prefix", prefix, ok=False)

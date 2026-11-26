@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory() as folder:
         return tomllib.loads(file.read_text())
 
     command(os.environ['INSTALLER'], '--prefix', prefix, cwd=home)
-    release = ds('--version', cwd=home)
+    release = (prefix / 'lib/dev-skills/default').read_text().strip()
     git('init', '-q', '-b', 'main')
     agents = project / 'AGENTS.md'
     instructions = ('# Local rules\n\nKeep this text.\n\n## Environment\n\n'

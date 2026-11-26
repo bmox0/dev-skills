@@ -41,7 +41,7 @@ if [[ ! -f "$preceding/scripts/install-runweld" ]]; then
 fi
 launcher="$sandbox/bin/$previous_command"
 "$preceding/scripts/install-$previous_command" --prefix "$sandbox" >/dev/null
-a=$(cli --version)
+a=$(cat "$sandbox/lib/dev-skills/default")
 bundle="$sandbox/lib/dev-skills/releases/$a"
 cd "$sandbox/project with spaces"
 git init -qb main
@@ -141,8 +141,8 @@ cp "$sandbox/active.md" "$plan"
 
 "$repo_root/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 launcher="$sandbox/bin/runweld"
-cli update >/dev/null
-b=$(cli --version)
+cli update --project >/dev/null
+b=$(cat "$sandbox/lib/dev-skills/default")
 [[ "$a" != "$b" ]]
 cli task start current >/dev/null
 cp .runweld/runweld.lock "$sandbox/lock"

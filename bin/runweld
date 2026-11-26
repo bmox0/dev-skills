@@ -33,23 +33,26 @@ sys.exit(pipeline.main())
 
 
 def main():
-    from ds_release import ReleaseError, command_plan, installed_default, project_root, read_lock, run_pin, update_project, verify_release, PROGRAM
+    from ds_release import ReleaseError, command_plan, installed_default, project_root, read_lock, run_pin, update_installation, verify_release, PROGRAM
 
     argv = sys.argv[1:]
+    project_pin = None
     scoped = None
     try:
-        # Issued commands already name their release and do not need the current parser to route.
+        release = None
         if len(argv) >= 2 and argv[0] == "--release":
             release, argv = argv[1], argv[2:]
-        else:
+        if argv[:1] == ["update"]:
+            from route_pipeline import parse_cli
+            _, args = parse_cli(argv, standalone=True)
+            update_installation(store, args.scope, args.version)
+            return 0
+        if release is None:
             from route_pipeline import ParseExit, parse_cli
             try:
                 _, args = parse_cli(argv, standalone=True, routing=True)
             except ParseExit:
                 args = None
-            if args and args.group == "update":
-                update_project(store, args.version)
-                return 0
             plan = command_plan(args, Path.cwd()) if args else None
             release = run_pin(plan) if plan else None
             if plan and args.group == "status" and args.current:
@@ -57,12 +60,27 @@ def main():
             if release is None:
                 project = project_root(Path(plan).absolute().parent if plan else Path.cwd())
                 if project is not None:
-                    release = read_lock(project)
+                    project_pin = read_lock(project)
+                    release = project_pin
                     if release is None and (project / ".runweld/config.toml").exists() and args and args.group not in ("init", "help"):
                         raise ReleaseError(f"{project}/.runweld/runweld.lock is missing; run `runweld init` to finish setup or restore the lock")
             if release is None:
                 release = installed_default(store)
         engine = verify_release(store, release) / PROGRAM
+        if argv in (["--version"], ["--version", "--verbose"], ["--verbose", "--version"]):
+            if project_pin is not None:
+                cli = installed_default(store)
+                if cli != project_pin:
+                    verify_release(store, cli)
+                print(f"CLI: {cli.partition('@')[0]}")
+                print(f"Project: {project_pin.partition('@')[0]}")
+                if "--verbose" in argv:
+                    print(f"CLI build ID: {cli}")
+                    print(f"Project build ID: {project_pin}")
+                return 0
+            # The installed launcher owns version output even when the project pins an older engine.
+            from route_pipeline import parse_cli
+            parse_cli(argv, standalone=True, version=release)
         if scoped:
             os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", CURRENT_STATUS, str(engine), str(scoped), *argv])
         os.execv(sys.executable, [sys.executable, str(engine), *argv])
