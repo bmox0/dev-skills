@@ -213,7 +213,7 @@ Your acceptance applies to that page and its landed commit. On your instruction,
 
 Install one entry skill and say **“Use Runweld”** in the agent you already use. The skill runs `runweld help agents` to read the installed workflow. Your agent client runs shell commands and dispatches workers with the model and effort named in their briefs. You can use a native agent session, a separate herdr tab or a manual handoff. Each uses the same CLI, project checks and task state. [Session handoff](references/SESSIONS.md)
 
-The planning session and build coordinator use **primary** for decisions that affect the whole change. **Secondary** workers get a bounded assignment, such as tracing a code path, implementing one phase or rerunning a failed case. A fresh primary model handles the first review and every judge verdict. Project profiles live in `.ds/config.toml`. Inspect one with `runweld executor show --provider NAME`.
+The planning session and build coordinator use **primary** for decisions that affect the whole change. **Secondary** workers get a bounded assignment, such as tracing a code path, implementing one phase or rerunning a failed case. A fresh primary model handles the first review and every judge verdict. Project profiles live in `.runweld/config.toml`. Inspect one with `runweld executor show --provider NAME`.
 
 ```mermaid
 flowchart TD
@@ -236,7 +236,7 @@ flowchart TD
 
 ### What survives a handoff
 
-`runweld task start` records the branch, worktree and workflow release. When the planner compiles the plan, `runweld` writes a JSON state file beside it under `.ds/workflow/plans/`. Approvals, phase reports, commits, check outcomes, review findings, verdicts and acceptance accumulate against that task. The CLI uses those records to render the review page and issue the next worker’s brief.
+`runweld task start` records the branch, worktree and workflow release. When the planner compiles the plan, `runweld` writes a JSON state file beside it under `.runweld/workflow/plans/`. Approvals, phase reports, commits, check outcomes, review findings, verdicts and acceptance accumulate against that task. The CLI uses those records to render the review page and issue the next worker’s brief.
 
 If a session closes during a full test run, the next coordinator can ask `runweld` about that run. While its test processes are alive, `runweld` tells the coordinator to wait. Once they stop, it can retry the interrupted check or reuse a completed result from the same cycle for the same commit and check commands. If it cannot determine whether the original processes are still running, it asks for that fact before starting another run.
 
@@ -260,9 +260,9 @@ Run `runweld status --current` in the worktree to see the next action and its ow
 ```console
 $ runweld task start export-csv
 […]
-Tree: /Users/alex/src/reports/.ds/workflow/trees/export-csv
-Plan: /Users/alex/src/reports/.ds/workflow/plans/export-csv.md
-Artifacts: /Users/alex/src/reports/.ds/workflow/artifacts/export-csv
+Tree: /Users/alex/src/reports/.runweld/workflow/trees/export-csv
+Plan: /Users/alex/src/reports/.runweld/workflow/plans/export-csv.md
+Artifacts: /Users/alex/src/reports/.runweld/workflow/artifacts/export-csv
 […]
 Next:
   User and planner — Continue in the task worktree with a grill or plan. [work]

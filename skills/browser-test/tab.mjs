@@ -24,7 +24,7 @@ function artifactDirectory() {
     }
     return resolve(["path", "browser-test"])
   } catch {
-    return path.resolve(".ds", "workflow", "browser-test")
+    return path.resolve(".runweld", "workflow", "browser-test")
   }
 }
 

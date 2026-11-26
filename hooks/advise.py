@@ -28,7 +28,7 @@ def plan_advice(path):
     d, name = os.path.split(os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path)))
     history = os.path.dirname(d)
     if os.path.basename(d) != "plans" or not (os.path.basename(history) == ".ai-workflow" or
-                                                 history.endswith(os.path.join(".ds", "workflow"))):
+                                                 history.endswith(os.path.join(".runweld", "workflow"))):
         return ""
     for suffix, text in ((".notes.md", NOTES), (".judge.md", JUDGE), (".json", STATE), (".md", None)):
         if name.endswith(suffix) and not (suffix == ".md" and re.search(r"\.(notes|judge)\.md$", name)):

@@ -21,7 +21,7 @@ To install into a separate prefix, pass `--prefix DIR` via
 not fetch source code or select a Git revision for the installer.
 
 To use the newly installed release for new work, run `runweld update` in
-the project and commit the updated `.ds/ds.lock`. This selects the most
+the project and commit the updated `.runweld/runweld.lock`. This selects the most
 recently installed release for new tasks. Use `runweld update RELEASE` to select
 an exact installed ID. Existing versioned runs keep their recorded release.
 

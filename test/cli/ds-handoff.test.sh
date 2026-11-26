@@ -83,7 +83,7 @@ with tempfile.TemporaryDirectory() as folder:
     run("runweld", "init", "--non-interactive", "--provider", "GPT", "--primary-model", "codex-primary",
         "--secondary-model", "codex-secondary", "--phase-check", "git diff --check",
         "--full-check", "test -s hello.txt", cwd=codex)
-    config = codex / ".ds/config.toml"
+    config = codex / ".runweld/config.toml"
     initial = config.read_text()
     config.write_text(initial + '\n[graph]\nfinish_without_acceptance = true\n')
     run("git", "add", ".", cwd=codex)
@@ -241,7 +241,7 @@ none
     run("runweld", "init", "--non-interactive", "--provider", "Claude", "--primary-model", "claude-primary",
         "--secondary-model", "claude-secondary", cwd=claude)
     assert json.loads(run("runweld", "status", "--json", cwd=claude)) == []
-    clone_config = tomllib.loads((claude / ".ds/config.toml").read_text())
+    clone_config = tomllib.loads((claude / ".runweld/config.toml").read_text())
     assert set(clone_config["executors"]) == {"GPT", "Claude"}
     assert clone_config["checks"] == tomllib.loads(initial)["checks"]
     run("git", "commit", "-qam", "add the Claude pair", cwd=claude)

@@ -13,10 +13,10 @@ runweld init --non-interactive --provider GPT \
   --phase-check 'scripts/check' --full-check 'scripts/test'
 ```
 
-Commit `.ds/config.toml`, `.ds/ds.lock` and the generated changes in
+Commit `.runweld/config.toml`, `.runweld/runweld.lock` and the generated changes in
 `AGENTS.md` and `.gitignore`. A colleague with another provider reruns init
 with that provider's pair. Init does not replace existing profiles or settings;
-edit `.ds/config.toml` to change them for future runs. `runweld update` changes
+edit `.runweld/config.toml` to change them for future runs. `runweld update` changes
 the release for new runs. For a previous run, `runweld help agents --plan PLAN`
 opens its release's instructions.
 

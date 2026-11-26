@@ -668,7 +668,7 @@ def is_plan_file(fn):
     return fn.endswith(".md") and not re.search(r"\.(notes|judge|summary|guide|gate-log|brief-[\w-]+)\.md$", fn)
 
 
-WORKFLOW_DIR = ".ds/workflow"
+WORKFLOW_DIR = ".runweld/workflow"
 LEGACY_DIR = ".ai-workflow"
 
 
@@ -696,7 +696,7 @@ def plan_root(md):
 def plan_checkout(md):
     directory = Path(md).parent
     backing = directory.parent
-    if backing.parent.parts[-3:] == (".ds", "workflow", "legacy"):
+    if backing.parent.parts[-3:] == (".runweld", "workflow", "legacy"):
         from ds_release import worktrees
         for checkout, _ in worktrees(backing.parent.parents[2]):
             alias = checkout / LEGACY_DIR
@@ -1488,7 +1488,7 @@ def executor_selection(plan, provider):
         if standalone_bundle() is not None:
             from ds_release import project_root
             if project := project_root(tree):
-                config = project / ".ds/config.toml"
+                config = project / ".runweld/config.toml"
         if config is not None and os.path.lexists(config):
             _, settings = read_project_config(config)
             values, source = settings["executors"], str(config)
@@ -1497,7 +1497,7 @@ def executor_selection(plan, provider):
     if provider not in values:
         if source == "approved run snapshot":
             fix = "ask the user to add this provider's primary/secondary profiles to the run and explicitly approve the changed run"
-        elif source.endswith("/.ds/config.toml"):
+        elif source.endswith("/.runweld/config.toml"):
             fix = "run `runweld init --provider NAME` to add this provider's primary/secondary profiles"
         else:
             fix = "add this provider's primary/secondary profiles to AGENTS.md ## Executors"
@@ -1851,7 +1851,7 @@ def init_settings(project, text, current, a, interactive):
             value = current.get(sec, {}).get(key)
             if supplied is not None and supplied != value:
                 raise Refuse("project-default-exists", f"[{sec}] {key} is already configured",
-                             f"edit {project / '.ds/config.toml'} to change project defaults")
+                             f"edit {project / '.runweld/config.toml'} to change project defaults")
         elif supplied is not None:
             value = supplied
         elif interactive:
@@ -1912,10 +1912,10 @@ def init_ignore(project, text):
 
     private = "/" + WORKFLOW_DIR + "/"
     rules = []
-    if ignored(".ds/config.toml") or ignored(".ds/ds.lock"):
-        if ignored(".ds/"):
-            rules += ["!/.ds/", "/.ds/*"]
-        rules += ["!/.ds/config.toml", "!/.ds/ds.lock"]
+    if ignored(".runweld/config.toml") or ignored(".runweld/runweld.lock"):
+        if ignored(".runweld/"):
+            rules += ["!/.runweld/", "/.runweld/*"]
+        rules += ["!/.runweld/config.toml", "!/.runweld/runweld.lock"]
     if rules or private not in text.splitlines() or not ignored(WORKFLOW_DIR + "/"):
         rules.append(private)
     legacy = "/" + LEGACY_DIR + "/"
@@ -1942,7 +1942,7 @@ def cmd_init(bundle, a):
     common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=project).stdout.strip())
     with (common / "ds-init.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        config, agents, ignore = (project / path for path in (".ds/config.toml", "AGENTS.md", ".gitignore"))
+        config, agents, ignore = (project / path for path in (".runweld/config.toml", "AGENTS.md", ".gitignore"))
         for path in (config.parent, config, agents, ignore):
             if path.is_symlink():
                 raise Refuse("project-init-path", f"{path} is a symbolic link", "use a regular project file or directory")
@@ -2018,7 +2018,7 @@ def cmd_init(bundle, a):
 
 def snapshot_run(bundle, project, path):
     from ds_release import atomic_write
-    src = project / ".ds/config.toml"
+    src = project / ".runweld/config.toml"
     _, settings = read_project_config(src)
     text = settings_toml({**settings, "workflow": {"release": bundle.name}, "run": {}})
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -2143,7 +2143,7 @@ def cmd_task(bundle, a):
         if row is None:
             if read_lock(project) != bundle.name:
                 raise ReleaseError(f"{project} does not lock {bundle.name}; run `runweld init` or use `runweld` without a release override")
-            _, config = read_project_config(project / ".ds/config.toml")
+            _, config = read_project_config(project / ".runweld/config.toml")
             base = a.base or config["finish"]["target"]
             commit = r("rev-parse", "--verify", "-q", "--end-of-options", f"{base}^{{commit}}")
             if commit.returncode:

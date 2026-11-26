@@ -27,7 +27,7 @@
 Keep using the assigned checkout, CLI and absolute plan path. Keep new
 artifacts beside the run or under its checkout's ignored `.ai-workflow/`.
 
-`runweld init` exposes legacy history in `.ds/workflow/legacy/`. Main checkout
+`runweld init` exposes legacy history in `.runweld/workflow/legacy/`. Main checkout
 history stays put. Linked history moves to the archive, with a link at the old
 path so existing commands and locks keep working. Removing a linked checkout
 keeps its archive in `runweld status`. Move collisions aside and retry. Unversioned

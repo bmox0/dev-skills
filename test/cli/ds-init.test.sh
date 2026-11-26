@@ -56,8 +56,8 @@ with tempfile.TemporaryDirectory() as folder:
     ignore.write_text('private-notes\n')
     git('add', '.')
     git('commit', '-qm', 'base')
-    config = project / '.ds/config.toml'
-    lock = project / '.ds/ds.lock'
+    config = project / '.runweld/config.toml'
+    lock = project / '.runweld/runweld.lock'
 
     # distribution#system-cli, run#executor-presets, run#contract-checked: a terminal collects one pair and project defaults.
     assert 'init' in ds('--help'), 'distribution#system-cli: the installed CLI must advertise initialization'
@@ -74,8 +74,8 @@ with tempfile.TemporaryDirectory() as folder:
     assert read(config)['setup'] == {'command': 'touch must-not-run-at-init'}
     assert read(lock) == {'release': release}
     assert instructions in agents.read_text() and agents.read_text().count('runweld help agents') == 1
-    git('check-ignore', '.ds/workflow/plans/example.md')
-    for file in ('.ds/config.toml', '.ds/ds.lock', 'docs/spec/example.md'):
+    git('check-ignore', '.runweld/workflow/plans/example.md')
+    for file in ('.runweld/config.toml', '.runweld/runweld.lock', 'docs/spec/example.md'):
         git('check-ignore', file, ok=False)
     managed = {file: file.read_bytes() for file in (config, lock, agents, ignore)}
     assert 'provider' in ds('init', '--non-interactive', ok=False).lower()
@@ -95,7 +95,7 @@ with tempfile.TemporaryDirectory() as folder:
     original = config.read_bytes()
     git('add', '.')
     git('commit', '-qm', 'shared workflow')
-    plans = project / '.ds/workflow/plans'
+    plans = project / '.runweld/workflow/plans'
     plans.mkdir(parents=True)
     first = plans / 'first.md'
     ds('task', 'start', 'first')
@@ -143,18 +143,18 @@ none
     ds('run', 'approve', first, '--by', 'User', '--words', 'Approve first run')
     clone = home / 'Claude clone'
     git('clone', '-q', project, clone, cwd=home)
-    assert not (clone / '.ds/workflow').exists()
+    assert not (clone / '.runweld/workflow').exists()
     ds('init', '--primary-model', 'claude-main', '--secondary-model', 'claude-helper',
        '--non-interactive', cwd=clone, with_env={**env, 'CLAUDECODE': '1'})
-    clone_config = clone / '.ds/config.toml'
+    clone_config = clone / '.runweld/config.toml'
     assert clone_config.read_bytes().startswith(original)
     assert read(clone_config)['checks'] == read(config)['checks']
     assert read(clone_config)['executors'] == {
         **profiles, 'Claude': {'primary': {'model': 'claude-main'}, 'secondary': {'model': 'claude-helper'}}}
-    assert read(clone / '.ds/ds.lock') == read(lock)
+    assert read(clone / '.runweld/runweld.lock') == read(lock)
     inline = home / 'inline config'
     git('clone', '-q', project, inline, cwd=home)
-    inline_config = inline / '.ds/config.toml'
+    inline_config = inline / '.runweld/config.toml'
     inline_config.write_text(
         'executors = { GPT = { primary = { model = "codex-main", effort = "high" }, '
         'secondary = { model = "codex-helper" } } } # keep this annotation\n'
@@ -193,20 +193,20 @@ none
     explicit = home / 'explicit'
     explicit.mkdir()
     git('init', '-q', '-b', 'trunk', cwd=explicit)
-    (explicit / '.gitignore').write_text('/.ds/\n')
+    (explicit / '.gitignore').write_text('/.runweld/\n')
     ds('init', '--provider', 'Other provider', '--primary-model', 'opaque model', '--secondary-model', 'other model',
        '--phase-check', 'lint -- arg', '--full-check', 'test one', '--full-check', 'test two',
        '--finish-how', 'no-ff', '--finish-target', 'stable', '--no-delete-backups',
        '--port', '--data-dir', '--dev', 'serve {port} {data_dir}', '--url', 'http://localhost:{port}',
        '--non-interactive', cwd=explicit)
-    direct = read(explicit / '.ds/config.toml')
+    direct = read(explicit / '.runweld/config.toml')
     assert direct['checks'] == {'phase': ['lint -- arg'], 'full': ['test one', 'test two'],
                                 'dev': 'serve {port} {data_dir}', 'url': 'http://localhost:{port}'}
     assert direct['finish'] == {'how': 'no-ff', 'target': 'stable', 'delete_backups': False}
     assert direct['isolation'] == {'worktree': True, 'port': True, 'data_dir': True}
     assert 'setup' not in direct
-    git('check-ignore', '.ds/config.toml', cwd=explicit, ok=False)
-    git('check-ignore', '.ds/ds.lock', cwd=explicit, ok=False)
-    git('check-ignore', '.ds/workflow/scratch', cwd=explicit)
-    git('check-ignore', '.ds/other-private', cwd=explicit)
+    git('check-ignore', '.runweld/config.toml', cwd=explicit, ok=False)
+    git('check-ignore', '.runweld/runweld.lock', cwd=explicit, ok=False)
+    git('check-ignore', '.runweld/workflow/scratch', cwd=explicit)
+    git('check-ignore', '.runweld/other-private', cwd=explicit)
 PY

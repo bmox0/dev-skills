@@ -216,7 +216,7 @@ none
     issued = [*legacy_cli, "build", "start", plan, "--base", "main", "--worktree", home / "old build tree"]
 
     # distribution#local-workflow: a collided destination survives and an adoption retry adds only the aliases it needs.
-    shared = root / ".ds/workflow"
+    shared = root / ".runweld/workflow"
     private_alias = shared / "legacy/main"
     other_key = hashlib.sha256(json.dumps(str(other_checkout)).encode()).hexdigest()[:16]
     retained_cross_root = private_alias.with_name(other_key)
@@ -291,10 +291,10 @@ none
     current, = json.loads(run(ds, "status", "--current", "--json", cwd=home / "old build tree"))
     assert Path(current["path"]).resolve() == plan.resolve() and current["phases"][0]["status"] == "in progress"
     assert json.loads(run(ds, "run", "show", plan, "--json"))["approved"]
-    assert "?? .ds/config.toml" in run("git", "status", "--short", "--untracked-files=all")
-    assert "?? .ds/ds.lock" in run("git", "status", "--short", "--untracked-files=all")
+    assert "?? .runweld/config.toml" in run("git", "status", "--short", "--untracked-files=all")
+    assert "?? .runweld/runweld.lock" in run("git", "status", "--short", "--untracked-files=all")
     for cwd in (root, checkout):
-        for path in (".ai-workflow" if cwd == checkout else ".ai-workflow/plans/new.md", ".ds/workflow/scratch/file"):
+        for path in (".ai-workflow" if cwd == checkout else ".ai-workflow/plans/new.md", ".runweld/workflow/scratch/file"):
             run("git", "check-ignore", path, cwd=cwd)
         run("git", "check-ignore", "docs/spec/area.md", cwd=cwd, ok=False)
 

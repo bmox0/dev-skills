@@ -1,6 +1,6 @@
 # The run file: what this run may do, how it checks and ends. Every key of the
 # fixed sections is required, except `dev` and `url`. Standalone runweld takes
-# settings from .ds/config.toml and pins its release at [workflow].release.
+# settings from .runweld/config.toml and pins its release at [workflow].release.
 # Legacy run new copies this example or the previous run and inserts the
 # project AGENTS.md profiles. Each provider has this shape:
 # [executors."PROVIDER".primary]

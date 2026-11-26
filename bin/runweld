@@ -58,8 +58,8 @@ def main():
                 project = project_root(Path(plan).absolute().parent if plan else Path.cwd())
                 if project is not None:
                     release = read_lock(project)
-                    if release is None and (project / ".ds/config.toml").exists() and args and args.group not in ("init", "help"):
-                        raise ReleaseError(f"{project}/.ds/ds.lock is missing; run `runweld init` to finish setup or restore the lock")
+                    if release is None and (project / ".runweld/config.toml").exists() and args and args.group not in ("init", "help"):
+                        raise ReleaseError(f"{project}/.runweld/runweld.lock is missing; run `runweld init` to finish setup or restore the lock")
             if release is None:
                 release = installed_default(store)
         engine = verify_release(store, release) / PROGRAM

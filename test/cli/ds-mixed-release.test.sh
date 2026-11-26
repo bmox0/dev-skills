@@ -51,7 +51,7 @@ previous=(previous-draft previous-active previous-plan previous-repair previous-
 for id in "${previous[@]}"; do
   cli task start "$id" >/dev/null
 done
-plan="$PWD/.ds/workflow/plans/previous-active.md"
+plan="$PWD/.runweld/workflow/plans/previous-active.md"
 base=$(git rev-parse HEAD)
 cat > "$plan" <<PLAN
 # Plan: Retain pinned guidance
@@ -108,7 +108,7 @@ record_status() {
   if [[ "$format" == json ]]; then
     opts+=(--json)
   fi
-  (cd ".ds/workflow/trees/$id" && "$@" "${opts[@]}") > "$destination.out" 2> "$destination.err" || code=$?
+  (cd ".runweld/workflow/trees/$id" && "$@" "${opts[@]}") > "$destination.out" 2> "$destination.err" || code=$?
   printf '%s\n' "$code" > "$destination.code"
 }
 
@@ -124,7 +124,7 @@ check_status() {
 }
 
 for id in "${previous[@]}"; do
-  cp ".ds/workflow/tasks/$id.json" "$sandbox/$id.json"
+  cp ".runweld/workflow/tasks/$id.json" "$sandbox/$id.json"
   for format in text json; do
     record_status "$id" "$sandbox/$id.$format.native" "$format" python3 "$bundle/skills/build/pipeline.py"
     [[ $(cat "$sandbox/$id.$format.native.code") == 0 ]]
@@ -145,7 +145,7 @@ cli update >/dev/null
 b=$(cli --version)
 [[ "$a" != "$b" ]]
 cli task start current >/dev/null
-cp .ds/ds.lock "$sandbox/lock"
+cp .runweld/runweld.lock "$sandbox/lock"
 
 cli status --json > "$sandbox/inventory"
 bundle_b="$sandbox/lib/dev-skills/releases/$b"
@@ -153,9 +153,9 @@ for format in text json; do
   record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/skills/build/pipeline.py"
 done
 # An unrelated plan and task record must not be read, even by a retained engine.
-printf '%s\n' 'not json' > .ds/workflow/tasks/unrelated.json
-printf '%s\n' 'not json' > .ds/workflow/plans/unrelated.json
-touch .ds/workflow/plans/unrelated.md
+printf '%s\n' 'not json' > .runweld/workflow/tasks/unrelated.json
+printf '%s\n' 'not json' > .runweld/workflow/plans/unrelated.json
+touch .runweld/workflow/plans/unrelated.md
 for id in "${previous[@]}" current; do
   for format in text json; do
     check_status "$id" "$sandbox/$id.$format.native" "$format"
@@ -201,7 +201,7 @@ for format in text json; do
   check_status previous-active "$sandbox/broken.$format.native" "$format"
 done
 cp "$sandbox/active.md" "$plan"
-rm .ds/workflow/tasks/unrelated.json .ds/workflow/plans/unrelated.{json,md}
+rm .runweld/workflow/tasks/unrelated.json .runweld/workflow/plans/unrelated.{json,md}
 
 # Also compare the same-release launcher to the native command as a new task gains and loses state.
 same_plan="${plan%/*}/current.md"
@@ -226,7 +226,7 @@ for state in draft active unreadable repair; do
     check_status current "$sandbox/current.$format.native" "$format"
   done
 done
-current_record=.ds/workflow/tasks/current.json
+current_record=.runweld/workflow/tasks/current.json
 cp "$current_record" "$sandbox/current-record.json"
 printf '%s\n' 'not json' > "$current_record"
 record_status current "$sandbox/current-corrupt.native" json python3 "$bundle_b/skills/build/pipeline.py"
@@ -235,35 +235,35 @@ assert_contains "$(cat "$sandbox/current-corrupt.native.err")" "$current_record"
 check_status current "$sandbox/current-corrupt.native" json
 cp "$sandbox/current-record.json" "$current_record"
 mv "$bundle_b" "$sandbox/missing-b"
-assert_contains "$(cd .ds/workflow/trees/previous-active && cli status --current --json)" "$a" 'distribution#project-lock: pinned current guidance does not require the project release'
+assert_contains "$(cd .runweld/workflow/trees/previous-active && cli status --current --json)" "$a" 'distribution#project-lock: pinned current guidance does not require the project release'
 mv "$sandbox/missing-b" "$bundle_b"
 printf 'damaged fixture\n' > "$bundle/references/SESSIONS.md"
 for id in "${previous[@]}"; do
-  if output=$(cd ".ds/workflow/trees/$id" && cli status --current --json 2>&1); then
+  if output=$(cd ".runweld/workflow/trees/$id" && cli status --current --json 2>&1); then
     echo "distribution#project-lock: $id accepted a damaged pinned release" >&2
     exit 1
   fi
   assert_contains "$output" "$a" 'distribution#project-lock: recovery names the exact pinned release'
   assert_contains "$output" 'install this exact release' 'distribution#project-lock: recovery explains how to repair it'
-  cmp ".ds/workflow/tasks/$id.json" "$sandbox/$id.json"
+  cmp ".runweld/workflow/tasks/$id.json" "$sandbox/$id.json"
 done
 mv "$bundle" "$sandbox/damaged-a"
-if output=$(cd .ds/workflow/trees/previous-repair && cli status --current 2>&1); then
+if output=$(cd .runweld/workflow/trees/previous-repair && cli status --current 2>&1); then
   echo 'distribution#project-lock: scoped repair guidance cannot use a different release' >&2
   exit 1
 fi
 assert_contains "$output" "$a" 'distribution#project-lock: a missing pin names the exact release to reinstall'
 mv "$sandbox/damaged-a" "$bundle"
 cmp "${plan%.md}.json" "$sandbox/approved.json"
-cmp .ds/ds.lock "$sandbox/lock"
+cmp .runweld/runweld.lock "$sandbox/lock"
 
 # Reinstall A for its exact bytes, then B to restore the shared router and default.
 "$preceding/scripts/install-$previous_command" --prefix "$sandbox" >/dev/null
-cmp .ds/ds.lock "$sandbox/lock"
+cmp .runweld/runweld.lock "$sandbox/lock"
 cmp "$preceding/bin/$previous_command" "$sandbox/bin/$previous_command"
 assert_eq "$a" "$(cat "$sandbox/lib/dev-skills/default")"
 "$repo_root/scripts/install-runweld" --prefix "$sandbox" >/dev/null
-cmp .ds/ds.lock "$sandbox/lock"
+cmp .runweld/runweld.lock "$sandbox/lock"
 cmp "$repo_root/bin/runweld" "$sandbox/bin/runweld"
 assert_eq "$b" "$(cat "$sandbox/lib/dev-skills/default")"
 for id in "${previous[@]}"; do

@@ -30,4 +30,4 @@ Why: collaborators must share reproducible rules and preserve ongoing work acros
 Why: a clone reuses project settings while execution records and evidence stay local.
 
 - Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
-- Adopt a legacy checkout with historical and active runs, compiled approvals, an issued command and a linked worktree → the command still works, inventory finds each run once, recorded approvals and evidence survive, and retrying migration preserves all files. New plans, evidence and scratch files stay ignored while config, lock and specs appear in Git.
+- Adopt a legacy checkout with historical and active runs, compiled approvals, an issued command and a linked worktree → the command still works, inventory finds each run once, recorded approvals and evidence survive, and retrying migration preserves all files. Git ignores plans, evidence and scratch files under `.runweld/workflow/`. The project can track `.runweld/config.toml`, `.runweld/runweld.lock` and its specs.

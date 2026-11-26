@@ -157,9 +157,9 @@ def project_root(path):
 def history_path(path):
     md = Path(path).absolute()
     parent = md.parent
-    if (parent.name, parent.parent.name, parent.parent.parent.name) == ("plans", "workflow", ".ds"):
+    if (parent.name, parent.parent.name, parent.parent.parent.name) == ("plans", "workflow", ".runweld"):
         if project := project_root(parent.parent.parent.parent):
-            return project / ".ds/workflow/plans" / md.name
+            return project / ".runweld/workflow/plans" / md.name
     return md
 
 
@@ -171,7 +171,7 @@ def command_plan(args, cwd):
                (args.group == "help" and args.topic == "agents"))
     if not (by_id or in_task) or not (project := project_root(cwd)):
         return None
-    workflow = project / ".ds/workflow"
+    workflow = project / ".runweld/workflow"
     if by_id:
         name = args.id
     elif cwd.is_relative_to(workflow / "trees"):
@@ -184,7 +184,7 @@ def command_plan(args, cwd):
 
 
 def lock_path(project):
-    return project / ".ds" / "ds.lock"
+    return project / ".runweld" / "runweld.lock"
 
 
 def read_lock(project):
@@ -201,7 +201,7 @@ def write_lock(project, release):
     if not valid_release(release):
         raise ReleaseError(f"invalid release {release!r}; use the exact ID printed by the installer")
     if path.is_symlink() or path.parent.is_symlink():
-        raise ReleaseError(f"{path} must be a regular project file in a real .ds directory")
+        raise ReleaseError(f"{path} must be a regular project file in a real .runweld directory")
     try:
         path.parent.mkdir(exist_ok=True)
         atomic_write(path, f"release = {json.dumps(release)}\n".encode())
@@ -235,7 +235,7 @@ def read_task_record(path):
 
 
 def registered_task(plan):
-    if plan.parent.parts[-3:] == (".ds", "workflow", "plans") and TASK_ID.fullmatch(plan.stem):
+    if plan.parent.parts[-3:] == (".runweld", "workflow", "plans") and TASK_ID.fullmatch(plan.stem):
         return read_task_record(plan.parent.parent / "tasks" / (plan.stem + ".json"))
 
 

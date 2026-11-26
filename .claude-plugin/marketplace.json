@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Runweld: a deterministic development pipeline for coding agents.",
-    "version": "7.1.0"
+    "version": "7.1.1"
   },
   "plugins": [
     {
@@ -14,7 +14,7 @@
       "source": "./",
       "description": "Seven stages for every change: a grill or a discussion, an optional prototype, a plan file, phases built by implementer subagents, a review and an e2e check, a judge that lands the branch, a human approval, and finish. The session the user started coordinates and does not edit code. The pipeline keeps the product's rules in docs/spec/ itself: the grill reads them, the plan carries them, the build writes them. Skills and agents; a CLI that keeps each plan's state, the gate and the landing; a run file written before the plan; hooks that only advise.",
       "repository": "https://github.com/bmox0/runweld",
-      "version": "7.1.0",
+      "version": "7.1.1",
       "license": "MIT",
       "category": "development",
       "keywords": [

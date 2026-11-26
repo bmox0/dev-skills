@@ -216,7 +216,7 @@ Waits for: nothing
     assert run("git", "status", "--short") == ""
 
     # run#worktree-setup, run#task-worktree: no command is required and a pending merge request retains its tree.
-    config = project / ".ds/config.toml"
+    config = project / ".runweld/config.toml"
     before = config.read_text()
     adjusted = re.sub(r"(?ms)^\[setup\]\n.*?(?=^\[|\Z)", "", before)
     config.write_text(adjusted.replace('how = "ff-only"', 'how = "merge-request"').replace(json.dumps(full), '"true"'))

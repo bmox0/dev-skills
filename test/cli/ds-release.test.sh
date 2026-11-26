@@ -26,7 +26,7 @@ assert_contains "$(cd "$sandbox" && runweld help agents)" "$engine_a/references/
 assert_contains "$(node "$engine_a/skills/browser-test/tab.mjs" --help)" "one persistent tab" 'distribution#system-cli: the installed browser helper runs'
 [[ -r "$engine_a/agents/implementer.md" ]] || { echo 'distribution#system-cli: the release includes role instructions' >&2; exit 1; }
 
-mkdir -p "$project/.ds" "$project/.ai-workflow/plans"
+mkdir -p "$project/.runweld" "$project/.ai-workflow/plans"
 cd "$project"
 git init -q -b main
 git commit --allow-empty -qm base
@@ -39,7 +39,7 @@ assert_contains "$out" 'runweld task start' 'run#task-worktree: standalone run n
 [[ ! -e docs/solo.run.toml && $(git branch --show-current) == main ]]
 base=$(git rev-parse HEAD)
 entry=$(runweld task start run-a --json)
-plan="$project/.ds/workflow/plans/run-a.md"
+plan="$project/.runweld/workflow/plans/run-a.md"
 repo_worktree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$entry")
 cat > "$plan" <<PLAN
 # Plan: A run bound to its installed release
@@ -102,7 +102,7 @@ approve_plan "$plan" >/dev/null
 runweld build start "$plan" >/dev/null
 ds_task=$(runweld task start release-task --json)
 ds_task_tree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$ds_task")
-ds_task_run="$project/.ds/workflow/plans/release-task.run.toml"
+ds_task_run="$project/.runweld/workflow/plans/release-task.run.toml"
 cp "$ds_task_run" "$sandbox/task-a.toml"
 
 # run#starts-from-last: a draft cannot remove its registered release before compilation or approval.
@@ -116,7 +116,7 @@ cp "$sandbox/task-a.toml" "$ds_task_run"
 
 # distribution#project-lock: the preceding release stored only base, ready and branch.
 runweld task start previous-record >/dev/null
-previous="$project/.ds/workflow/tasks/previous-record.json"
+previous="$project/.runweld/workflow/tasks/previous-record.json"
 python3 - "$previous" <<'PY'
 import json, sys
 from pathlib import Path
@@ -128,11 +128,11 @@ cp "$previous" "$sandbox/previous-record.json"
 
 # distribution#project-lock: an interrupted entry retains A even if the project lock moves before retry.
 runweld task start interrupted >/dev/null
-rm .ds/workflow/plans/interrupted.run.toml
+rm .runweld/workflow/plans/interrupted.run.toml
 python3 - <<'PY'
 import json
 from pathlib import Path
-record = Path('.ds/workflow/tasks/interrupted.json')
+record = Path('.runweld/workflow/tasks/interrupted.json')
 value = json.loads(record.read_text())
 value['ready'] = False
 record.write_text(json.dumps(value))
@@ -179,15 +179,15 @@ assert_eq "$b" "$(runweld --version)" 'distribution#project-lock: update changes
 assert_contains "$(runweld help agents)" "$engine_b/agents/implementer.md" 'distribution#project-lock: project help now uses B'
 assert_contains "$(runweld --help)" 'terminal help from release B' 'distribution#project-lock: terminal help uses B after update'
 assert_contains "$(runweld task resume previous-record --json)" "$a" 'distribution#project-lock: a previous-format task still resumes on A'
-assert_eq "$project/.ds/workflow/artifacts/previous-record/browser-test" "$(runweld task path previous-record browser-test)" 'distribution#project-lock: previous-format task paths still resolve'
-assert_contains "$(runweld run show .ds/workflow/plans/previous-record.md --json)" "$a" 'distribution#project-lock: a previous-format run still shows A'
+assert_eq "$project/.runweld/workflow/artifacts/previous-record/browser-test" "$(runweld task path previous-record browser-test)" 'distribution#project-lock: previous-format task paths still resolve'
+assert_contains "$(runweld run show .runweld/workflow/plans/previous-record.md --json)" "$a" 'distribution#project-lock: a previous-format run still shows A'
 assert_contains "$(runweld status --json)" 'previous-record' 'distribution#project-lock: project inventory finds previous-format tasks'
 cmp "$previous" "$sandbox/previous-record.json"
 assert_contains "$(runweld task start interrupted --json)" "$a" 'distribution#project-lock: retry retains the entry release after update'
-fresh="$project/.ds/workflow/plans/run-b.md"
+fresh="$project/.runweld/workflow/plans/run-b.md"
 runweld task start run-b >/dev/null
 assert_contains "$(runweld run show "$fresh" --json)" "$b" 'run#starts-from-last: a new run snapshots the newly locked release B'
-assert_contains "$(cd "$ds_task_tree" && runweld run show .ds/workflow/plans/release-task.md --json)" "$a" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
+assert_contains "$(cd "$ds_task_tree" && runweld run show .runweld/workflow/plans/release-task.md --json)" "$a" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
 assert_contains "$(cd "$ds_task_tree" && runweld task resume release-task --json)" "$a" 'distribution#project-lock: resume reports the release captured at task entry'
 runweld status --current --json | python3 -c '
 import json, sys
@@ -231,14 +231,14 @@ assert f'{release}/agents/implementer.md' in Path(brief).read_text(), 'distribut
 PY
 
 # Missing or changed contents must not select a fallback or alter the lock or run.
-cp .ds/ds.lock "$sandbox/lock-before"
+cp .runweld/runweld.lock "$sandbox/lock-before"
 printf 'broken\n' > "$engine_a/references/SESSIONS.md"
 if out=$(runweld update "$a" 2>&1); then
   echo 'distribution#project-lock: a damaged candidate must not update the lock' >&2
   exit 1
 fi
 assert_contains "$out" 'references/SESSIONS.md' 'distribution#project-lock: update identifies damaged contents'
-cmp .ds/ds.lock "$sandbox/lock-before"
+cmp .runweld/runweld.lock "$sandbox/lock-before"
 cp "${plan%.md}.json" "$sandbox/run-before"
 if out=$(cd "$sandbox" && runweld phase done "$plan" 1 2>&1); then
   echo 'distribution#project-lock: a damaged locked run cannot execute' >&2
@@ -281,5 +281,5 @@ if ! out=$(cd "$sandbox" && "$repo_root/scripts/install-runweld" --prefix "$pref
   echo "distribution#project-lock: reinstalling the exact damaged release repairs it: $out" >&2
   exit 1
 fi
-cmp .ds/ds.lock "$sandbox/lock-before"
+cmp .runweld/runweld.lock "$sandbox/lock-before"
 assert_contains "$(cd "$sandbox" && runweld help agents --plan "$plan")" "$engine_a/agents/implementer.md" 'distribution#project-lock: the repaired run can use A again'
