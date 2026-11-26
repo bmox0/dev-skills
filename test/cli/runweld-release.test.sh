@@ -19,6 +19,7 @@ if ! install=$(cd "$sandbox" && "$repo_root/scripts/install-runweld" --prefix "$
   exit 1
 fi
 cli() { runweld "$@"; }
+entry_field() { python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
 a=$(cat "$prefix/lib/runweld/default")
 assert_eq "${a%%@*}" "$(cd "$sandbox" && runweld --version)" 'distribution#system-cli: show the ordinary CLI version'
 version_details() { printf 'CLI version: %s\nBuild ID: %s\n' "${1%%@*}" "$1"; }
@@ -42,8 +43,8 @@ assert_contains "$out" 'runweld task start' 'run#task-worktree: standalone run n
 [[ ! -e docs/solo.run.toml && $(git branch --show-current) == main ]]
 base=$(git rev-parse HEAD)
 entry=$(runweld task start run-a --finish-how ff-only --finish-target main --json)
-plan="$project/.runweld/workflow/plans/run-a.md"
-repo_worktree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$entry")
+plan=$(entry_field plan <<< "$entry")
+repo_worktree=$(entry_field tree <<< "$entry")
 cat > "$plan" <<PLAN
 # Plan: A run bound to its installed release
 
@@ -104,8 +105,9 @@ rm docs/solo.md docs/solo.run.toml
 approve_plan "$plan" >/dev/null
 runweld build start "$plan" >/dev/null
 release_task=$(runweld task start release-task --finish-how ff-only --finish-target main --json)
-release_task_tree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$release_task")
-release_task_run="$project/.runweld/workflow/plans/release-task.run.toml"
+release_task_tree=$(entry_field tree <<< "$release_task")
+release_task_plan=$(entry_field plan <<< "$release_task")
+release_task_run="${release_task_plan%.md}.run.toml"
 cp "$release_task_run" "$sandbox/task-a.toml"
 
 # run#starts-from-last: a draft cannot remove its registered release before compilation or approval.
@@ -118,17 +120,22 @@ assert_contains "$out" '[workflow]' 'run#starts-from-last: a missing entry pin i
 cp "$sandbox/task-a.toml" "$release_task_run"
 
 # distribution#project-lock: a project update keeps an existing task on its release.
-runweld task start previous-record --finish-how ff-only --finish-target main >/dev/null
-previous="$project/.runweld/workflow/tasks/previous-record.json"
+previous_entry=$(runweld task start previous-record --finish-how ff-only --finish-target main --json)
+previous_plan=$(entry_field plan <<< "$previous_entry")
+previous_artifacts=$(entry_field artifacts <<< "$previous_entry")
+previous="${previous_plan%.md}.task.json"
 cp "$previous" "$sandbox/previous-record.json"
 
 # distribution#project-lock: an interrupted entry retains A even if the project lock moves before retry.
-runweld task start interrupted --finish-how ff-only --finish-target main >/dev/null
-rm .runweld/workflow/plans/interrupted.run.toml
-python3 - <<'PY'
+interrupted=$(runweld task start interrupted --finish-how ff-only --finish-target main --json)
+interrupted_plan=$(entry_field plan <<< "$interrupted")
+interrupted_run="${interrupted_plan%.md}.run.toml"
+rm "$interrupted_run"
+python3 - "${interrupted_plan%.md}.task.json" <<'PY'
 import json
 from pathlib import Path
-record = Path('.runweld/workflow/tasks/interrupted.json')
+import sys
+record = Path(sys.argv[1])
 value = json.loads(record.read_text())
 value['ready'] = False
 value['finish'] = {'how': 'merge-request', 'target': 'main'}
@@ -194,17 +201,19 @@ fi
 assert_contains "$(runweld help agents)" "$b" 'distribution#project-lock: project help now uses B'
 assert_contains "$(runweld --help)" 'terminal help from release B' 'distribution#project-lock: terminal help uses B after update'
 assert_contains "$(runweld task resume previous-record --json)" "$a" 'distribution#project-lock: a pinned task still resumes on A'
-assert_eq "$project/.runweld/workflow/artifacts/previous-record/browser-test" "$(runweld task path previous-record browser-test)" 'distribution#project-lock: pinned task paths still resolve'
-assert_contains "$(runweld run show .runweld/workflow/plans/previous-record.md --json)" "${a#*@}" 'distribution#project-lock: a pinned run still shows A'
+assert_eq "$previous_artifacts/browser-test" "$(runweld task path previous-record browser-test)" 'distribution#project-lock: pinned task paths still resolve'
+assert_contains "$(runweld run show "$previous_plan" --json)" "${a#*@}" 'distribution#project-lock: a pinned run still shows A'
 assert_contains "$(runweld status --json)" 'previous-record' 'distribution#project-lock: project inventory finds pinned tasks'
 cmp "$previous" "$sandbox/previous-record.json"
 assert_contains "$(runweld task start interrupted --json)" "$a" 'distribution#project-lock: retry retains the entry release after update'
-assert_contains "$(cat .runweld/workflow/plans/interrupted.run.toml)" 'how = "merge-request"' 'run#starts-from-last: retry retains the finish choice'
-fresh="$project/.runweld/workflow/plans/run-b.md"
-runweld task start run-b --finish-how ff-only --finish-target main >/dev/null
+assert_contains "$(cat "$interrupted_run")" 'how = "merge-request"' 'run#starts-from-last: retry retains the finish choice'
+fresh_entry=$(runweld task start run-b --finish-how ff-only --finish-target main --json)
+fresh=$(entry_field plan <<< "$fresh_entry")
 assert_contains "$(runweld run show "$fresh" --json)" "${b#*@}" 'run#starts-from-last: a new run snapshots the newly locked release B'
-assert_contains "$(cd "$release_task_tree" && runweld run show .runweld/workflow/plans/release-task.md --json)" "${a#*@}" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
+assert_contains "$(cd "$release_task_tree" && runweld run show "${release_task_plan#"$project"/}" --json)" "${a#*@}" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
 assert_contains "$(cd "$release_task_tree" && runweld task resume release-task --json)" "$a" 'distribution#project-lock: resume reports the release captured at task entry'
+assert_contains "$(cd "$release_task_tree" && runweld next --json)" "$a" 'distribution#system-cli: next in the old task uses its release'
+assert_contains "$(runweld next run-b --json)" 'Continue using release B.' 'distribution#system-cli: next in the new task uses its release'
 runweld status --current --json | python3 -c '
 import json, sys
 rows = {r["plan"]: r for r in json.load(sys.stdin)}

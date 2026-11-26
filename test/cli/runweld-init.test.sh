@@ -60,7 +60,13 @@ with tempfile.TemporaryDirectory() as folder:
     lock = project / '.runweld/runweld.lock'
 
     # distribution#system-cli, run#executor-presets, run#contract-checked: a terminal collects one pair and project defaults.
-    assert 'init' in runweld('--help'), 'distribution#system-cli: the installed CLI must advertise initialization'
+    assert 'next' in runweld('help'), 'distribution#system-cli: terminal help advertises the first action'
+    assert 'git init' in runweld('next', cwd=home), 'distribution#system-cli: explain the missing Git project'
+    entry = json.loads(runweld('next', '--json'))
+    assert entry['actions'][0]['argv'][-1] == 'init', 'distribution#system-cli: an uninitialized checkout offers init'
+    assert entry['actions'][0]['cwd'] == str(project)
+    assert 'runweld init' in runweld('next')
+    assert not config.exists(), 'distribution#system-cli: checking what comes next does not initialize'
     stopped = terminal(b'\x04', ok=False)
     assert 'cancelled' in stopped and not config.exists() and not lock.exists()
     assert agents.read_text() == instructions and ignore.read_text() == 'private-notes\n'
@@ -84,8 +90,8 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'does not match the components' in runweld('task', 'start', 'altered', ok=False)
     runweld('update', '--project', release)
     assert lock.read_bytes() == generated
-    block = ('<!-- runweld:begin -->\n'
-             'Use `runweld grill` for the interview, `runweld plan` for planning, and `runweld status --current` to resume.\n'
+    block = ('<!-- runweld:begin -->\n\n'
+             'Start or resume work with `runweld next`.\n\n'
              '<!-- runweld:end -->')
     assert agents.read_text() == f'{instructions}\n\n{block}\n'
     git('check-ignore', '.runweld/workflow/plans/example.md')
@@ -95,11 +101,13 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'provider' in runweld('init', '--non-interactive', ok=False).lower()
     runweld('init', '--provider', 'GPT', '--non-interactive')
     assert all(file.read_bytes() == data for file, data in managed.items())
+    assert 'runweld task start' in runweld('next'), 'distribution#system-cli: initialized projects offer task entry'
     assert 'executors."Other".primary.model' in runweld('init', '--provider', 'Other', '--primary-model', ' ',
                                                    '--secondary-model', 'helper', '--non-interactive', ok=False)
     assert all(file.read_bytes() == data for file, data in managed.items())
     # A retry after all shared writes except the lock keeps their bytes.
     lock.unlink()
+    assert 'runweld init' in runweld('next'), 'distribution#system-cli: next recovers interrupted initialization'
     runweld('init', '--provider', 'GPT', '--non-interactive')
     assert all(file.read_bytes() == data for file, data in managed.items())
 
@@ -129,8 +137,7 @@ with tempfile.TemporaryDirectory() as folder:
     git('commit', '-qm', 'shared workflow')
     plans = project / '.runweld/workflow/plans'
     plans.mkdir(parents=True)
-    first = plans / 'first.md'
-    runweld('task', 'start', 'first', '--finish-how', 'ff-only', '--finish-target', 'main')
+    first = Path(json.loads(runweld('task', 'start', 'first', '--finish-how', 'ff-only', '--finish-target', 'main', '--json'))['plan'])
     first.write_text(f'''# Plan: First
 
 Status: draft · branch `runweld/first` · base `{git('rev-parse', 'HEAD')}`
@@ -203,8 +210,7 @@ none
 
     # run#starts-from-last, run#changes-through-approve: current defaults are not taken from old local runs.
     config.write_text(config.read_text().replace('scripts/test old', 'scripts/test new'))
-    second = plans / 'second.md'
-    runweld('task', 'start', 'second')
+    second = Path(json.loads(runweld('task', 'start', 'second', '--json'))['plan'])
     snapshot = read(second.with_suffix('.run.toml'))
     assert snapshot['finish'] == {'delete_backups': True}
     assert json.loads(runweld('run', 'show', second, '--json'))['run']['finish'] == snapshot['finish']
@@ -230,6 +236,29 @@ none
         assert not bad.with_suffix('.run.toml').exists()
         config.write_text(before)
 
+    # distribution#system-cli: preserve explicit Environment commands rather than inferring different checks.
+    detected = home / 'documented'
+    detected.mkdir()
+    git('init', '-qb', 'main', cwd=detected)
+    (detected / 'AGENTS.md').write_text(
+        '# Project\n\n## Environment\n\n'
+        '**Build.** `make compile`\n\n'
+        '**Phase checks.** `make lint`, `make types`\n\n'
+        '**Full checks.** `make suite`\n\n'
+        '**Bootstrap.** `touch must-not-bootstrap-during-init`\n\n'
+        '**Dev server.** `make serve`, serves on `http://localhost:9000`\n\n'
+        '**Dev URL.** `http://localhost:9100`\n'
+    )
+    output = runweld('init', '--provider', 'Test', '--primary-model', 'main',
+                     '--secondary-model', 'helper', '--non-interactive', cwd=detected)
+    assert 'Detected' in output and 'make types' in output and 'http://localhost:9100' in output, output
+    found = read(detected / '.runweld/config.toml')
+    assert found['checks'] == {'phase': ['make lint', 'make types'], 'full': ['make suite'],
+                               'build': 'make compile', 'dev': 'make serve', 'url': 'http://localhost:9100'}, found
+    assert found['setup'] == {'command': 'touch must-not-bootstrap-during-init'}
+    assert not (detected / 'must-not-bootstrap-during-init').exists()
+    assert 'commit' in runweld('next', cwd=detected), 'distribution#system-cli: task entry needs an initial commit'
+
     # run#worktree-setup: a clean project can opt in explicitly or leave setup absent.
     explicit = home / 'explicit'
     explicit.mkdir()
@@ -237,18 +266,19 @@ none
     (explicit / '.gitignore').write_text('/.runweld/\n')
     runweld('init', '--provider', 'Other provider', '--primary-model', 'opaque model', '--secondary-model', 'other model',
        '--phase-check', 'lint -- arg', '--full-check', 'test one', '--full-check', 'test two',
-       '--port', '--data-dir', '--dev', 'serve {port} {data_dir}', '--url', 'http://localhost:{port}',
+       '--port', '--data-dir', '--build', 'make all', '--dev', 'serve {port} {data_dir}', '--dev-url', 'http://localhost:{port}',
        '--non-interactive', cwd=explicit)
     direct = read(explicit / '.runweld/config.toml')
     assert direct['checks'] == {'phase': ['lint -- arg'], 'full': ['test one', 'test two'],
-                                'dev': 'serve {port} {data_dir}', 'url': 'http://localhost:{port}'}
+                                'build': 'make all', 'dev': 'serve {port} {data_dir}', 'url': 'http://localhost:{port}'}
     assert 'finish' not in direct
     git('commit', '--allow-empty', '-qm', 'base', cwd=explicit)
-    runweld('task', 'start', 'local', '--finish-how', 'no-ff', '--finish-target', 'trunk', '--no-delete-backups', cwd=explicit)
-    runweld('task', 'start', 'request', '--finish-how', 'merge-request', '--finish-target', 'trunk', cwd=explicit)
-    runs = explicit / '.runweld/workflow/plans'
-    assert read(runs / 'local.run.toml')['finish'] == {'how': 'no-ff', 'target': 'trunk', 'delete_backups': False}
-    assert read(runs / 'request.run.toml')['finish']['how'] == 'merge-request'
+    def explicit_run(*args):
+        entry = json.loads(runweld('task', 'start', *args, '--json', cwd=explicit))
+        return read(Path(entry['plan']).with_suffix('.run.toml'))
+    assert explicit_run('local', '--finish-how', 'no-ff', '--finish-target', 'trunk', '--no-delete-backups')['finish'] == {
+        'how': 'no-ff', 'target': 'trunk', 'delete_backups': False}
+    assert explicit_run('request', '--finish-how', 'merge-request', '--finish-target', 'trunk')['finish']['how'] == 'merge-request'
     assert 'already has a run file' in runweld('task', 'start', 'local', '--finish-how', 'merge-request', cwd=explicit, ok=False)
     assert 'finish' not in read(explicit / '.runweld/config.toml')
     assert direct['isolation'] == {'port': True, 'data_dir': True}

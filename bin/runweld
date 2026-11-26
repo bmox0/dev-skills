@@ -10,22 +10,21 @@ store = Path(__file__).resolve().parents[1] / "lib" / "runweld"
 sys.path.insert(0, str(store))
 
 
-CURRENT_STATUS = """
+SCOPED_EXECUTION = """
 from pathlib import Path
 import sys
 
-engine, selected, *args = sys.argv[1:]
-selected = Path(selected)
+engine, key, selected, *args = sys.argv[1:]
 sys.path.insert(0, str(Path(engine).parent))
 import pipeline
 
 sys.argv = [engine, *args]
-sys.exit(pipeline.main(current_task=selected))
+sys.exit(pipeline.main(**{key: Path(selected) if key == "current_task" else selected}))
 """
 
 
 def main():
-    from runweld_release import ReleaseError, command_plan, installed_default, project_root, read_lock, run_pin, update_installation, verify_release, PROGRAM
+    from runweld_release import ReleaseError, command_plan, installed_default, project_root, read_lock, read_workflow, run_pin, update_installation, verify_release, PROGRAM
 
     argv = sys.argv[1:]
     project_pin = None
@@ -54,11 +53,16 @@ def main():
                 if project is not None:
                     project_pin = read_lock(project, store)
                     release = project_pin
-                    if release is None and (project / ".runweld/config.toml").exists() and args and args.group not in ("init", "help"):
+                    if release is None and (project / ".runweld/config.toml").exists() and args and args.group not in ("init", "help", "next"):
                         raise ReleaseError(f"{project}/.runweld/runweld.lock is missing; run `runweld init` to finish setup or restore the lock")
             if release is None:
                 release = installed_default(store)
-        engine = verify_release(store, release) / PROGRAM
+        bundle = verify_release(store, release)
+        engine = bundle / PROGRAM
+        if argv[:1] == ["next"] and "purpose" not in read_workflow(bundle)["stages"]["grill"]:
+            latest = verify_release(store, installed_default(store))
+            if "purpose" in read_workflow(latest)["stages"]["grill"]:
+                os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", SCOPED_EXECUTION, str(latest / PROGRAM), "next_release", release, *argv])
         if argv in (["--version"], ["--version", "--verbose"], ["--verbose", "--version"]):
             if project_pin is not None:
                 cli = installed_default(store)
@@ -74,7 +78,7 @@ def main():
             from route_pipeline import parse_cli
             parse_cli(argv, standalone=True, version=release)
         if scoped:
-            os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", CURRENT_STATUS, str(engine), str(scoped), *argv])
+            os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", SCOPED_EXECUTION, str(engine), "current_task", str(scoped), *argv])
         os.execv(sys.executable, [sys.executable, str(engine), *argv])
     except ReleaseError as error:
         print(f"runweld: {error}", file=sys.stderr)

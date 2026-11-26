@@ -15,6 +15,17 @@ preceding="$sandbox/release-a"
 mkdir "$sandbox/project with spaces" "$preceding"
 cp -R "$repo_root/." "$preceding/"
 printf '\nRelease A fixture.\n' >> "$preceding/README.md"
+python3 - "$preceding" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+catalog = root / "references/workflow.toml"
+catalog.write_text("".join(line for line in catalog.read_text().splitlines(keepends=True)
+                           if not line.startswith("purpose = ")))
+engine = root / "workflow/build/pipeline.py"
+engine.write_text(engine.read_text().replace('if a.group == "next":\n                return cmd_next',
+                                             'if a.group == "next":\n                raise AssertionError("release A has no next")\n                return cmd_next'))
+PY
 launcher="$sandbox/bin/runweld"
 "$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 a=$(cat "$sandbox/lib/runweld/default")
@@ -25,7 +36,14 @@ git commit --allow-empty -qm base
 cli init --non-interactive --provider Test --primary-model main --secondary-model helper >/dev/null
 previous=(previous-draft previous-active previous-plan previous-repair previous-adopt)
 for id in "${previous[@]}"; do
-  cli task start "$id" --finish-how ff-only --finish-target main >/dev/null
+  entry=$(cli task start "$id" --finish-how ff-only --finish-target main --json)
+  reserved=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"])' <<< "$entry")
+  # Retain the flat layout used by releases before dated task directories.
+  mkdir -p .runweld/workflow/artifacts
+  mv "${reserved%.md}.task.json" ".runweld/workflow/tasks/$id.json"
+  mv "${reserved%.md}.run.toml" ".runweld/workflow/plans/$id.run.toml"
+  mv "${reserved%/*}/artifacts" ".runweld/workflow/artifacts/$id"
+  rmdir "${reserved%/*}"
 done
 plan="$PWD/.runweld/workflow/plans/previous-active.md"
 base=$(git rev-parse HEAD)
@@ -120,11 +138,23 @@ launcher="$sandbox/bin/runweld"
 cli update --project >/dev/null
 b=$(cat "$sandbox/lib/runweld/default")
 [[ "$a" != "$b" ]]
-cli task start current --finish-how ff-only --finish-target main >/dev/null
+current_entry=$(cli task start current --finish-how ff-only --finish-target main --json)
+same_plan=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"])' <<< "$current_entry")
 cp .runweld/runweld.lock "$sandbox/lock"
 
 cli status --json > "$sandbox/inventory"
 bundle_b="$sandbox/lib/runweld/releases/$b"
+(cd .runweld/workflow/trees/previous-active && cli next --json --provider Test) > "$sandbox/older-next.json"
+python3 - "$sandbox/older-next.json" "$a" <<'PY'
+import json
+from pathlib import Path
+import sys
+view = json.loads(Path(sys.argv[1]).read_text())
+assert view["task"]["id"] == "previous-active" and view["task"]["release"] == sys.argv[2]
+assert view["stage"] == "build" and view["task"]["goal"] == "Resume without changing releases."
+assert any(sys.argv[2] in a["argv"] for a in view["actions"] if a["kind"] == "run")
+PY
+assert_contains "$(cli next previous-draft)" 'runweld grill' 'distribution#system-cli: next retains a pre-draft legacy assignment'
 for format in text json; do
   record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/workflow/build/pipeline.py"
 done
@@ -180,7 +210,6 @@ cp "$sandbox/active.md" "$plan"
 rm .runweld/workflow/tasks/unrelated.json .runweld/workflow/plans/unrelated.{json,md}
 
 # Also compare the same-release launcher to the native command as a new task gains and loses state.
-same_plan="${plan%/*}/current.md"
 sed 's|runweld/previous-plan|runweld/current|' "${plan%/*}/previous-plan.md" > "$same_plan"
 for state in draft active unreadable repair; do
   expected_code=0
@@ -202,7 +231,7 @@ for state in draft active unreadable repair; do
     check_status current "$sandbox/current.$format.native" "$format"
   done
 done
-current_record=.runweld/workflow/tasks/current.json
+current_record="${same_plan%.md}.task.json"
 cp "$current_record" "$sandbox/current-record.json"
 printf '%s\n' 'not json' > "$current_record"
 record_status current "$sandbox/current-corrupt.native" json python3 "$bundle_b/workflow/build/pipeline.py"

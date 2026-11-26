@@ -4,17 +4,20 @@ shared = ["references/SESSIONS.md", "references/WORKFLOW-PATHS.md"]
 
 [stages.grill]
 label = "Grill (optional)"
+purpose = "Resolve open product questions and save decisions before planning. Skip if the task is already clear."
 next = { prototype_requested = "prototype", ready_to_plan = "plan" }
 inputs = ["workflow/grill/GUIDE.md", "workflow/grill/references/INTERVIEW.md", "workflow/spec/references/FORMAT.md",
           "workflow/domain-modeling/GUIDE.md", "workflow/domain-modeling/references/ADR-FORMAT.md", "workflow/domain-modeling/references/CONTEXT-FORMAT.md"]
 
 [stages.prototype]
 label = "Prototype (optional)"
+purpose = "Try an uncertain part of the design and keep the evidence. Plan once the risk is understood, or skip."
 next = { ready_to_plan = "plan" }
 inputs = ["workflow/prototype/GUIDE.md", "workflow/prototype/references/LOGIC.md", "workflow/prototype/references/UI.md"]
 
 [stages.plan]
 label = "Plan"
+purpose = "Turn the decisions and project base into a checked plan and run config. Human approval and a separate start open the build."
 next = { start_authorized = "build" }
 inputs = [
   "workflow/plan/GUIDE.md", "workflow/plan/references/example.md", "workflow/plan/references/resume.example.md",
@@ -25,6 +28,7 @@ inputs = [
 
 [stages.build]
 label = "Build"
+purpose = "Implement the approved phases in the task worktree. Verified phase reports open build verification."
 next = { phases_complete = "build-verification" }
 inputs = ["workflow/build/GUIDE.md", "workflow/tdd/GUIDE.md", "workflow/build/references/rounds.md"]
 
@@ -33,6 +37,7 @@ implementer = "agents/implementer.md"
 
 [stages.build-verification]
 label = "Build verification"
+purpose = "Review the changes and run the applicable checks. Fix defects and give the judge current evidence."
 next = { repair = "build-verification", evidence_ready = "judge" }
 inputs = [
   "workflow/build/GUIDE.md", "workflow/build/references/gate.md", "workflow/build/references/rounds.md",
@@ -47,6 +52,7 @@ inputs = ["workflow/browser-test/GUIDE.md", "workflow/browser-test/tab.mjs", "wo
 
 [stages.judge]
 label = "Judge"
+purpose = "Decide from the review and test evidence. Land the judged result for human review, or request more work."
 next = { round = "build", evidence_owed = "build-verification", landed = "human-review" }
 inputs = [
   "workflow/build/GUIDE.md", "workflow/build/references/judge.md", "workflow/build/references/gate.md",
@@ -58,10 +64,12 @@ judge = "agents/judge.md"
 
 [stages.human-review]
 label = "Human review"
+purpose = "Give the human the landed result and checks. Acceptance opens finish, or an authorized round returns to build."
 next = { round_authorized = "build", accepted = "finish" }
 inputs = ["workflow/build/GUIDE.md", "workflow/build/references/human-guide.md", "workflow/build/references/example.guide.md", "workflow/build/references/rounds.md"]
 
 [stages.finish]
 label = "Finish"
+purpose = "Complete the agreed ending and verify integration and cleanup."
 next = {}
 inputs = ["workflow/finish/GUIDE.md"]

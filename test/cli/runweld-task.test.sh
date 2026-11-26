@@ -3,6 +3,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export INSTALLER="$repo_root/scripts/install-runweld"
 python3 -B <<'PY'
+from datetime import date
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import re
 import shlex
 import subprocess
 import tempfile
+import time
 import tomllib
 
 with tempfile.TemporaryDirectory() as folder:
@@ -56,6 +58,13 @@ with tempfile.TemporaryDirectory() as folder:
     assert run("git", "branch", "--show-current") == "main"
     for row in (a, b):
         tree = Path(row["tree"])
+        folder = Path(row["plan"]).parent
+        assert folder == project / ".runweld/workflow/plans" / f"{date.today()}-{row['id']}", (
+            f"distribution#task-artifacts: task {row['id']} must be reserved in one dated folder")
+        assert Path(row["artifacts"]).is_relative_to(folder)
+        own = json.loads(run(runweld, "next", "--json", cwd=tree))
+        assert own["task"]["id"] == row["id"] and own["task"]["artifacts"] == row["artifacts"]
+        assert own["actions"] and row["plan"] in run(runweld, "next", cwd=tree)
         assert row["branch"] == f"runweld/{row['id']}"
         assert (tree / "tracked").exists() and not (Path(row["artifacts"]) / "data").exists()
         assert run("git", "branch", "--show-current", cwd=tree) == row["branch"]
@@ -63,6 +72,11 @@ with tempfile.TemporaryDirectory() as folder:
         assert view["plan"] == row["id"] and view["workflow"]["actions"]
         assert json.loads(run(runweld, "task", "resume", row["id"], "--json"))["tree"] == row["tree"]
     assert {r["plan"] for r in json.loads(run(runweld, "status", "--json"))} == {"one", "two"}
+    # distribution#task-artifacts: the main checkout lists choices without selecting either task.
+    choices = json.loads(run(runweld, "next", "--json"))
+    assert choices.get("task") is None and {t["id"] for t in choices["tasks"]} == {"one", "two"}
+    assert "runweld next two" in run(runweld, "next")
+    assert json.loads(run(runweld, "next", "two", "--json"))["task"]["tree"] == b["tree"]
     assert run(runweld, "task", "path", "one", "browser-test") == str(Path(a["artifacts"]) / "browser-test")
     release = (home / "lib/runweld/default").read_text().strip()
     browser = home / "lib/runweld/releases" / release / "workflow/browser-test/tab.mjs"
@@ -198,6 +212,8 @@ Waits for: nothing
     assert (Path(a["tree"]) / "docs/spec/example.md").exists()
     assert (Path(b["tree"]) / "docs/spec/example.md").exists()
     assert not (project / "docs/spec/example.md").exists()
+    capture = Path(a["artifacts"]) / "capture.txt"
+    capture.write_text("private evidence")
     scratch = Path(a["tree"]) / "unsaved.scratch"
     scratch.write_text("retain me")
     out = run(runweld, "finish", a_plan, cwd=Path(a["tree"]))
@@ -211,6 +227,9 @@ Waits for: nothing
     run(runweld, "finish", relative, cwd=Path(a["tree"]))
     assert not Path(a["tree"]).exists() and not a_data.exists()
     assert a_plan.exists()
+    assert capture.read_text() == "private evidence"
+    assert a_plan.with_suffix(".json").exists()
+    assert list(a_plan.parent.glob("*.brief-*.md")), "distribution#task-artifacts: briefs remain beside the plan"
     merged = json.loads(run(runweld, "task", "resume", "one", "--json"))
     assert merged["status"] == "merged" and not merged["workflow"]["actions"]
     assert json.loads(run(runweld, "task", "resume", "two", "--json"))["status"] == "passed"
@@ -243,4 +262,24 @@ Waits for: nothing
     assert (project / "tracked").read_text() == "one\n"
     rows = json.loads(run(runweld, "status", "--json"))
     assert {row["plan"]: row["status"] for row in rows} == {"one": "merged", "two": "passed", "request": "merged"}
+
+    # distribution#task-artifacts: retry a reservation after a failed Git checkout on a different local date.
+    hook = project / ".git/hooks/post-checkout"
+    hook.write_text("#!/bin/sh\nexit 17\n")
+    hook.chmod(0o755)
+    os.environ["TZ"] = env["TZ"] = "Etc/GMT+12"
+    time.tzset()
+    first_date = date.today()
+    assert "task-worktree" in run(runweld, "task", "start", "cross-midnight", "--finish-how", "ff-only", "--finish-target", "main", ok=False)
+    hook.unlink()
+    os.environ["TZ"] = env["TZ"] = "Etc/GMT-14"
+    time.tzset()
+    assert date.today() != first_date
+    before_retry = json.loads(run(runweld, "next", "cross-midnight", "--json"))
+    retry, = before_retry["actions"]
+    assert retry["kind"] == "run" and retry["argv"][-3:] == ["task", "start", "cross-midnight"]
+    retried = json.loads(run(*retry["argv"], "--json", cwd=Path(retry["cwd"])))
+    dated = project / ".runweld/workflow/plans"
+    assert [folder.name for folder in dated.glob("*-cross-midnight")] == [f"{first_date}-cross-midnight"]
+    assert Path(retried["plan"]).parent == dated / f"{first_date}-cross-midnight"
 PY

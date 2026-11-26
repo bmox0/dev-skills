@@ -14,6 +14,7 @@ import tomllib
 VERSION = r"[0-9][A-Za-z0-9.+-]*"
 RELEASE = re.compile(rf"{VERSION}@[0-9a-f]{{64}}")
 TASK_ID = re.compile(r"[a-z0-9][a-z0-9-]*")
+DATED_TASK = re.compile(rf"\d{{4}}-\d{{2}}-\d{{2}}-({TASK_ID.pattern})")
 MANIFEST = "release.json"
 PROGRAM = Path("workflow/build/pipeline.py")
 WORKFLOW = "references/workflow.toml"
@@ -167,19 +168,40 @@ def project_root(path):
 
 def history_path(path):
     md = Path(path).absolute()
-    parent = md.parent
-    if (parent.name, parent.parent.name, parent.parent.parent.name) == ("plans", "workflow", ".runweld"):
-        if project := project_root(parent.parent.parent.parent):
-            return project / ".runweld/workflow/plans" / md.name
+    plans = md.parent.parent if DATED_TASK.fullmatch(md.parent.name) else md.parent
+    if plans.parts[-3:] == (".runweld", "workflow", "plans"):
+        checkout = plans.parents[2]
+        if project := project_root(checkout):
+            return project / md.relative_to(checkout)
     return md
+
+
+def task_folders(plans):
+    for folder in sorted(plans.glob("*")):
+        if (match := DATED_TASK.fullmatch(folder.name)) and not folder.is_symlink() and folder.is_dir():
+            yield match[1], folder
+
+
+def task_plan(project, name):
+    if not TASK_ID.fullmatch(name):
+        return None
+    workflow = project / ".runweld/workflow"
+    plans = workflow / "plans"
+    matches = [folder / f"{name}.md" for id_, folder in task_folders(plans)
+               if id_ == name and os.path.lexists(folder / f"{name}.task.json")]
+    if os.path.lexists(workflow / "tasks" / f"{name}.json"):
+        matches.append(plans / f"{name}.md")
+    if len(matches) > 1:
+        raise ReleaseError(f"multiple task records for {name}: {', '.join(map(str, matches))}; restore one registration")
+    return matches[0] if matches else None
 
 
 def command_plan(args, cwd):
     if plan := getattr(args, "plan", None):
         return plan
-    by_id = args.group == "task" and args.command in ("start", "resume", "path")
+    by_id = (args.group == "task" and args.command in ("start", "resume", "path")) or (args.group == "next" and args.id)
     in_task = ((args.group == "status" and args.current) or
-               args.group == "guide" or (args.group == "help" and args.topic == "agents"))
+               args.group in ("guide", "next") or (args.group == "help" and args.topic == "agents"))
     if not (by_id or in_task) or not (project := project_root(cwd)):
         return None
     workflow = project / ".runweld/workflow"
@@ -190,8 +212,7 @@ def command_plan(args, cwd):
         name = parts[0] if parts else ""
     else:
         return None
-    if TASK_ID.fullmatch(name) and os.path.lexists(workflow / "tasks" / (name + ".json")):
-        return workflow / "plans" / (name + ".md")
+    return task_plan(project, name)
 
 
 def lock_path(project):
@@ -236,8 +257,10 @@ def read_workflow(root, files=None):
         check_paths(catalog["shared"])
         assignments = {"build": {"implementer"}, "build-verification": {"reviewer", "verify"}, "judge": {"judge"}}
         for key, stage in stages.items():
-            if set(stage) - {"label", "inputs", "next", "roles", "when"} or not isinstance(stage["label"], str):
+            if set(stage) - {"label", "purpose", "inputs", "next", "roles", "when"} or not isinstance(stage["label"], str):
                 raise ValueError(f"invalid stage definition for {key}")
+            if "purpose" in stage and (not isinstance(stage["purpose"], str) or not stage["purpose"].strip()):
+                raise ValueError(f"invalid stage purpose for {key}")
             transitions = stage["next"]
             if set(transitions) != events[key] or set(transitions.values()) - stages.keys():
                 raise ValueError(f"invalid transition in {key}")
@@ -329,7 +352,7 @@ def release_pin(values, path):
     raise ReleaseError(f"{path} needs [workflow].version and a 64-character SHA-256 digest; restore the run file or snapshot")
 
 
-def read_task_record(path):
+def read_task_record(path, name):
     if path.is_symlink():
         raise ReleaseError(f"{path} is a symbolic link; restore the task record")
     value = read_data(path, json.loads)
@@ -338,7 +361,7 @@ def read_task_record(path):
     fields = {"base", "ready", "branch", "release"}
     if (not isinstance(value, dict) or set(value) not in (fields, fields | {"finish"}) or
             not isinstance(value["base"], str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["base"]) or
-            type(value["ready"]) is not bool or value["branch"] != "runweld/" + path.stem or
+            type(value["ready"]) is not bool or value["branch"] != "runweld/" + name or
             not valid_release(value["release"]) or
             ("finish" in value and (value["ready"] or not isinstance(value["finish"], dict)))):
         raise ReleaseError(f"{path} has an invalid task record; restore the task record from a known-good copy")
@@ -346,8 +369,16 @@ def read_task_record(path):
 
 
 def registered_task(plan):
-    if plan.parent.parts[-3:] == (".runweld", "workflow", "plans") and TASK_ID.fullmatch(plan.stem):
-        return read_task_record(plan.parent.parent / "tasks" / (plan.stem + ".json"))
+    if not TASK_ID.fullmatch(plan.stem):
+        return None
+    plans = (".runweld", "workflow", "plans")
+    if plan.parent.parts[-3:] == plans:
+        return read_task_record(plan.parent.parent / "tasks" / (plan.stem + ".json"), plan.stem)
+    folder = plan.parent
+    if folder.parent.parts[-3:] == plans and (match := DATED_TASK.fullmatch(folder.name)) and match[1] == plan.stem:
+        if folder.is_symlink():
+            raise ReleaseError(f"{folder} is a symbolic link; restore the task directory")
+        return read_task_record(folder / (plan.stem + ".task.json"), plan.stem)
 
 
 def task_pin(pin, task, path):

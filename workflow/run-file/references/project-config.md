@@ -1,28 +1,26 @@
 # Standalone project configuration
 
-Run `runweld init` at a Git checkout and choose the active provider if it isn't
-detected. Supply just its primary and secondary models, optionally with effort.
-In a terminal, confirm defaults or enter your own commands. Documented
-Environment commands or an executable `scripts/setup` are suggestions only.
+Run `runweld init` in a Git checkout. Supply the active provider's two models
+and optional effort. Init previews the `AGENTS.md` Environment defaults.
+`**Phase checks.**` and `**Full checks.**` list commands in backticks and override
+inferred checks. `**Build.**`, `**Bootstrap.**` and `**Dev URL.**` set separate
+defaults. An executable `scripts/setup` is the fallback bootstrap.
 
-For explicit input, see `runweld init --help`. For example:
+Example flags (see `runweld init --help`):
 
 ```sh
 runweld init --non-interactive --provider GPT \
   --primary-model MODEL --secondary-model MODEL \
-  --phase-check 'scripts/check' --full-check 'scripts/test'
+  --phase-check 'scripts/check' --full-check 'scripts/test' \
+  --build 'npm run build' --bootstrap 'npm ci' --dev-url 'http://localhost:3000'
 ```
 
-Commit `.runweld/config.toml`, `.runweld/runweld.lock` and the generated changes in
-`AGENTS.md` and `.gitignore`. A colleague with another provider reruns init
-with that provider's pair. Init does not replace existing profiles or settings;
-edit `.runweld/config.toml` to change them for future runs. `runweld update --project` changes
-the release for new runs. For a previous run, `runweld help agents --plan PLAN`
-opens its release's instructions.
+Commit `.runweld/config.toml`, `.runweld/runweld.lock`, `AGENTS.md` and
+`.gitignore`. Rerun init to add a provider. Edit the config to change defaults.
+`runweld update --project` changes the release for new runs.
 
-Set the finish method and target per task, at entry or in its run file before approval.
-Every task uses a dedicated worktree.
-Set `[setup].command` to an existing preparation command if needed. It runs
+Choose the finish method and target in each task before approval.
+`[setup].command` runs
 in the task tree and receives `RUNWELD_SOURCE_CHECKOUT`, `RUNWELD_TASK_PATH`, `RUNWELD_PLAN`,
 `RUNWELD_WORKFLOW`, `RUNWELD_ARTIFACTS`, and `RUNWELD_PORT` / `RUNWELD_DATA_DIR` when allocated.
 Use these output locations to keep the checkout clean. Failures retry in

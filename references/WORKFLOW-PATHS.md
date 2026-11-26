@@ -2,11 +2,12 @@
 
 - Start new work with `runweld task start ID` before grill, reproduction or planning.
   Use its branch, base, tree, plan path and artifacts directory as printed.
-  Repeating the ID keeps its tree and run settings. From a fresh tab use
-  `runweld task resume ID` or `runweld status --current`.
+  Repeating the ID keeps its tree, dated plan directory and run settings.
+  Use `runweld next [ID]`, omitting the ID inside its worktree.
 - Read and modify project source, including specs and project instructions,
   from the task tree. Run approval and report commands against the absolute
-  plan path. Keep summaries, shape files and handoffs beside the plan.
+  plan path. Keep summaries, shape files and handoffs beside the plan in
+  `.runweld/workflow/plans/YYYY-MM-DD-ID/`.
 - Put task scratch files, captures, reproductions and prototypes under
   `runweld task path ID [CATEGORY]`. For project-wide epic, handoff, spec scratch
   or retro material use `runweld path epics`, `runweld path handoff`, `runweld path spec` or

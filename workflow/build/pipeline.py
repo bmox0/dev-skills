@@ -723,7 +723,12 @@ def plan_directories(root, own=None):
 
 
 def inventory(root, own=None):
-    return [p for d in plan_directories(root, own) for p in sorted(d.iterdir()) if is_plan_file(p.name)]
+    from runweld_release import task_folders
+    plans = workflow_subdir(workflow_dir(root) / "plans")
+    folders = {folder: folder / (name + ".md") for name, folder in task_folders(plans)}
+    loose = [p for d in plan_directories(root, own) if d not in folders
+             for p in sorted(d.iterdir()) if is_plan_file(p.name)]
+    return loose + [path for path in folders.values() if os.path.lexists(path)]
 
 def head_sha(md, tree=None):
     r = git("rev-parse", "HEAD", check=False, cwd=tree or os.path.dirname(md))
@@ -1335,10 +1340,10 @@ def ready_phases(st):
 CHOICES = {("finish", "how"): ["merge-request", "ff-only", "no-ff"]}
 RUN_SECTIONS = {
     "finish": {"how": "str", "target": "str", "delete_backups": "bool"},
-    "checks": {"phase": "list", "full": "list", "dev": "str", "url": "str"},
+    "checks": {"phase": "list", "full": "list", "build": "str", "dev": "str", "url": "str"},
     "isolation": {"port": "bool", "data_dir": "bool"},
 }
-RUN_OPTIONAL = {("checks", "dev"), ("checks", "url"), ("isolation", "port"), ("isolation", "data_dir")}
+RUN_OPTIONAL = {("checks", "build"), ("checks", "dev"), ("checks", "url"), ("isolation", "port"), ("isolation", "data_dir")}
 PLACEHOLDER = re.compile(r"\{(port|data_dir)\}")
 EXAMPLE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "run-file", "references", "example.run.toml")
 
@@ -1781,25 +1786,38 @@ def init_bool(label, default):
             return value in ("y", "yes")
 
 
-def init_settings(project, text, current, a, interactive):
+def init_hints(project, text):
+    _, lines = sections(text.splitlines()).get("Environment", (0, []))
     hints = {}
-    if interactive and current is None:
-        _, lines = sections(text.splitlines()).get("Environment", (0, []))
-        hints = dict(match.groups() for line in lines
-                     if (match := re.match(r"\*\*([^*]+)\.\*\*\s+`([^`]+)`", line.strip())))
-        print("Tasks use dedicated worktrees. Accept or edit the project defaults below.")
-    checks = [hints[key] for key in ("Build", "Typecheck", "Lint") if key in hints]
-    setup_hint = hints.get("Worktree setup") or hints.get("Setup")
-    if interactive and current is None and not setup_hint and (script := project / "scripts/setup").is_file() and os.access(script, os.X_OK):
-        setup_hint = "scripts/setup"
+    for line, masked in zip(lines, fenced(lines)):
+        if not masked and (match := re.match(r"(?:[-*]\s+)?\*\*([^*]+)\.\*\*\s+(.+)", line.strip())):
+            hints[match[1].casefold()] = re.findall(r"`([^`]+)`", match[2])
+    first = lambda key: next(iter(hints.get(key, ())), None)
+    core = [commands[0] for key in ("build", "typecheck", "lint") if (commands := hints.get(key))]
+    full = list(dict.fromkeys(core + hints.get("tests", [])[:1]))
+    checks = {"phase": hints.get("phase checks", core), "full": hints.get("full checks", full)}
+    dev = hints.get("dev server", [])
+    for key, value in (("build", first("build")), ("dev", next(iter(dev), None)),
+                       ("url", first("dev url") if "dev url" in hints else next(iter(dev[1:]), None))):
+        if value:
+            checks[key] = value
+    setup_key = next((key for key in ("bootstrap", "worktree setup", "setup") if key in hints), None)
+    script = project / "scripts/setup"
+    setup = first(setup_key) if setup_key else ("scripts/setup" if script.is_file() and os.access(script, os.X_OK) else None)
+    return {"checks": checks, **({"setup": {"command": setup}} if setup else {})}
+
+
+def init_settings(project, hints, current, a, interactive):
+    checks = hints.get("checks", {})
     fields = (
-        ("checks", "phase", a.phase_check, "Phase checks", checks),
-        ("checks", "full", a.full_check, "Full checks", list(dict.fromkeys(checks + ([hints["Tests"]] if "Tests" in hints else [])))),
+        ("checks", "phase", a.phase_check, "Phase checks", checks.get("phase", [])),
+        ("checks", "full", a.full_check, "Full checks", checks.get("full", [])),
+        ("checks", "build", a.build, None, checks.get("build")),
         ("isolation", "port", a.port, "Allocate a port per task", False),
         ("isolation", "data_dir", a.data_dir, "Allocate a data directory per task", False),
-        ("checks", "dev", a.dev, "Dev command", hints.get("Dev server")),
-        ("checks", "url", a.url, "Dev URL", None),
-        ("setup", "command", a.setup, "Existing worktree setup command (never run during init)", setup_hint),
+        ("checks", "dev", a.dev, "Dev command", checks.get("dev")),
+        ("checks", "url", a.url, "Dev URL", checks.get("url")),
+        ("setup", "command", a.setup, "Existing worktree bootstrap command (never run during init)", hints.get("setup", {}).get("command")),
     )
     settings = {"checks": {}}
     for sec, key, supplied, label, default in fields:
@@ -1810,7 +1828,7 @@ def init_settings(project, text, current, a, interactive):
                              f"edit {project / '.runweld/config.toml'} to change project defaults")
         elif supplied is not None:
             value = supplied
-        elif interactive:
+        elif interactive and label:
             if (sec == "checks" and (sec, key) in RUN_OPTIONAL) or sec == "setup":
                 value = init_optional(label, default)
             elif isinstance(default, list):
@@ -1829,10 +1847,11 @@ def init_settings(project, text, current, a, interactive):
 def init_agents(text):
     start, end = "<!-- runweld:begin -->", "<!-- runweld:end -->"
     nl = "\r\n" if "\r\n" in text else "\n"
-    block = nl.join((start, "Use `runweld grill` for the interview, `runweld plan` for planning, and `runweld status --current` to resume.", end))
+    block = (nl * 2).join((start, "Start or resume work with `runweld next`.", end))
     markers = list(re.finditer(r"(?m)^<!-- runweld:(?:begin|end) -->(?=\r?$)", text))
     if not markers:
-        return text + (nl if text.endswith("\n") else nl * 2 if text else "") + block + nl
+        gap = "" if not text or text.endswith(nl * 2) else nl if text.endswith(nl) else nl * 2
+        return text + gap + block + nl
     if [marker.group() for marker in markers] != [start, end]:
         raise Refuse("project-agents-block", "AGENTS.md has mismatched Runweld block markers", "repair or remove the managed block markers")
     return text[:markers[0].start()] + block + text[markers[1].end():]
@@ -1908,6 +1927,9 @@ def cmd_init(bundle, a):
         ignore_after = init_ignore(project, ignore_before or "")
 
         interactive = sys.stdin.isatty() and not a.non_interactive
+        defaults = init_hints(project, agents_before or "") if current is None else {}
+        if current is None:
+            print("Detected project defaults (commands are not run during init):\n" + settings_toml(defaults).rstrip())
         provider = a.provider if a.provider is not None else init_provider()
         if provider is None and interactive:
             provider = init_answer("Provider name (e.g. GPT or Claude)")
@@ -1938,7 +1960,7 @@ def cmd_init(bundle, a):
             pair[tier] = {"model": model}
             if effort is not None:
                 pair[tier]["effort"] = effort
-        settings = init_settings(project, agents_before or "", current, a, interactive)
+        settings = init_settings(project, defaults, current, a, interactive)
         settings["executors"] = {**profiles, provider: pair}
         validate_project_config(config, settings)
         updated = settings_toml(settings) if previous is None else previous
@@ -1963,7 +1985,7 @@ def cmd_init(bundle, a):
             write_init_text(local_exclude, excluded, (excluded or "").rstrip("\n") + "\n" + private + "\n")
         if locked_release is None:
             write_lock(project, bundle)
-    print(f"Initialized {project} for {provider} on {bundle.name}. Run `runweld help agents` for next steps.")
+    print(f"Initialized {project} for {provider} on {bundle.name}. Run `runweld next` for the next step.")
     return 0
 
 
@@ -1989,37 +2011,36 @@ def snapshot_run(bundle, project, path, finish):
     return src
 
 
-def task_paths(project, name):
-    root = workflow_dir(project)
-    tasks = workflow_subdir(root / "tasks")
-    plan = workflow_subdir(root / "plans") / (name + ".md")
-    tree = workflow_subdir(root / "trees") / name
-    artifacts = workflow_subdir(root / "artifacts") / name
-    return tasks / (name + ".json"), plan, tree, artifacts
-
-
 def task_lookup(project, name):
-    from runweld_release import read_task_record
+    from runweld_release import task_plan
     if not re.fullmatch(ID, name):
         raise Refuse("task-name", f"{name!r} is not a task ID", "use lowercase letters, numbers and hyphens")
-    path, plan, tree, artifacts = task_paths(project, name)
-    value = read_task_record(path)
-    if value is None:
-        return None
-    return {**value, "id": name, "plan": str(plan), "tree": str(tree), "artifacts": str(artifacts)}
+    root = workflow_dir(project)
+    for area in ("plans", "tasks"):
+        workflow_subdir(root / area)
+    if plan := task_plan(project, name):
+        return task_for(plan, project)
 
 
 def task_for(plan, project=None):
+    from runweld_release import registered_task
     md = Path(plan_paths(plan)[0])
-    project = Path(project or plan_root(md))
-    if md.parent != workflow_dir(project) / "plans" or not re.fullmatch(ID, md.stem):
-        return None
-    return task_lookup(project, md.stem)
+    root = workflow_dir(Path(project or plan_root(md)))
+    plans = workflow_subdir(root / "plans")
+    if (md.parent == plans or md.parent.parent == plans) and (value := registered_task(md)):
+        tree = workflow_subdir(root / "trees") / md.stem
+        artifacts = (workflow_subdir(root / "artifacts") / md.stem if md.parent == plans else md.parent / "artifacts")
+        return {**value, "id": md.stem, "plan": str(md), "tree": str(tree), "artifacts": str(workflow_subdir(artifacts))}
 
 
 def task_rows(project):
-    tasks = workflow_subdir(workflow_dir(project) / "tasks")
-    return [task_lookup(project, path.stem) for path in sorted(tasks.glob("*.json")) if re.fullmatch(ID, path.stem)]
+    from runweld_release import task_folders
+    root = workflow_dir(project)
+    tasks = workflow_subdir(root / "tasks")
+    ids = {path.stem for path in tasks.glob("*.json") if re.fullmatch(ID, path.stem)}
+    ids.update(name for name, folder in task_folders(workflow_subdir(root / "plans"))
+               if os.path.lexists(folder / (name + ".task.json")))
+    return [task_lookup(project, name) for name in sorted(ids)]
 
 
 def ensure_task_tree(task, root):
@@ -2036,8 +2057,13 @@ def task_stage(task, *, workflow=True):
            "base": task["base"], "tree": task["tree"], "ready": [], "release": task.get("release") or plan_release(plan)}
     if not workflow:
         return row
-    step = (work_action("User and planner", "In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning.", "planner", "grill")
-            if task["ready"] else work_action("Planner", f"Retry `runweld task start {task['id']}` to finish task entry.", "planner", "task-start"))
+    if task["ready"]:
+        step = work_action("User and planner", "In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning.", "planner", "grill",
+                           cwd=task["tree"], instructions=[
+                               [*cli_argv(plan), guide, "--plan", plan] for guide in ("grill", "plan")])
+    else:
+        step = workflow_action("Planner", "run", f"Retry `runweld task start {task['id']}` to finish task entry.",
+                               cwd=plan_root(plan), argv=[*cli_argv(plan), "task", "start", task["id"]])
     return {**row, "workflow": workflow_view(plan, "grill", [step])}
 
 
@@ -2087,15 +2113,18 @@ def cmd_task(bundle, a):
         stage = task_stage(row)
         return task_output({**row, "workflow": stage["workflow"], "release": stage["release"]}, a.json)
 
-    record_path, plan, tree, artifacts = task_paths(project, name)
-    record_path.parent.mkdir(parents=True, exist_ok=True)
-    with (record_path.parent / ".lock").open("a") as lock:
+    root = workflow_dir(project)
+    tasks = workflow_subdir(root / "tasks")
+    plans = workflow_subdir(root / "plans")
+    tree = workflow_subdir(root / "trees") / name
+    tasks.mkdir(parents=True, exist_ok=True)
+    # Older releases take the same lock when reserving an ID.
+    with (tasks / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         row = task_lookup(project, name)
         r = lambda *args: git(*args, cwd=project, check=False)
         branch = "runweld/" + name
         branch_tip = r("rev-parse", "--verify", "-q", f"refs/heads/{branch}").stdout.strip()
-        run_file = Path(run_path(plan))
         finish = {key: value for key, value in (("how", a.finish_how), ("target", a.finish_target),
                                                  ("delete_backups", a.delete_backups)) if value is not None}
         target = finish.get("target")
@@ -2109,15 +2138,23 @@ def cmd_task(bundle, a):
             commit = r("rev-parse", "--verify", "-q", "--end-of-options", f"{base}^{{commit}}")
             if commit.returncode:
                 raise Refuse("unknown-ref", f"{base} is not a commit", "name a project base with --base")
-            if branch_tip or any(os.path.lexists(p) for p in (plan, run_file, tree, artifacts)) or any(p.stem == name for p in inventory(project)):
+            folder = plans / f"{datetime.date.today()}-{name}"
+            if branch_tip or any(os.path.lexists(p) for p in (folder, tree, plans / (name + ".run.toml"),
+                        workflow_subdir(root / "artifacts") / name)) or any(p.stem == name for p in inventory(project)):
                 raise Refuse("task-collision", f"task {name} conflicts with an existing plan, branch, or path", "choose a different task ID")
-            row = {"base": commit.stdout.strip(), "branch": branch, "ready": False, "release": bundle.name}
-            row["finish"] = finish
-            atomic_write(record_path, json.dumps(row).encode(), 0o600)
+            reservation = {"base": commit.stdout.strip(), "branch": branch, "ready": False, "release": bundle.name, "finish": finish}
+            plans.mkdir(exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix=".task-", dir=plans) as scratch:
+                atomic_write(Path(scratch) / (name + ".task.json"), json.dumps(reservation).encode(), 0o600)
+                Path(scratch).rename(folder)
             row = task_lookup(project, name)
-        elif (release := plan_release(plan) or read_lock(project, bundle.parent.parent)) != bundle.name:
+        plan = Path(row["plan"])
+        artifacts = Path(row["artifacts"])
+        record_path = tasks / (name + ".json") if plan.parent == plans else plan.with_suffix(".task.json")
+        run_file = Path(run_path(plan))
+        if (release := plan_release(plan) or read_lock(project, bundle.parent.parent)) != bundle.name:
             raise ReleaseError(f"this run selects {release}, not {bundle.name}; use `runweld` without a release override")
-        elif a.base and r("rev-parse", "--verify", "-q", "--end-of-options", f"{a.base}^{{commit}}").stdout.strip() != row["base"]:
+        if a.base and r("rev-parse", "--verify", "-q", "--end-of-options", f"{a.base}^{{commit}}").stdout.strip() != row["base"]:
             raise Refuse("task-base", f"task {name} already started at {row['base']}", "omit --base to resume this task")
         if "finish" in row and not run_file.exists():
             if any(row["finish"].get(key) != value for key, value in finish.items()):
@@ -2631,15 +2668,15 @@ def plan_release(plan):
         raise Refuse("run-release", str(error), "restore the run's release record") from None
 
 
-def cli_argv(plan):
+def cli_argv(plan=None, *, release=None):
     if (bundle := standalone_bundle()) is not None:
-        release = plan_release(plan) or bundle.name
+        release = release or (plan_release(plan) if plan else None) or bundle.name
         return [sys.executable, str(bundle.parents[3] / "bin/runweld"), "--release", release]
     return [sys.executable, os.path.realpath(__file__)]
 
 
 def run_action(plan, owner, action, command, *args):
-    return workflow_action(owner, "run", action, argv=[
+    return workflow_action(owner, "run", action, cwd=plan_root(plan), argv=[
         *cli_argv(plan), *command.split(), plan_paths(plan)[0], *map(str, args)])
 
 
@@ -2660,7 +2697,10 @@ def show_next(actions):
         for step in actions:
             print(f"  {step['owner']} — {step['action']} [{step['kind']}]")
             if step["kind"] == "run":
-                print(f"    {shlex.join(step['argv'])}")
+                print(f"    In {step['cwd']}: {shlex.join(step['argv'])}" if "cwd" in step else f"    {shlex.join(step['argv'])}")
+            assignment = step.get("assignment", {})
+            for instruction in assignment.get("instructions", []):
+                print(f"    In {assignment['cwd']}: {shlex.join(instruction)}")
 
 
 def cmd_workflow(as_json, stage=None):
@@ -3017,7 +3057,7 @@ def summary(plan, st, head, tail=None, *, workflow=False, provider=None):
     return out
 
 
-def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task=None):
+def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task=None, as_data=False):
     if plan is None:
         root = git("rev-parse", "--show-toplevel", check=False, cwd=cwd)
         if root.returncode:
@@ -3076,6 +3116,8 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
                     if delegated is not None:
                         row["workflow"] = delegated
                     rows.append((row, None))
+        if as_data:
+            return [r for r, _ in rows]
         if as_json:
             fields = ("plan", "status", "ready", "drift", "stale")
             print(json.dumps([r if (current or installed) else {k: r.get(k) for k in fields} for r, _ in rows], ensure_ascii=False))
@@ -3121,21 +3163,98 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
         step = (work_action("Planner", f"Prepare the draft and run file. {action}", "planner", "plan") if problems or run_problems
                 else run_action(plan, "Planner", action, "approve"))
         view = status_workflow(plan, head, "plan", [step])
-        if as_json:
+        if as_json or as_data:
             row = {**draft, "plan": os.path.basename(md)[:-3], "workflow": view}
             if standalone_bundle() is not None:
                 task = task_for(plan, root)
                 row.update(path=md, release=plan_release(plan), tree=task["tree"] if task else branch_tree(root, draft["branch"]))
+            if as_data:
+                return row
             print(json.dumps(row, ensure_ascii=False))
         else:
             print(f"Status: draft · branch `{draft['branch']}` · base `{draft['base']}`")
             show_workflow(view)
         return 0
     s = summary(plan, st, head, tail, workflow=True, provider=provider)
+    if as_data:
+        return s
     if as_json:
         print(json.dumps(s, ensure_ascii=False))
     else:
         show_status(s, st)
+    return 0
+
+
+def cmd_next(bundle, a, selected_plan, legacy_release):
+    from runweld_release import project_root
+    cwd = Path.cwd()
+    project = project_root(cwd)
+    if a.id and selected_plan is None:
+        raise Refuse("no-task", f"there is no task {a.id}", "run `runweld next` to list tasks or `runweld task start ID` for new work")
+    view = {"project": str(plan_root(plan_paths(selected_plan)[0])) if selected_plan else str(project) if project else None}
+    if selected_plan:
+        plan = plan_paths(selected_plan)[0]
+        task = task_for(plan)
+        goal = None
+        if task and not os.path.lexists(plan):
+            status = task_stage(task)
+            command = ("task", "resume", task["id"])
+        else:
+            status = cmd_status(plan, False, cwd, provider=a.provider, as_data=True)
+            head, _ = read_plan(plan)
+            goal = "\n".join(sections(head).get("Result", (0, []))[1]).strip() or None
+            command = ("status", plan)
+        workflow = (pinned_workflow(bundle, plan, cwd, a.provider, command) if legacy_release else None) or status["workflow"]
+        del status["workflow"]
+        stage = workflow["stage"]
+        actions = workflow["actions"]
+        for step in actions:
+            if step["kind"] == "run":
+                step.setdefault("cwd", view["project"])
+        view.update(task={**status, "id": status["plan"], "artifacts": task["artifacts"] if task else str(Path(plan).parent),
+                          "goal": goal},
+                    stage=stage, purpose=workflow_catalog()["stages"][stage].get("purpose", stage), actions=actions)
+    elif not project:
+        view["actions"] = [workflow_action("Human", "ask", "Open a Git checkout, clone one, or run `git init` for a new project.", input="project")]
+    else:
+        root = str(project)
+        config, lock = (project / ".runweld" / name for name in ("config.toml", "runweld.lock"))
+        if not (config.is_file() and lock.is_file()):
+            view["actions"] = [workflow_action("Human", "run", "Set up project defaults and executors with `runweld init`.",
+                                               cwd=root, argv=[*cli_argv(release=legacy_release), "init"])]
+        elif git("rev-parse", "--verify", "HEAD", check=False, cwd=root).returncode:
+            view["actions"] = [workflow_action("Human", "ask", "Make an initial Git commit before creating a task worktree.", input="base-commit")]
+        else:
+            rows = cmd_status(None, False, cwd, as_data=True)
+            tasks = [{"id": row["plan"], **{k: row[k] for k in ("path", "status", "tree", "release")},
+                      **({"title": row["title"]} if row.get("title") else {})}
+                     for row in rows if row["status"] != "merged" or row.get("cleanup_pending")]
+            actions = []
+            for task in tasks:
+                path = task["path"]
+                select = [task["id"]] if task_for(path, project) else ["--plan", path]
+                actions.append(workflow_action("Planner", "run", f"Inspect {task['id']} ({task['status']}) with `{shlex.join(['runweld', 'next', *select])}`.",
+                                               cwd=root, argv=[*cli_argv(path), "next", *select]))
+            actions.append(workflow_action("Planner", "ask", "For new work, choose a task ID and run `runweld task start ID`.",
+                                           input="task-id"))
+            view.update(tasks=tasks, actions=actions)
+    if a.json:
+        print(json.dumps(view, ensure_ascii=False))
+    else:
+        if view["project"]:
+            print(f"Project: {view['project']}")
+        if task := view.get("task"):
+            print(f"Task: {task['id']} — {task.get('title') or task['status']}")
+            if task["goal"]:
+                print(f"Goal: {task['goal']}")
+            print(f"Stage: {view['stage']} — {view['purpose']}")
+            print(f"Branch: {task['branch']} · Base: {task['base']} · Release: {task['release']}")
+            print(f"Tree: {task['tree']}\nPlan: {task['path']}\nArtifacts: {task['artifacts']}")
+            for decision in task.get("decisions", []):
+                print(f"Decision ({decision['by']}): {decision['question']} — {decision['answer']}")
+            for fact in task.get("drift", []) + task.get("stale", []):
+                print(f"Evidence: {fact}")
+        show_next(view["actions"])
     return 0
 
 
@@ -5514,9 +5633,16 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
                        help="show the CLI and any pinned project version; add --verbose for build IDs")
     top = p.add_subparsers(dest="group", required=True)
     if standalone:
+        p.description = "Start in a Git checkout with `runweld next`. Use `runweld help agents` for the workflow."
         help_parser = top.add_parser("help", help="show terminal help or the installed agent workflow")
         help_parser.add_argument("topic", choices=("agents",), nargs="?")
         help_parser.add_argument("--plan", help="show help for this run's release")
+        next_parser = top.add_parser("next", help="find available actions from this project or task")
+        next_parser.add_argument("--json", action="store_true", help="print the same facts and actions as JSON")
+        next_parser.add_argument("--provider", help="the current provider for executable brief commands")
+        next_scope = next_parser.add_mutually_exclusive_group()
+        next_scope.add_argument("id", nargs="?", help="task ID; omit inside its worktree")
+        next_scope.add_argument("--plan", help="inspect a task by its plan path")
         init = top.add_parser("init", help="initialize project defaults and the current provider's executor pair")
         init.add_argument("--non-interactive", action="store_true", help="use supplied values and defaults without prompting")
         init.add_argument("--provider", help="provider identifier (otherwise detected when unambiguous)")
@@ -5525,11 +5651,12 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
             init.add_argument(f"--{tier}-effort", help=f"{tier} effort identifier (optional)")
         init.add_argument("--phase-check", action="append", help="phase check command (repeatable)")
         init.add_argument("--full-check", action="append", help="full check command (repeatable)")
+        init.add_argument("--build", help="optional project build command")
         init.add_argument("--port", action=argparse.BooleanOptionalAction, help="allocate a port per task (default: false)")
         init.add_argument("--data-dir", action=argparse.BooleanOptionalAction, help="allocate a data directory per task (default: false)")
         init.add_argument("--dev", help="optional development server command")
-        init.add_argument("--url", help="optional development server URL")
-        init.add_argument("--setup", help="optional existing command to prepare a task's worktree when needed")
+        init.add_argument("--url", "--dev-url", help="optional development server URL")
+        init.add_argument("--setup", "--bootstrap", help="optional existing command to prepare a task's worktree when needed")
         update_parser = top.add_parser("update", help="update the CLI or this project's release")
         scopes = update_parser.add_mutually_exclusive_group()
         scopes.add_argument("--cli", dest="scope", action="store_const", const="cli",
@@ -5852,14 +5979,21 @@ def print_guide(name, browser_args=()):
 def agent_help(bundle):
     from runweld_release import GUIDE_COMMANDS
     print(f"Runweld {bundle.name}\n")
-    print("Start a task with runweld task start ID. Use its worktree and plan path.")
-    print("Run runweld grill for the interview or runweld plan for planning instructions.")
-    print("Resume with runweld status --current. Follow the assignment and its pinned brief.")
+    print("Run `runweld next` in a Git checkout or task worktree. Add `--json` for machine-readable actions.")
+    print("If the project isn't initialized, `runweld init` previews and saves its settings and executor pair.")
+    print("Start new work with `runweld task start ID`, or choose existing work with `runweld next ID`.")
+    print("From a task worktree, `runweld next` finds the assignment and its release without an ID.")
+    print("\nWorkflow:")
+    catalog = workflow_catalog()
+    for stage in catalog["order"]:
+        entry = catalog["stages"][stage]
+        print(f"  {entry['label']} — {entry.get('purpose', stage)}")
+    print()
     print("Instruction commands (add --plan PLAN to select a task's release):")
     print("\n".join(f"  runweld {name}" for name in GUIDE_COMMANDS))
 
 
-def main(*, current_task=None):
+def main(*, current_task=None, next_release=None):
     from runweld_release import ReleaseError
     bundle = standalone_bundle()
     p, a = parse_cli(sys.argv[1:] or (["--help"] if bundle else []), standalone=bundle is not None,
@@ -5870,8 +6004,9 @@ def main(*, current_task=None):
             from runweld_release import command_plan, run_pin, update_installation
             selected_plan = command_plan(a, Path.cwd())
             required = run_pin(selected_plan) if selected_plan else None
-            if required is not None and required != bundle.name:
-                raise ReleaseError(f"this run selects {required}, not {bundle.name}; use `runweld` without a release override")
+            release = next_release or bundle.name
+            if required is not None and required != release:
+                raise ReleaseError(f"this run selects {required}, not {release}; use `runweld` without a release override")
             if a.group == "update":
                 update_installation(bundle.parents[1], a.scope, a.version)
                 return 0
@@ -5884,6 +6019,8 @@ def main(*, current_task=None):
                     raise ReleaseError(f"initialization could not finish: {error}; correct the issue and rerun `runweld init`") from None
             if a.group == "task" and a.command != "setup":
                 return cmd_task(bundle, a)
+            if a.group == "next":
+                return cmd_next(bundle, a, selected_plan, next_release)
             if a.group == "path":
                 return cmd_path(a.area)
             if a.group == "help":
