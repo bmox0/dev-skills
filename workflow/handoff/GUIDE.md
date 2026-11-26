@@ -41,14 +41,14 @@ never asserted.
 - The paths that matter, and the commands to run and check it.
 - **Approaches tried and abandoned.**
 - Anything in the tree that is not a deliverable: instrumentation, scratch
-  files, edits the user is making in parallel.
+  files, edits the human is making in parallel.
 - What is running or logged in, as of this writing.
 
 ## Carrying the thinking
 
 - Where the decision tree stands: asked, answered, untouched.
-- **What the user rejected, and why.**
-- What the user confirmed, kept apart from what is only your suggestion.
+- **What the human rejected, and why.**
+- What the human confirmed, kept apart from what is only your suggestion.
 - The terms that settled.
 
 ## What earns a place
@@ -63,7 +63,7 @@ never asserted.
 
 **To a file:** Write beside the plan, or use the
 [project handoff directory](../../references/WORKFLOW-PATHS.md) without one.
-Name it `YYYY-MM-DD-<name>.md`. Give the user its path.
+Name it `YYYY-MM-DD-<name>.md`. Give the human its path.
 
 **To the chat:** the whole document in one fenced block, with nothing around
 it; anything outside the fence gets copied with it.

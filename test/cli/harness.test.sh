@@ -153,9 +153,9 @@ sessions = (root / 'references/SESSIONS.md').read_text()
 for term in ('primary', 'secondary', '--provider', 'model', 'effort', 'manual', 'native', 'herdr', 'unchanged'):
     assert term in sessions, term
 plan = (root / 'workflow/plan/GUIDE.md').read_text()
-for term in ('run approve', 'summary approve', 'resume.example.md', 'STOP'):
+for term in ('plan review', 'plan approve', 'resume.example.md', 'STOP'):
     assert term in plan, term
-assert plan.index('run approve') < plan.index('summary approve') < plan.index('STOP')
+assert plan.index('plan review') < plan.index('plan approve') < plan.index('STOP')
 P
 
 # --- TC-11: no retired 'Checkpoint N' or '| Segment |' outside the vocabulary

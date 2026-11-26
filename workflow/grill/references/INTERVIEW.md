@@ -35,13 +35,13 @@ Do not act on it until I confirm we have reached a shared understanding.
 
 ---
 
-If the user asks for one question at a time, ask one at a time.
+If the human asks for one question at a time, ask one at a time.
 
 ## Depth scales; the alignment does not
 
 "Every aspect" is scaled to the work. Two buttons swapped need one restatement
 and a yes; a new subsystem needs a long interview. What does not scale is
-whether you and the user end up meaning the same thing. "Too simple to need a
+whether you and the human end up meaning the same thing. "Too simple to need a
 design" is where unexamined assumptions cost the most: keep the design short
 instead of skipping it.
 
@@ -60,7 +60,7 @@ instead of skipping it.
   → see that), and what must look right.
 - **Ask about a touched rule only when the task leaves open whether it stays
   true:** does the behaviour change, and why. Ask it in product words, such as
-  what exactly is the same and in which menus. Never show the user the spec's
+  what exactly is the same and in which menus. Never show the human the spec's
   syntax (IDs, areas, `+`, `~`, `-` lines) and never ask whether to record a
   rule, in which area, under what name, or whether it replaces an earlier one:
   the plan's writer decides that.

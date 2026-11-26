@@ -90,7 +90,7 @@ approve_plan "$plan" >/dev/null || fail "approve"
 
 # build#base-is-named: build start refuses to run without --base
 cli build start "$plan" 2>/dev/null; rc=$?
-assert_eq 2 "$rc" "build start requires --base" || exit 1
+assert_eq 1 "$rc" "the first build start for an unregistered plan requires --base" || exit 1
 
 # build#base-is-named, build#epic-row-follows
 out=$(cli build start "$plan" --base v0); rc=$?
@@ -102,7 +102,7 @@ grep -q "^Status: building · branch \`x\` · base \`$v0\`$" "$plan" || fail "St
 assert_contains "$(sed -n 7p .runweld/workflow/epics/e.md)" "building ·" "the epic row follows" || exit 1
 assert_contains "$(cli status "$plan")" "Ready: 1" "phase 1 is ready" || exit 1
 cli build start "$plan" --base v0 >/dev/null; rc=$?
-assert_eq 1 "$rc" "a second build start is refused" || exit 1
+assert_eq 0 "$rc" "repeating build start reads the existing build" || exit 1
 
 # --worktree
 planw=$repo/.runweld/workflow/plans/2026-11-16-w.md
@@ -218,14 +218,14 @@ cli build start "$plany" --base v0 --branch y >/dev/null || fail "build start --
 grep -q "^Status: building · branch \`y\` · base \`$v0\`$" "$plany" || fail "Status line: $(grep ^Status "$plany")"
 git switch -q x
 
-# build#act-with-a-reason: an approved plan has no branch; phase start needs a note
+# build#start-chosen: a reason cannot substitute for build start
 planw2=$repo/.runweld/workflow/plans/2026-11-16-w2.md
 mkplan "$planw2" '' w2
 approve_plan "$planw2" >/dev/null || fail "approve w2"
 out=$(cli phase start "$planw2" 1); rc=$?
 assert_eq 1 "$rc" "phase start on an approved plan is refused" || exit 1
 assert_contains "$out" "not-building:" "code form" || exit 1
-cli phase start "$planw2" 1 --note "no branch yet" >/dev/null || fail "phase start with a note"
+cli phase start "$planw2" 1 --note "no branch yet" >/dev/null && fail "phase start without build start"
 
 # a plan adopted mid-build gets the worktree where its branch is checked out
 git branch adopt v0

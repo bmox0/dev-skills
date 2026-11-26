@@ -14,7 +14,7 @@ Reproduce on the registered base. This session judges evidence, not code.
 
 ## 1. A worker reproduces and traces
 
-Dispatch a worker, a secondary subagent, with the symptom in the user's words and
+Dispatch a worker, a secondary subagent, with the symptom in the human's words and
 its [task paths](../../references/WORKFLOW-PATHS.md). It leaves the tree as it found it and returns:
 
 - **A red test and the command that runs it**, red every time: a failing test
@@ -33,7 +33,7 @@ guess.
 ## 2. Accept or send back
 
 Accept the evidenced cause or send back what is missing. After two failed
-hypotheses, start over from the reproduction. Show the user the command and
+hypotheses, start over from the reproduction. Show the human the command and
 cause. After agreement, record `runweld bug done --result TEXT --command SHELL
 --artifact PATH` in the task worktree.
 

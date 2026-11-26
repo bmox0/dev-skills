@@ -1,6 +1,6 @@
 # The E2E gate
 
-The gate checks data, sync, errors, races and code. The user judges look and feel.
+The gate checks data, sync, errors, races and code. The human judges look and feel.
 
 ## The level
 

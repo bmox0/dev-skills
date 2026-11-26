@@ -36,13 +36,14 @@ Coordinators record decisions/transitions without duplicate reports.
 
 ## Start and recover once
 
-Planning obtains explicit run approval, then a linked summary approval
-(≤350 words), and stops. Summary approval launches nothing. A subsequent
-instruction chooses **herdr**, a **native independent session**, or **manual handoff**.
-Record absolute plan/run/build-skill paths, tree, provider/primary pair,
-session identifiers, contact/channel and acceptance authority beside the plan.
-Carry the user's opening language or the approved summary path.
-On resume recover it from the handoff or summary. Use it for user messages.
+Planning presents the complete plan and run together with `CLI plan review`
+and records one human approval. A separate start instruction chooses **herdr**, a **native independent
+session**, or **manual handoff** and authorizes `CLI build start <plan>`.
+Use `--provider NAME` for multiple providers. Repeat to see the existing assignment.
+Record absolute plan/run/build-skill paths, tree, session identifiers and
+contact/channel beside the plan. Keep the human's opening language in the
+handoff and use it on resume. The approval record retains the acceptor's name
+and any explicit delegation.
 Tracked documents and examples follow comparable project documents' language.
 The coordinator owns phase/build/gate transitions; workers retain prescribed
 reporting, verdict and land commands. A controller only relays unless granted
@@ -81,7 +82,6 @@ and permission prompts to the contact. At the human gate relay the validated
 guide verbatim and link the page. Recover it with `CLI page <plan> --show`.
 Wait while the contact opens the result. Relay notes, rounds and approval
 unchanged to the same inspected writer. Retain incoming words while it works.
-Notes alone start no round. Only the user or designated
-acceptor within granted authority accepts: `CLI accept <plan> --by <name>
+Notes alone start no round. Only the named approver or designated acceptor accepts: `CLI accept <plan> --by <name>
 --words "<unchanged approval>"` binds current judge/land/page. Finish as configured
 when instructed, reusing authorization. Watch through rounds and finish.

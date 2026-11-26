@@ -229,14 +229,14 @@ none
         run("runweld", "approve", plan)
         seen = {step["id"]: step["state"] for step in status()["stages"]}
         assert seen["grill"] == recorded_grill and seen["prototype"] == ("done" if prototype else "skipped")
-        assert "run-unapproved" in run("runweld", "build", "start", plan, ok=False)
-        run("runweld", "run", "approve", plan, "--by", "user", "--words", "Fixture run approved")
-        summary = plan.with_suffix(".summary.md")
-        summary.write_text(f"Review [the plan]({plan.name}) and its checks. No live host runs.\n")
-        run("runweld", "summary", "approve", plan, "--file", summary, "--by", "user",
-            "--words", "Fixture summary approved")
-        assert actions()[0]["waiting_for"] == "start-instruction"
-        run("runweld", "build", "start", plan)  # Separate fixture start instruction.
+        assert "plan-unapproved" in run("runweld", "build", "start", plan, ok=False)
+        proposal_command = next(action for action in actions() if action["kind"] == "run")
+        assert proposal_command["argv"][-3:] == ["plan", "review", str(plan)]
+        proposal = json.loads(run(*proposal_command["argv"], "--json", cwd=proposal_command["cwd"]))
+        args = proposal["approval_command"]["argv"]
+        run(*args, "--by", "Fixture Human", "--words", "Fixture plan and run approved")
+        start = next(action for action in actions() if action.get("input") == "start-authorization")
+        run(*start["command"]["argv"], cwd=start["command"]["cwd"])  # Separate fixture start instruction.
         advertised("phase", "start")
         implementer, fields = brief("implementer", "secondary")
         assert "runweld tdd" in fields["Skills to read first"]
@@ -284,7 +284,7 @@ none
         assert actions()[0]["input"] == "acceptance"
         assert "current authorized" in run("runweld", "finish", plan, ok=False)
         assert (project / "hello.txt").read_text() == before
-        run("runweld", "accept", plan, "--by", "user", "--words", "Fixture result accepted")
+        run("runweld", "accept", plan, "--by", "Fixture Human", "--words", "Fixture result accepted")
         advertised("finish")  # Fixture authorization to integrate.
         assert (project / "hello.txt").read_text() == f"hello {provider}\n"
         assert not tree.exists() and status()["actions"] == []

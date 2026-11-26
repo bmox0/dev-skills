@@ -1,6 +1,6 @@
 # Logic Prototype
 
-A tiny terminal app that lets the user drive a state model by hand — for
+A tiny terminal app that lets the human drive a state model by hand — for
 questions about business logic, state transitions or data shape that only
 feel wrong once pushed through real cases: "does this state machine handle X
 then Y", "can this data model represent case Z", "what should this API look
@@ -33,7 +33,7 @@ like".
 5. **Make it runnable in one command**, kept under
    the assigned prototype artifact path, with that command at the top of the main file
    — the project's task runner stays untouched.
-6. **Hand it over**: give the user the run command and let them drive it. The
+6. **Hand it over**: give the human the run command and let them drive it. The
    moments they say "wait, that shouldn't be possible" are bugs in the idea.
    Add actions if they ask.
 7. **Capture the answer** the way [SKILL](../GUIDE.md) describes: the plan

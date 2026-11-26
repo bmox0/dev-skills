@@ -3,11 +3,10 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PIPELINE="$here/../../workflow/build/pipeline.py"
 python3 -B <<'PY'
-import json, os, pathlib, subprocess, tempfile
-from urllib.parse import quote
+import hashlib, json, os, pathlib, subprocess, tempfile
 
 with tempfile.TemporaryDirectory(prefix='consent repo ') as directory:
-    root = pathlib.Path(directory)
+    root = pathlib.Path(directory).resolve()
     def command(*args):
         return subprocess.run(args, cwd=root, text=True, capture_output=True)
     def git(*args):
@@ -80,6 +79,11 @@ how = "ff-only"
 target = "main"
 delete_backups = false
 [run]
+[executors.GPT.primary]
+model = "planner"
+[executors.GPT.secondary]
+model = "worker"
+effort = "high"
 ''')
     def state():
         return json.loads(plan.with_suffix('.json').read_text())
@@ -89,7 +93,7 @@ delete_backups = false
         assert before == plan.with_suffix('.json').read_bytes()
     compiled = plan.with_suffix('.json')
     def facts():
-        files = [plan, compiled, run, summary, shape, epic]
+        files = [plan, compiled, run, shape, epic]
         return ([(p.stat().st_mode, p.read_bytes() if p.is_file() and os.access(p, os.R_OK) else None)
                  if p.exists() else None for p in files],
                 git('show-ref'), git('branch', '--show-current'))
@@ -113,7 +117,7 @@ delete_backups = false
             before = facts()
             output = cli(*args, ok=False)
             assert str(path) in output and 'fix:' in output and 'Traceback' not in output, output
-            assert 'run-stale' not in output and 'summary-stale' not in output, output
+            assert 'run-stale' not in output and 'plan-stale' not in output, output
             if reason:
                 assert reason in output, output
             assert before == facts(), output
@@ -128,155 +132,106 @@ delete_backups = false
     plan.write_text(plan.read_text().replace('Prototype: none', 'Epic: .runweld/workflow/epic.md · row 1\nPrototype: none'))
     cli('approve', plan)
     assert state()['status'] == 'draft', 'validation must not grant consent'
+    before = compiled.read_bytes(), plan.read_bytes(), git('show-ref')
+    review = json.loads(cli('plan', 'review', plan, '--json'))
+    assert '1. a → b' in review['plan'] and 'target = "main"' in review['run_toml'], review
+    assert (compiled.read_bytes(), plan.read_bytes(), git('show-ref')) == before, 'review is read-only'
     run.write_text(run.read_text().replace('delete_backups = false', 'delete_backups = true'))
     proposal = json.loads(cli('run', 'show', '--json', plan))
     assert not proposal['approved'] and proposal['run']['finish']['delete_backups'] is True, 'unapproved readers show the proposal'
     run.write_text(run.read_text().replace('delete_backups = true', 'delete_backups = false'))
-    unchanged('build', 'start', plan, '--base', 'main', code='run-unapproved')
-    unchanged('plan', 'status', plan, 'passed', '--note', 'shortcut', code='run-unapproved')
-    cli('run', 'approve', plan, '--by', 'user', '--words', 'approve this run')
-    unchanged('build', 'start', plan, '--base', 'main', code='summary-unapproved')
-    summary = plan.with_suffix('.summary.md')
+    unchanged('build', 'start', plan, '--base', 'main', code='plan-unapproved')
+    unchanged('plan', 'status', plan, 'passed', '--note', 'shortcut', code='plan-unapproved')
+
+    human = 'Mina Patel'
     shape = plan.with_suffix('.shape.toml')
-    summary.write_text(f'Build [this plan]({plan.name}) in one phase. Check the CLI. No other changes.\n')
-    def approve_summary(*extra):
-        cli('summary', 'approve', plan, '--file', summary, '--by', 'user', '--words', 'approve this summary', *extra)
-    # build#required-transition-files: summary approval validates its candidate.
-    invalid_file(summary, 'summary', 'approve', plan, '--file', summary, '--by', 'user', '--words', 'yes',
-                 malformed=b'No link to the plan.')
-    # planning#summary-before-build: the destination, relative to the summary, must be this plan.
-    original = summary.read_text()
-    for target in (f'../missing/{plan.name}', f'missing/../{plan.name}', f'not-{plan.name}', f'https://example.test/{plan.name}'):
-        summary.write_text(f'Build [this plan]({target}).\n')
-        unchanged('summary', 'approve', plan, '--file', summary, '--by', 'user', '--words', 'yes', code='bad-summary')
-    summary.write_text(original)
-    elsewhere = root / 'review notes'
-    elsewhere.mkdir()
-    adjacent = summary
-    summary = elsewhere / adjacent.name
-    for target in (f'../.runweld/workflow/plans/{plan.name}#result "Details"', f'<{plan}>', quote(str(plan))):
-        summary.write_text(f'Build [this plan]({target}).\n')
-        approve_summary()
-    for alias, destination in (
-        ('build (draft) &copy;.md', r'<build \(draft\) \&copy;.md>'),
-        ('build (draft) &copy;.md', '<build (draft) &amp;copy;.md>'),
-        ('build%20draft.md', 'build%2520draft.md'),
-    ):
-        alias = elsewhere / alias
-        alias.symlink_to(plan)
-        summary.write_text(f'Build [this plan]({destination}).\n')
-        approve_summary()
-        alias.unlink()
-    summary.unlink()
-    elsewhere.rmdir()
-    summary = adjacent
-    approve_summary()
-    assert state()['status'] == 'approved'
-    # build#required-transition-files: consent requires a rendered link with a visible label.
-    link = f'[this plan]({plan.name})'
-    empty_link = f'[]({plan.name})'
-    for false_link in (
-        f'Build {empty_link}.\n',
-        f'Build [   ]({plan.name}).\n',
-        f'Build [  \n  ]({plan.name}).\n',
-        f'Build [<!-- hidden -->]({plan.name}).\n',
-        f'Build [**<!-- hidden -->**]({plan.name}).\n',
-        f'Build [<em></em>]({plan.name}).\n',
-        f'Build [` `]({plan.name}).\n',
-        f'Build [&nbsp;&#9;&ZeroWidthSpace;]({plan.name}).\n',
-        f'Build [&#xFE0F;]({plan.name}).\n',
-        f'Build [\u034f]({plan.name}).\n',
-        f'Build [&#12644;]({plan.name}).\n',
-        f'Build [**\u180f&#xE0100;**]({plan.name}).\n',
-        f'Build [`\ufe0f`]({plan.name}).\n',
-        f'Build [\u3164][target].\n\n[target]: {plan.name}\n',
-        f'The markup is `{link}`.\n',
-        f'The markup is ``an example\nwith `backticks`: {link}``.\n',
-        f'Intro.\n\n    {link}\n',
-        f'Intro.\n\n\t{link}\n',
-        f'---\n    {link}\n',
-        f'> * * *\n>     {link}\n',
-        f'Title\n===\n    {link}\n',
-        f'- Title\n  ---\n      {link}\n',
-        f'Example: \\{link}.\n',
-        f'<!--\n{link}\n-->\n',
-        f'<!-- A comment block. --> {link}\n',
-        f'Build [this plan]({plan}).\n',
-        f'~~~markdown\n{link}\n~~~\n',
-        f'````markdown\n```\n{link}\n````\n',
-        f'> ~~~markdown\n> {link}\n> ~~~\n',
-        f'>     {link}\n',
-        f'- ~~~markdown\n  {link}\n  ~~~\n',
-        f'-     {link}\n',
-        f'<pre><code>\n{link}\n</code></pre>\n',
-        f'<code>\n{link}\n</code>\n',
-        f'<div>\n{link}\n</div>\n',
-        f'<div></div>\n{link}\n',
-        f'- <div>\n  {link}\n  </div>\n',
-        f'Intro.\n<search\trole="search">\n{link}\n',
-        f'> <custom-widget>\n> {link}\n',
-        f'<!DOCTYPE html> {link}\n',
-        f'<![CDATA[\n>\n{link}\n]]>\n',
-        f'<?example\n{link}\n?>\n',
-        f'Intro <span title="{link}">example</span>.\n',
-        f'!{link}\n',
-        f'![Example {link}](image.png)\n',
-    ):
-        summary.write_text(false_link)
-        for args in (
-            ('summary', 'approve', plan, '--file', summary, '--by', 'user', '--words', 'yes'),
-            ('build', 'start', plan, '--base', 'main'),
-        ):
-            before = facts()
-            output = cli(*args, ok=False, code='bad-summary')
-            assert str(summary) in output and 'fix:' in output, output
-            assert before == facts(), output
-    for real_link in (
-        f'Intro with `<!--` and a visible {link}.\n',
-        f'<!-- Example: {link} -->\nThen read {link}.\n',
-        f'Open <!-- Inline comment. --> {link}.\n',
-        f'> ~~~markdown\n> {link}\n\nRead {link}.\n',
-        f'- ~~~markdown\n  {link}\n\nRead {link}.\n',
-        f'<pre><code>\n{link}\n</code></pre>\n\nRead {link}.\n',
-        f'<pre>\nExample\n</textarea>\nRead {link}.\n',
-        f'<div>\nExample\n\nRead {link}.\n',
-        f'> <div>\n> Example\nRead {link}.\n',
-        f'Intro.\n<custom-widget>\nRead {link}.\n',
-        f'Intro.\n\n    Ignore this code.\n\n   {link}\n',
-        f'Intro.\n    {link}\n',
-        f'Intro. \\\\{link}\n',
-        f'> Read {link}.\n',
-        f'- Open [`{plan.name}`](<{plan}>).\n',
-        f'# Read {link}\n',
-        f'Read {link}\n---\n',
-        f'> 1. Intro.\n>\n>    {link}\n',
-        f'- Intro.\n  - Nested.\n\n      {link}\n',
-        f'- Intro.\n\n    {link}\n',
-        f'Read [**the *plan***]({plan.name}).\n',
-        f'Read [`&nbsp;`]({plan.name}).\n',
-        f'Read [&nbsp]({plan.name}).\n',
-        f'Read [\\*]({plan.name}).\n',
-        f'Read [![](plan.png)]({plan.name}).\n',
-        f'Ignore {empty_link} and [<!-- hidden -->]({plan.name}). Read {link}.\n',
-        f'Открыть [**План**]({plan.name}).\n',
-        f'Open [計画]({plan.name}).\n',
-        f'Open [🟢]({plan.name}).\n',
-        f'Open [🗂&#xFE0F;]({plan.name}).\n',
-    ):
-        summary.write_text(real_link)
-        approve_summary()
-    # A linked epic is required when compiling the plan.
+    def display():
+        return json.loads(cli('plan', 'review', plan, '--json'))
+    def approve_revision(*extra, words='I approve this plan and its run configuration.'):
+        reviewed = display()
+        assert reviewed['approval_command']['cwd'] == str(root), reviewed
+        argv = reviewed['approval_command']['argv'][2:]
+        assert argv[:3] == ['plan', 'approve', str(plan)], argv
+        cli(*argv, '--by', human, '--words', words, *extra)
+
+    # build#required-transition-files: approval and build refuse corrupt inputs before mutating state.
     invalid_file(epic, 'approve', plan, malformed=b'# Epic\n\n## Plans\n\n| 1 |')
-    # build#required-transition-files: build start checks inputs before creating its branch.
     for path, malformed in [(plan, b'# Only a title\n'), (compiled, b'{"status":"approved"}'),
-                            (run, b'[unexpected]\nx = 1'), (summary, f'[Wrong](../missing/{plan.name})'.encode())]:
+                            (run, b'[unexpected]\nx = 1')]:
         invalid_file(path, 'build', 'start', plan, '--base', 'main', malformed=malformed)
     invalid_file(compiled, 'build', 'start', plan, '--base', 'main',
                  malformed=json.dumps({**state(), 'phases': [None]}).encode())
     invalid_file(compiled, 'build', 'start', plan, '--base', 'main',
-                 malformed=json.dumps({**state(), 'approvals': {'run': []}}).encode())
-    cli('build', 'start', plan, '--base', 'main')
+                 malformed=json.dumps({**state(), 'approvals': {'plan': []}}).encode())
+    unchanged('plan', 'approve', plan, '--revision', review['revision'], '--by', human,
+              '--words', 'yes', '--acceptor', 'Controller', code='no-authority')
+    before = git('show-ref')
+    approve_revision()
+    approved = state()
+    assert approved['status'] == 'approved' and git('show-ref') == before
+    assert set(approved['approvals']) == {'plan'} and approved['approvals']['plan']['by'] == human
+    assert approved['approvals']['plan']['acceptor'] == human
+    approve_revision()
+    assert state() == approved, 'a duplicate approval must not create a new decision'
+    unchanged('phase', 'start', plan, '1', '--note', 'shortcut', code='not-building')
+
+    # run#changes-through-approve: do not apply the revision displayed before a material edit.
+    run.write_text(run.read_text().replace('target = "main"', 'target = "release"'))
+    fresh = display()
+    assert not fresh['current'] and fresh['revision'] != review['revision']
+    assert '+    "target": "release"' in fresh['diff'] and '-    "target": "main"' in fresh['diff']
+    assert '[finish] target' in cli('status', plan)
+    unchanged('plan', 'approve', plan, '--revision', review['revision'], '--by', human,
+              '--words', 'yes', code='review-stale')
+    unchanged('build', 'start', plan, '--base', 'main', code='run-stale')
+    run.write_text(run.read_text().replace('target = "release"', 'target = "main"'))
+    assert display()['current'], 'restoring the approved proposal restores its consent'
+    started = json.loads(cli('build', 'start', plan, '--base', 'main', '--json'))
+    assert not started['resumed'] and started['build_provider'] == 'GPT' and started['active_phases'] == []
     cli('phase', 'start', plan, '1')
+    # An older active state keeps its existing approvals without being rewritten.
+    old_state = compiled.read_bytes()
+    legacy = state()
+    legacy_summary = plan.with_suffix('.summary.md')
+    legacy_summary.write_text(f'Review [this plan]({plan.name}).\n')
+    old_digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    run_digest = old_digest(legacy['run'])
+    origin = {'at': '2026-11-17', 'by': 'user', 'words': 'Yes'}
+    legacy['approvals'] = {'run': {**origin, 'digest': run_digest},
+                           'summary': {**origin, 'acceptor': 'user', 'file': str(legacy_summary),
+                                       'digest': old_digest(legacy_summary.read_text()),
+                                       'planning': old_digest(review['plan'].split('\n')), 'run': run_digest}}
+    compiled.write_text(json.dumps(legacy))
+    before = facts()
+    assert display()['current'] and cli('build', 'start', plan, '--json')
+    assert facts() == before
+    legacy_summary.write_text('There is no plan link.\n')
+    unchanged('build', 'start', plan, code='bad-summary')
+    compiled.write_bytes(old_state)
+    legacy_summary.unlink()
+    # build#start-chosen: restarting reports the same phase and executor and does not write.
+    before = facts()
+    current = json.loads(cli('build', 'start', plan, '--json'))
+    assert current['resumed'] and current['tree'] == started['tree'] and current['branch'] == started['branch']
+    assert [(p['n'], p['executor']['model'], p['executor']['effort']) for p in current['active_phases']] == [(1, 'worker', 'high')]
+    assert 'Active phase 1: One — GPT worker (effort high)' in cli('build', 'start', plan)
+    assert facts() == before, 'a repeated start must not change refs or state'
+    unchanged('build', 'start', plan, '--provider', 'Another', code='build-assignment')
+    assert display()['revision'] == review['revision'], 'execution progress is not a material edit'
+    run.write_text(run.read_text() + '\n# An annotation about these settings.\n')
+    assert display()['revision'] == review['revision'] and display()['current']
+
+    plan.write_text(plan.read_text().replace('1. a → b', '1. a → changed criterion'))
+    assert 'plan-stale' in cli('plan', 'review', plan)
+    edit = display()
+    assert edit['approval_command'] is None and '+1. a → changed criterion' in edit['diff'], edit
+    cli('approve', plan)
+    unchanged('build', 'start', plan, code='plan-stale')
+    run.write_text(run.read_text().replace('model = "worker"', 'model = "next-worker"'))
+    approve_revision()
+    assert state()['status'] == 'building' and state()['phases'][0]['status'] == 'in progress'
+    assert 'Executor model: worker\n' in pathlib.Path(cli('brief', 'implementer', plan, '1').strip()).read_text()
+    assert 'Active phase 1: One — GPT worker (effort high)' in cli('build', 'start', plan)
     (root / 'src/a').write_text('built\n')
     git('commit', '-qam', 'build')
     cli('phase', 'report', plan, '1', '--became', 'built', '--commit', git('rev-parse', 'HEAD'))
@@ -349,16 +304,14 @@ delete_backups = false
     assert 'keep formatter output' in plan.read_text()
     unchanged('plan', 'status', plan, 'passed', code='acceptance-required')
     unchanged('accept', plan, '--by', 'router', '--words', 'yes', code='unauthorized-acceptor')
-    cli('accept', plan, '--by', 'user', '--words', 'yes, finish')
+    cli('accept', plan, '--by', human, '--words', 'yes, finish')
     assert state()['status'] == 'passed'
     # run#changes-through-approve, finish#merge-needs-land
-    summary.write_text(summary.read_text() + 'Changed.\n')
-    unchanged('finish', plan, code='summary-stale')
-    approve_summary()
+    approve_revision(words='I reaffirm the plan and run configuration.')
     unchanged('finish', plan, code='page-stale')
     cli('plan', 'status', plan, 'building')
     cli('page', plan, '--guide', 'Try the refreshed CLI.' + guide)
-    cli('accept', plan, '--by', 'user', '--words', 'yes again')
+    cli('accept', plan, '--by', human, '--words', 'yes again')
     (root / 'src/a').write_text('changed after acceptance\n')
     git('commit', '-qam', 'late change')
     assert any('judge-stale' in item for item in json.loads(cli('status', '--json', plan))['stale'])
@@ -376,10 +329,15 @@ delete_backups = false
     unchanged('finish', plan, code='run-stale')
     assert before == git('rev-parse', 'main')
     run.write_text(run.read_text().replace('delete_backups = true', 'delete_backups = false'))
-    approve_summary('--acceptor', 'controller', '--authority', 'The controller may accept this result')
+    approve_revision('--acceptor', 'controller', '--authority', 'The controller may accept this result')
     cli('plan', 'status', plan, 'building')
     cli('page', plan, '--guide', 'Review the delegated result.' + guide)
-    unchanged('accept', plan, '--by', 'user', '--words', 'yes', code='unauthorized-acceptor')
+    action, = json.loads(cli('status', plan, '--json'))['workflow']['actions']
+    assert action['owner'] == 'Human' and action['acceptor'] == 'controller'
+    assert action['authority'] == 'The controller may accept this result'
+    assert action['command']['argv'][-2:] == ['--by', 'controller']
+    assert action['command']['options']['words'] == '--words ACCEPTANCE'
+    unchanged('accept', plan, '--by', human, '--words', 'yes', code='unauthorized-acceptor')
     cli('accept', plan, '--by', 'controller', '--words', 'approved within my grant')
     cli('finish', plan)
     assert git('rev-parse', 'main') == git('rev-parse', 'consent')

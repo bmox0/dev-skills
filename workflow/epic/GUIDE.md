@@ -1,11 +1,11 @@
 ---
 name: epic
-description: Keep work that needs more than one plan — the shared decisions and the ordered list of plans. Only when the user asks for an epic.
+description: Keep work that needs more than one plan — the shared decisions and the ordered list of plans. Only when the human asks for an epic.
 ---
 
 # Epic
 
-An epic exists only on the user's word; by default the work is one plan. It
+An epic exists only on the human's word; by default the work is one plan. It
 holds what the plans share and the order they go in.
 
 Write `<topic>.md` to the [project epics directory](../../references/WORKFLOW-PATHS.md):
@@ -14,7 +14,7 @@ Write `<topic>.md` to the [project epics directory](../../references/WORKFLOW-PA
 # Epic: <topic>
 
 ## Goal
-<what the whole body of work makes possible, in the user's terms>
+<what the whole body of work makes possible, in the human's terms>
 
 ## Decisions
 - <decision> — <the reason>
@@ -43,5 +43,5 @@ branch once the plans it waits for have merged. A row's Status is empty until
 its plan exists. Rows merge or split as planning shows what fits: the list is
 corrected, not defended.
 
-End with the list in front of the user; the first row that waits for nothing is
+End with the list in front of the human; the first row that waits for nothing is
 next.

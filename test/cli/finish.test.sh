@@ -141,7 +141,7 @@ PY
   cli page "$plan" --guide "$finish_guide" --message "feat: the merge" >/dev/null || fail "page"
 }
 finish_guide=$'Open src/a.txt.\n\n#### Checks\n\n- **Done 1** Read the last line → It is 1.\n\n#### Decisions\n\n- —'
-passed() { cli accept "$plan" --by user --words 'Fixture acceptance' >/dev/null || fail "accept"; }
+passed() { cli accept "$plan" --by 'Fixture Human' --words 'Fixture acceptance' >/dev/null || fail "accept"; }
 status_is() { assert_contains "$(cli status "$plan" | sed -n 2p)" "Status: $1" "$2"; }
 backups() { git -C "$repo" branch --list 'backup/*' --format='%(refname:short)' | tr '\n' ' '; }
 
@@ -253,7 +253,7 @@ for how in merge-request ff-only no-ff; do
   before=$(git -C "$repo" rev-parse main)
   cli land revert "$plan" >/dev/null && cli land revert "$plan" >/dev/null || fail "land revert ($how)"
   python3 -c "import json,sys; assert 'page' not in json.load(open(sys.argv[1]))" "${plan%.md}.json" || fail "page cleared"
-  out=$(cli accept "$plan" --by user --words yes); rc=$?
+  out=$(cli accept "$plan" --by 'Fixture Human' --words yes); rc=$?
   assert_eq 1 "$rc" "$how: acceptance without a land refuses" || exit 1
   assert_contains "$out" "no-land" "$how: no land" || exit 1
   cli plan status "$plan" passed --note shortcut >/dev/null && fail "status cannot replace land"
@@ -364,11 +364,11 @@ cli round start "$plan" --conflict "main moved on src/a.txt" >/dev/null || fail 
 b=$(cli brief round "$plan") || fail "brief round"
 grep -q "main moved on src/a.txt" "$b" || fail "brief round carries the conflict text: $(cat "$b")"
 out=$(cli status "$plan")
-assert_contains "$out" "Round 1 (user): conflict at finish: main moved on src/a.txt" "status prints the round's line whole" || exit 1
+assert_contains "$out" "Round 1 (human): conflict at finish: main moved on src/a.txt" "status prints the round's line whole" || exit 1
 case "$out" in *"takes notes "$'\n'*|*"takes notes ;"*) fail "status prints takes notes with nothing after it: $out";; esac
 cli round report "$plan" --became "nothing to rebase" >/dev/null || fail "round report with no commit"
 g=$(sed -n '/^## Human gate/,$p' "$plan")
-assert_contains "$g" "Round 1 (user): nothing to rebase (no commit)" "a round with no commit renders whole" || exit 1
+assert_contains "$g" "Round 1 (human): nothing to rebase (no commit)" "a round with no commit renders whole" || exit 1
 case "$g" in *"(commits )"*) fail "the commits section renders (commits ): $g";; esac
 cli round done "$plan" >/dev/null || fail "round done"
 complete_review "$plan" || fail "complete review"
@@ -380,11 +380,11 @@ newrepo no-ff false no
 rf=${plan%.md}.run.toml
 sed -i.bak 's/^how = .*/how = "ff-only"/' "$rf"
 before=$(git -C "$repo" rev-parse main)
-out=$(cli accept "$plan" --by user --words yes); rc=$?
+out=$(cli accept "$plan" --by 'Fixture Human' --words yes); rc=$?
 assert_eq 1 "$rc" "stale run consent refuses acceptance" || exit 1
 assert_contains "$out" "run-stale" "names stale run" || exit 1
 approve_plan "$plan" >/dev/null || fail "approve changed ending"
-cli accept "$plan" --by user --words yes >/dev/null && fail "reapproval cannot replace fresh judge"
+cli accept "$plan" --by 'Fixture Human' --words yes >/dev/null && fail "reapproval cannot replace fresh judge"
 cli gate start "$plan" >/dev/null || fail "recheck changed contract"
 complete_review "$plan" || fail "complete review"
 cli verdict pass "$plan" --report "reviewed new ending" >/dev/null || fail "fresh judge"

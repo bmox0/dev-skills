@@ -5,7 +5,7 @@ description: Write instructions delivered by a Runweld CLI command.
 
 # Write a command guide
 
-Start with the decision, action or output the user needs from the command.
+Start with the decision, action or output the human needs from the command.
 Write the steps in execution order. Give the actual `runweld` invocation
 where a step calls another guide or changes task state.
 

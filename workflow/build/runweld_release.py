@@ -411,7 +411,7 @@ def run_pin(plan):
         values = state.get("run", {})
         if not isinstance(approvals, dict) or not isinstance(values, dict):
             raise ReleaseError(f"{state_path} has an invalid run snapshot; restore the state")
-        if "run" in approvals or state.get("status") != "draft":
+        if "plan" in approvals or "run" in approvals or state.get("status") != "draft":
             return task_pin(release_pin(values, state_path), task, state_path)
     run_file = plan.with_suffix(".run.toml")
     proposed = read_data(run_file, tomllib.loads)

@@ -24,13 +24,13 @@ from> — or: none
 **Devices.** <what e2e runs on, and what it leaves alone> — or: any
 ```
 
-Language is what plans and specs are written in. Without the line, they are written in the language of the documents in `docs/`, `docs/spec/` first (commits, code comments, a README or a changelog do not decide it); with no documents, ask the user once. In both fallbacks offer just the line, for the file the project keeps its rules in; the whole block is offered only when the project has none.
+Language is what plans and specs are written in. Without the line, they are written in the language of the documents in `docs/`, `docs/spec/` first (commits, code comments, a README or a changelog do not decide it); with no documents, ask the human once. In both fallbacks offer just the line, for the file the project keeps its rules in; the whole block is offered only when the project has none.
 
 State facts, not prohibitions. "none, this project has no test framework" is a
 fact and it is worth a line. Access names where a credential lives, never the
 credential: the file is committed.
 
 When the block is missing, find the commands in the project's manifests and
-scripts, write them into Checks, and offer the user the block for the file the
+scripts, write them into Checks, and offer the human the block for the file the
 project keeps its shared rules in: `AGENTS.md`. A host adapter such as
 `CLAUDE.md` imports it with `@AGENTS.md`; it does not duplicate the rules.

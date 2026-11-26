@@ -124,7 +124,7 @@ PY
 before=$(git rev-parse HEAD)
 out=$(cli gate start "$plan"); rc=$?
 assert_eq 1 "$rc" "gate start without run values is refused" || exit 1
-assert_contains "$out" "run-stale" "the missing approved snapshot invalidates consent" || exit 1
+assert_contains "$out" "approval-snapshot" "the missing approved snapshot invalidates consent" || exit 1
 assert_eq "$before" "$(git rev-parse HEAD)" "nothing was committed" || exit 1
 json 'assert not c["cycles"]' || fail "no cycle was opened"
 

@@ -33,7 +33,7 @@ one line. A change that raises a skill's word budget names what it cuts.
 ## What comes back
 
 A short list, most useful first: what happened, the change, where it goes, and
-what it removes. Nothing is applied. The user picks; applying a pick is ordinary
+what it removes. Nothing is applied. The human picks; applying a pick is ordinary
 work.
 
 Once per plan, never per phase, never in a loop.

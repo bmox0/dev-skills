@@ -19,17 +19,17 @@ is `passed` or a merge-request link. Read the result:
 
 - A local merge sets Status to `merged`; the epic's row follows.
 - A merge request is opened and its link becomes Status. On an unknown host, open it and record the link with `CLI plan status <plan>
-  "<link>"`. The user merges it in the request's view; the button is the
+  "<link>"`. The human merges it in the request's view; the button is the
   approval.
 - With the plan at a merge-request link, `CLI finish <plan>` asks the forge; where
-  code cannot ask, once the user has seen it merged, `CLI finish --merged <plan>`.
+  code cannot ask, once the human has seen it merged, `CLI finish --merged <plan>`.
 - A refusal names its fix. `merge-refused` is a conflict or a moved target:
   `CLI round start --conflict "<what>" <plan>`, the round in
-  `runweld build`, then the gate page and `finish` again on the user's word.
+  `runweld build`, then the gate page and `finish` again on the human's word.
 
 ## 2. After
 
 Code removes the owned worktree and its data directory, follows the run's
 backup policy and keeps the branch and history. If unsaved files prevent
 cleanup, resolve the named paths and rerun `CLI finish <plan>` for cleanup only.
-Then offer a retro (`runweld retro`); the user decides.
+Then offer a retro (`runweld retro`); the human decides.

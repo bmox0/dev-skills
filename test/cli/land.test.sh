@@ -244,7 +244,7 @@ cli land "$plan" >/dev/null
 cli land "$plan" >/dev/null
 out=$(cli land "$plan"); rc=$?
 assert_eq 1 "$rc" "the third stop is refused" || exit 1
-assert_contains "$out" "question for the user" "past the cap it is a question" || exit 1
+assert_contains "$out" "question for the human" "past the cap it is a question" || exit 1
 out=$(statuses)
 assert_contains "$out" "question: land stopped: the tree has uncommitted paths: untracked.txt" "status shows land's message" || exit 1
 out=$(cli brief judge "$plan"); rc=$?

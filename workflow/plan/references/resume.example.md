@@ -1,48 +1,27 @@
-# Plan summary: Rebind keyboard shortcuts in Settings
+# Approve and resume a task
 
-Plan: [Rebind keyboard shortcuts in Settings](example.md)
+In this example, the human wants to rebind keyboard shortcuts in Settings.
+The planner saved the [complete plan](example.md) and
+[run configuration](../../run-file/references/example.run.toml).
+Run these commands against the plan path printed at task entry:
 
-This is a worked summary for review. The checks below are planned verification.
+```sh
+runweld spec check <plan>
+runweld approve <plan>
+runweld plan review <plan>
+```
 
-## Result
+Present both documents together. Copy the revision from the review output and
+ask for one decision. After the human approves, record their name and unchanged
+words using the printed command:
 
-In Settings → Shortcuts, you can change any action's key combination and reset
-one or all bindings. Changes take effect immediately and survive a restart.
-A combination already assigned to another action cannot be saved; the panel
-names the action using it.
+```sh
+runweld plan approve <plan> --revision <revision> --by "Jamie Lee" --words "I approve this plan and its run configuration."
+```
 
-## Phases
-
-`1 → 2 ∥ 3 · normal`
-
-1. Store the user's overrides alongside settings; load and reset them without
-   copying the default map.
-2. Build the Shortcuts panel: action list, combination recording, conflict
-   message and reset controls.
-3. Apply binding changes while the app is running. This runs beside phase 2
-   after both have the store from phase 1.
-
-## Spec change
-
-A taken combination cannot be saved. This prevents changing one action from
-silently removing another action's shortcut.
-
-## Checks
-
-- Automated: tests, lint and type checks; branch review; e2e in the running app
-  at 1280 and 1920 px. Cover changing a binding, rejecting a conflict,
-  persistence after restart, resetting one or all bindings, and ignoring a
-  lone modifier during recording.
-- Manual: open Shortcuts and judge whether it reads like the rest of Settings
-  — **you check**.
-
-## Scope and limits
-
-App shortcuts only. System-wide shortcuts, binding import/export and two-step
-chords are outside this plan. Existing settings must remain intact.
-
-## Your approval
-
-Please approve this **summary** or say what should change. I will then stop and
-wait for your direction about opening the implementation session and starting
-the build.
+Nothing has started. When the human separately instructs the coordinator to
+start, run `runweld build start <plan> --provider <provider>`. Repeating that
+command shows the existing assignment. From a fresh session, use
+`CLI next` inside the task worktree or `runweld next <task-id>` in the
+main checkout. If the plan or configuration changes, review the diff and
+obtain approval of the new revision.

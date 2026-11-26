@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review a commit range from a fresh context against the project's rules and the plan — Defects, Conventions and Observations, each with file:line and a source. The code half of the E2E gate; also for any range the user names.
+description: Review a commit range from a fresh context against the project's rules and the plan — Defects, Conventions and Observations, each with file:line and a source. The code half of the E2E gate; also for any range the human names.
 ---
 
 # Review

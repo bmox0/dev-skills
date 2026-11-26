@@ -183,7 +183,8 @@ none
     assert '[finish] how is missing' in runweld('approve', first, ok=False)
     first_values.write_bytes(agreed)
     runweld('approve', first)
-    runweld('run', 'approve', first, '--by', 'User', '--words', 'Approve first run')
+    review = json.loads(runweld('plan', 'review', first, '--json'))
+    runweld('plan', 'approve', first, '--revision', review['revision'], '--by', 'Mina', '--words', 'Approve first plan and run')
     clone = home / 'Claude clone'
     git('clone', '-q', project, clone, cwd=home)
     assert not (clone / '.runweld/workflow').exists()

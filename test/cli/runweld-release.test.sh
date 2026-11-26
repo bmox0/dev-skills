@@ -97,8 +97,8 @@ refuse_solo() {
 }
 refuse_solo run check
 refuse_solo approve
-refuse_solo run approve --by user --words 'Fixture consent'
-refuse_solo summary approve --by user --words 'Fixture consent' --file docs/solo.md
+refuse_solo plan review
+refuse_solo plan approve --revision old --by 'Fixture Human' --words 'Fixture consent'
 refuse_solo build start --base main --note 'Fixture override'
 [[ ! -e docs/solo.json && $(git branch --show-current) == main ]]
 rm docs/solo.md docs/solo.run.toml
@@ -238,7 +238,7 @@ sed -e "s/^version = .*/version = \"${b%%@*}\"/" -e "s/${a#*@}/${b#*@}/" "$sandb
 assert_contains "$(cd "$sandbox" && runweld run show "$plan" --json)" "${a#*@}" 'distribution#project-lock: an approved run retains A'
 assert_contains "$(cd "$sandbox" && runweld help agents --plan "$plan")" "$a" 'distribution#project-lock: help can follow the run from another directory'
 sed '/^\[workflow\]$/{N;N;d;}' "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
-if out=$(cd "$sandbox" && runweld run approve "$plan" --by user --words 'Accept edited checks' 2>&1); then
+if out=$(cd "$sandbox" && runweld plan approve "$plan" --revision old --by 'Fixture Human' --words 'Accept edited checks' 2>&1); then
   echo 'run#changes-through-approve: approving other edits cannot unpin an active run' >&2
   exit 1
 fi

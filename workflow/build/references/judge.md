@@ -23,12 +23,12 @@ changed; finding is the re-check's, not yours.
    `--evidence-note "<reason>"` on the verdict, shown on the gate page;
    neither substitutes for real E2E evidence.
 3. Decide every Open entry and every Convention, one of (Open is the gate's,
-   from the brief; the notes file's open notes are the user's, waiting for the
+   from the brief; the notes file's open notes are the human's, waiting for the
    next round, and never yours to decide or report as yours):
    - let through, with the reason, in your report;
    - a round: the note in your words and its cause (`bug`, `off-plan`,
      `proto-mismatch`, `grill-miss`, `proto-miss`, `feel-ui`, `code-taste`);
-   - a question to the user: a product call the answer given does not settle.
+   - a question to the human: a product call the answer given does not settle.
    Done when none is left undecided.
 4. Record it: `CLI verdict pass|round|question <plan> --report "<…>"`, with
    `--decide ID ACTION REASON` for each decision, `--note TEXT CAUSE` for each
@@ -40,7 +40,7 @@ changed; finding is the re-check's, not yours.
    of its notes needs a commit and a passing check; a note still standing or a
    new finding goes in your report.
 5. Your first verdict also carries the Prediction (`--predicted pass|round`,
-   `--predict TEXT CAUSE` for each, `--engine <nonblank single-line identifier>`): the user's
+   `--predict TEXT CAUSE` for each, `--engine <nonblank single-line identifier>`): the human's
    verdict and the notes they will make at the human gate, each with a cause.
    Later judges leave it. A false alarm is a prediction no note names. Code writes the judge file; never
    show or edit it.
@@ -52,6 +52,6 @@ changed; finding is the re-check's, not yours.
 - `pass: <path of the judge file>` after `land`, then your report: what you let
   through and why, never the Prediction. You write no page;
 - `round` after the notes are recorded, and `question: <the question for the
-  user>` when it stands;
+  human>` when it stands;
 - `evidence owed: <verify|reviewer> — <what>`;
 - `land stopped: <what land says>`.

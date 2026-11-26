@@ -1,6 +1,6 @@
 ---
 name: land
-description: Rewrite a plan's branch into the commits a reviewer reads and write their walkthroughs. Use only when the judge passes the work, or to land again after a round; never on the user's word alone.
+description: Rewrite a plan's branch into the commits a reviewer reads and write their walkthroughs. Use only when the judge passes the work, or to land again after a round; never on the human's word alone.
 ---
 
 # Land
@@ -39,7 +39,7 @@ changed, where, why; the change is `git log -p <base>..<branch>`.
 
 ## 2. Land it
 
-`CLI land <plan>`. It refuses and names what is wrong: a dirty tree (the user
+`CLI land <plan>`. It refuses and names what is wrong: a dirty tree (the human
 commits it to the branch or moves it away; nothing is stashed or dropped) or a
 shape that misses, repeats or invents a path. Fix the shape and run it again.
 
@@ -49,4 +49,4 @@ difference: keep it with `CLI land accept --note "<why>" <plan>`, or
 says so.
 
 Done when `land` printed the tip. If it stopped, return the stop as it is
-printed; a question from code is the user's.
+printed; a question from code is the human's.

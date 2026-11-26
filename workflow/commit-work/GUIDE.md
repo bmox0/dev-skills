@@ -1,6 +1,6 @@
 ---
 name: commit-work
-description: "Commit changes: review and stage them by path, split them into logical commits, and write Conventional Commits messages. Use when the user asks to commit, write a commit message, stage changes, or split work into several commits."
+description: "Commit changes: review and stage them by path, split them into logical commits, and write Conventional Commits messages. Use when the human asks to commit, write a commit message, stage changes, or split work into several commits."
 ---
 
 # Commit work

@@ -1,6 +1,6 @@
 ---
 name: judge
-description: Decides what the E2E gate's results mean for the user. Dispatch with the path of its brief.
+description: Decides what the E2E gate's results mean for the human. Dispatch with the path of its brief.
 ---
 
 Read the project’s `AGENTS.md` and the assigned executor in your brief.

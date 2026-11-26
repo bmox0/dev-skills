@@ -151,14 +151,15 @@ none
     cli('approve', plan)
     agents.write_text(presets.replace('gpt-custom', 'current-gpt'))
     assert json.loads(cli('executor', 'show', plan, '--provider', 'GPT', '--json'))['primary']['model'] == 'current-gpt'
-    cli('run', 'approve', plan, '--by', 'user', '--words', 'approve fixture run')
+    review = json.loads(cli('plan', 'review', plan, '--json'))
+    cli('plan', 'approve', plan, '--revision', review['revision'], '--by', 'Mina', '--words', 'approve fixture plan and run')
     agents.write_text('## Executors\n\n```toml\ninvalid TOML\n```\n')
     selected = json.loads(cli('executor', 'show', plan, '--provider', 'Claude', '--json'))
     assert selected['primary'] == {'model': 'opus-custom'}
     assert selected['secondary'] == {'model': 'sonnet-custom', 'effort': 'medium'}
     assert selected['source'] == 'approved run snapshot'
     refused = cli('executor', 'show', plan, '--provider', 'Missing', ok=False, code='executors."Missing"')
-    assert 'explicitly approve the changed run' in refused
+    assert 'renewed human approval' in refused
     # An approved snapshot without profiles is readable, but cannot invent executor assignments.
     state_file = plan.with_suffix('.json')
     saved_state = state_file.read_bytes()
@@ -169,10 +170,8 @@ none
     brief_without_profile = pathlib.Path(cli('brief', 'implementer', plan, '1').strip()).read_text()
     assert 'Executor model:' not in brief_without_profile
     state_file.write_bytes(saved_state)
-    summary = plan.with_suffix('.summary.md')
-    summary.write_text(f'Build [the plan]({plan.name}) and check the CLI.\n')
-    cli('summary', 'approve', plan, '--file', summary, '--by', 'user', '--words', 'approve fixture summary')
-    cli('build', 'start', plan, '--base', 'main')
+    cli('build', 'start', plan, '--base', 'main', ok=False, code='provider-required')
+    cli('build', 'start', plan, '--base', 'main', '--provider', 'GPT')
     def brief(kind, tier, *extra):
         path = pathlib.Path(cli('brief', kind, plan, *extra, '--provider', 'GPT').strip())
         text = path.read_text()
@@ -196,7 +195,6 @@ none
         args = shlex.split(next(line.removeprefix(prefix) for line in text.splitlines() if line.startswith(prefix)))
         result = command(*args)
         assert result.returncode == 0, result.stdout + result.stderr
-    cli('brief', 'implementer', plan, '1', ok=False, code='--provider')
     brief('implementer', 'secondary', '1')
     cli('phase', 'start', plan, '1')
     (root / 'src/a').write_text('built\n')

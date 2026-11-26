@@ -1,12 +1,18 @@
 # Explicit consent for throwaway fixtures; production approval tests use cli directly.
 approve_plan() {
-  local consent_plan="$1" consent_summary="${1%.md}.summary.md" validation
+  local consent_plan="$1" validation
   validation=$(cli approve "$@") || { printf '%s\n' "$validation"; return 1; }
   [ -f "${consent_plan%.md}.run.toml" ] || { printf '%s\n' "$validation"; return 0; }
-  cli run approve "$consent_plan" --by user --words 'Fixture run approved' || return
-  printf 'Build [this plan](%s) through its phases, Spec and checks. Limits are in the plan.\n' "$(basename "$consent_plan")" > "$consent_summary"
-  cli summary approve "$consent_plan" --file "$consent_summary" --by user --words 'Fixture summary approved' >/dev/null || return
+  local consent
+  consent=$(approve_revision "$consent_plan") || { printf '%s\n' "$consent"; return 1; }
+  printf '%s\n' "$consent" | sed -n '/^facts: /p'
   printf '%s\n' "$validation"
+}
+
+approve_revision() {
+  local revision
+  revision=$(cli plan review "$1" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])') || return
+  cli plan approve "$1" --revision "$revision" --by 'Fixture Human' --words 'Fixture plan and run approved'
 }
 
 report_phase() {

@@ -19,8 +19,8 @@ implementer cannot decide alone: the product decisions with a reason each, the
 interfaces where two phases meet, what is out, how it is checked. Implementers explore the code; omit mechanisms and file lists beyond territories.
 
 Its Result is a finished feature.
-Work that does not fit one plan becomes an epic only on the user's word:
-propose it with the reason, and the user decides (`runweld epic`).
+Work that does not fit one plan becomes an epic only on the human's word:
+propose it with the reason, and the human decides (`runweld epic`).
 
 ## Before writing
 
@@ -28,7 +28,7 @@ propose it with the reason, and the user decides (`runweld epic`).
   cause.
 - After a grill or a discussion, a prototype was offered. If not, offer one in a
   line: "A prototype? An HTML file, inside the app with real data, or code for
-  the logic?" (`runweld prototype`). The user may decline.
+  the logic?" (`runweld prototype`). The human may decline.
 - A secondary worker reads the affected code and returns paths and seams,
   including paths outside the repository that decisions refer to. For each
   territory the worker lists relevant Runweld commands, project instructions and
@@ -38,7 +38,7 @@ propose it with the reason, and the user decides (`runweld epic`).
 - Get Checks from `CLI run show <plan>`.
 - Write the plan in the project's document language from
   [environment-contract.md](references/environment-contract.md). Use the original
-  conversation language for user messages and the gate guide, per [SESSIONS.md](../../references/SESSIONS.md).
+  conversation language for human messages and the gate guide, per [SESSIONS.md](../../references/SESSIONS.md).
 
 ## The file
 
@@ -46,7 +46,7 @@ Use the run file's name with `.md`, written with Status `draft`. Use the task’
 A worked example: [example.md](references/example.md).
 
 ```markdown
-# Plan: <what the user gets, in a few words>
+# Plan: <what the human gets, in a few words>
 
 Status: <draft | approved | building | at the human gate | passed | a merge-request link | merged> · branch `<branch>` · base `<sha>`
 Grill: <done | skipped>
@@ -54,7 +54,7 @@ Prototype: <path, the chosen variant> | none
 
 ## Result
 
-<One sentence on the problem, then two or three lines: what the user can do when this plan is done.>
+<One sentence on the problem, then two or three lines: what the human can do when this plan is done.>
 
 ## Approach
 
@@ -81,7 +81,7 @@ Waits for: <phases, and the interface it uses from them> | nothing
 - Every phase: <the project's commands>, on its own territory while other phases run.
 - After all phases: <the full commands>; a review against the project's rules;
   e2e through <browser | simulator | curl | CLI>, <where it runs>, at <each
-  width: the prototype's and the user's real screen>.
+  width: the prototype's and the human's real screen>.
 - Gate: <small | normal> — <why, in one line>
 
 ## Done
@@ -98,7 +98,7 @@ Record `Grill: done` after a grill or `Grill: skipped` when omitted.
 Leave the field out when its history is unavailable.
 
 `## Spec` records lasting product rules, including decisions made without
-the user and rules the grill dropped or changed. Use an ADR for code structure.
+the human and rules the grill dropped or changed. Use an ADR for code structure.
 Choose the rule, ID, statement and reason from the settled decisions, following
 [FORMAT.md](../spec/references/FORMAT.md). Include the section even for bugs,
 with `none` when no rule changes.
@@ -121,25 +121,23 @@ Before showing it:
 - **The spec.** Run `CLI spec check <plan>` against the task's registered base.
 - **What e2e cannot do.** A Done use case e2e cannot reach with what the run file
   gives (`[run]` keys, `[checks].dev` and `url`, `[isolation]`), or one judged by
-  its look alone, is marked `you check`: the user checks it at the human gate.
+  its look alone, is marked `you check`: the human checks it at the human gate.
   What e2e needs goes in the run file's `[run]` keys, through
   `runweld run-file`; what the file lacks is `you check`.
 - **The gate level** follows
   [gate.md](../build/references/gate.md).
 
 Run `CLI approve <plan>` until validation passes; compilation records no consent.
-Show the proposed run, including executor presets, and obtain explicit approval:
-`CLI run approve <plan> --by <name> --words "<unchanged approval>"`.
-Reuse recorded authorization; never invent consent or re-ask.
+Use `CLI plan review <plan>` to show the complete plan, run configuration,
+revision and any changes since approval. Ask the human once to approve that
+proposal. Record their unchanged decision with the command printed by review:
+`CLI plan approve <plan> --revision <revision> --by <name> --words "<unchanged approval>"`.
+The approver is the acceptor unless the human explicitly delegates. Record
+that grant with `--acceptor <name> --authority "<unchanged grant>"`.
+Material edits require human approval of the new revision. Compile plan edits
+before recording consent. Prior execution progress is not part of the revision.
 
-Write a linked summary following [resume.example.md](references/resume.example.md),
-≤350 words in the original conversation language: Result, phases, Spec, checks and limits.
-Ask approval of that summary and record it:
-`CLI summary approve <plan> --file <summary> --by <name> --words "<unchanged approval>"`.
-For a designated acceptor also supply `--acceptor <name> --authority "<granted scope>"`.
-This sets Status to `approved` only with both current approvals. Changed run,
-plan or Spec needs the affected consent renewed; progress survives.
-
-**STOP.** Summary approval launches nothing. A subsequent instruction chooses
-herdr, a native independent session or manual handoff through
+**STOP.** Approval launches nothing. A separate start instruction chooses a
+handoff and authorizes `CLI build start <plan>`. See the
+[approval and resume example](references/resume.example.md) and
 [SESSIONS.md](../../references/SESSIONS.md).

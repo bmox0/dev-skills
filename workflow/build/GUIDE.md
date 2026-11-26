@@ -1,6 +1,6 @@
 ---
 name: build
-description: Build an approved plan — its branch, implementers run by the plan's graph, the E2E gate, then the human gate. Use when the user says build, with a plan file.
+description: Build an approved plan — its branch, implementers run by the plan's graph, the E2E gate, then the human gate. Use when the human says build, with a plan file.
 ---
 
 # Build
@@ -8,7 +8,7 @@ description: Build an approved plan — its branch, implementers run by the plan
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
 
-`build <plan>` starts on the separate handoff instruction in
+`CLI build start <plan>` starts on the separate handoff instruction in
 [SESSIONS.md](../../references/SESSIONS.md). The coordinator uses primary
 and never edits code. Select each worker's executor from the shared contract.
 
@@ -17,7 +17,9 @@ and never edits code. Select each worker's executor from the shared contract.
 Read the plan, its epic and the project's `AGENTS.md`.
 Use `runweld` as `CLI`. `CLI status` lists project runs. Report shared
 territories to the contact. Run `CLI build start <plan>` to reuse the task checkout.
-The command sets `building`. Every phase commits in the reported worktree.
+Supply `--provider NAME` when more than one is configured. The command sets
+`building`; repeating it shows the same active assignments and worktree.
+Every phase commits in that worktree.
 Give each worker that tree and the absolute plan path. See
 [workflow paths](../../references/WORKFLOW-PATHS.md) for history and setup.
 
@@ -40,8 +42,8 @@ start after the last phase. Relay any refusal to the implementer.
   meanwhile. `CLI owner <plan> <path>` names who holds a path: when no one
   does, `CLI grant <plan> <n> <path>`; otherwise pass the question to that
   phase. Answer a product call yourself, from the plan, its epic and what the
-  user said, and report to the designated contact; irreversible calls, deleting
-  data, sending outside, production, wait for the user through the designated
+  human said, and report to the designated contact; irreversible calls, deleting
+  data, sending outside, production, wait for the human through the designated
   contact; relay their words. Answer through the agreed channel; record it with `CLI decision`.
   Report persistent `index.lock`; never delete it blindly.
 - **Decided without you**: rulings and calls are `CLI decision` records, which
@@ -67,13 +69,13 @@ records its verdict with `CLI verdict` and returns:
 - `pass: <path>` and its report: the branch is landed. Go to 4.
 - `round`: `CLI round start <plan>` takes the judge's notes; run the round
   ([rounds.md](references/rounds.md)), then a fresh judge.
-- `question: <…>`, even after a round: run the round, ask the user, a fresh
+- `question: <…>`, even after a round: run the round, ask the human, a fresh
   judge with the answer.
 - `evidence owed: <verify|reviewer> — <what>`: the judge recorded it with
   `CLI verdict evidence-owed`. Follow `CLI status <plan>` for the reviewer
   brief, Verify cases, or the explicit E2E exception. Then run the judge again.
 - `land stopped: <…>`: the judge again. Code turns a stop that keeps coming
-  into a question to the user; `CLI brief judge --provider <provider>` refuses until `--note`
+  into a question to the human; `CLI brief judge --provider <provider>` refuses until `--note`
   holds their answer.
 
 A verdict that stops rounds says why in `CLI status`; it lands as a pass.
@@ -88,20 +90,20 @@ The command validates the guide, records it on `## Human gate`, sets `at the hum
 Send the printed guide verbatim and link to the current page, then wait for the
 designated contact by [SESSIONS.md](../../references/SESSIONS.md).
 
-On approval from the user or designated acceptor within granted authority:
+On acceptance from the plan approver or explicitly designated acceptor:
 `CLI accept <plan> --by <name> --words "<unchanged approval>"` binds it to the
 current page and sets `passed`. Run `runweld finish` when the instruction
 authorizes the configured ending; reuse existing authorization.
 
 ## 5. Notes and rounds
 
-From the first phase on, record the user's notes in their words:
+From the first phase on, record the human's notes in their words:
 `CLI note add --text "<…>" --cause <cause> <plan>`. Nothing starts on one; no
 running agent hears of it. The notes file is code's. At the gate, give each note
 a cause from the seven in [rounds.md](references/rounds.md), propose it, let the
-user correct it (`CLI note edit`), and mark its source against
+human correct it (`CLI note edit`), and mark its source against
 `<slug>.judge.md`'s Prediction when its round is done. A note changing
-the approach or leaving the territories is proposed as `task`; on the user’s
-confirmation, list it without building it. A round, on the user's word, builds
+the approach or leaving the territories is proposed as `task`; on the human’s
+confirmation, list it without building it. A round, on the human's word, builds
 every open note or a conflict at `finish` like a phase (reviewer using secondary),
 then the judge, dispatched through `CLI brief judge --provider <provider>` like every judge, which lands, and back to the gate.

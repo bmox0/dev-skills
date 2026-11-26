@@ -149,7 +149,7 @@ for w in order:
     i = g.find(w, at)
     assert i >= 0, w
     at = i
-assert "Prediction" not in g and "User's verdict" not in g
+assert "Prediction" not in g and "Human's verdict" not in g
 assert "[taken on" not in g and "unknown commit" not in g, g
 PY
 cli status "$plan" | grep -q Drift && fail "no drift after page"
@@ -334,7 +334,7 @@ sed '/\*\*Done 1\*\*/d' "$example" > "$input"
 printf '%s' "$(cat "$input")" > "$input"
 cli page "$plan" --guide "$(cat "$input")" --message "feat: guide" > "$output" || fail "normal page without the automated case: $(cat "$output")"
 cmp -s "$input" "$output" || fail "inline guide was changed"
-cli accept "$plan" --by user --words "Accept and defer D1" >/dev/null || fail "accept guide"
+cli accept "$plan" --by 'Fixture Human' --words "Accept and defer D1" >/dev/null || fail "accept guide"
 cli note add "$plan" --text "Show why export stops" --cause bug >/dev/null || fail "new feedback"
 cli round start "$plan" >/dev/null || fail "start feedback round"
 out=$(cli page "$plan" --show); rc=$?
@@ -358,7 +358,7 @@ cli plan status "$plan" building >/dev/null || fail "prepare another page"
 render > "$output" || fail "page after feedback round: $(cat "$output")"
 cmp -s "$input" "$output" || fail "the new handoff describes the revised build"
 cli plan status "$plan" passed >/dev/null && fail "the old acceptance cannot authorize a new page"
-cli accept "$plan" --by user --words "Accept revised guide" >/dev/null || fail "accept revised guide"
+cli accept "$plan" --by 'Fixture Human' --words "Accept revised guide" >/dev/null || fail "accept revised guide"
 
 # build#human-check-guide: historical plain-note records keep their valid acceptance.
 python3 -B - "$pipeline" "$plan" <<'PY' || fail "prepare a historical page and acceptance"

@@ -1,6 +1,6 @@
 # Vocabulary
 
-Words shared by runweld users.
+Terms used in Runweld.
 
 ## Model profiles
 
@@ -12,11 +12,13 @@ prototypes, implementation, e2e and repeat reviews.
 
 ## Roles
 
-**Orchestrator.** The user or agent assigned to coordinate a run and make
-decisions within the authority the user grants.
+**Human.** The person directing the task and granting consent.
+
+**Orchestrator.** The human or agent assigned to coordinate a run and make
+decisions within the authority the human grants.
 
 **Build session.** The session executing an approved plan, communicating with
-the user or designated orchestrator.
+the human or designated orchestrator.
 
 **Implementer.** A secondary agent in a clean context. It builds
 one phase, a list of findings, or a round's notes.
@@ -30,8 +32,8 @@ the grill and returns the rules the task touches, with reasons and contradiction
 ## The work
 
 **Run file.** `<slug>.run.toml`, written before the plan with
-`runweld run-file`: what the run may do, its checks and how it ends, asked
-once. `approve` validates; `run approve` records consent and freezes presets.
+`runweld run-file`: permissions, checks and ending. `approve` validates; `plan approve` records
+the human decision and freezes the revision.
 
 **CLI.** `runweld`: keeps each plan's state, renders the plan,
 notes, judge file and gate page, runs the checks, holds the caps, lands and
@@ -39,8 +41,8 @@ finishes as the run file says. Agents decide; it manages.
 
 **Plan.** The file a change is built from, one screen: Result,
 Approach, Out of scope, Phases, Checks, Done, Spec, and the prototype's link. Its
-result is a finished feature. Run and linked ≤350-word summary need explicit
-approval; summary approval launches nothing.
+result is a finished feature. `plan review` displays the plan and run together.
+Approval of that revision starts nothing. `build start` is separate.
 
 **Phase.** One task in a plan, for one implementer: what to build and why, its
 territory, what it waits for, its status.
@@ -58,9 +60,9 @@ the full commands after all phases, and how e2e drives the system.
 
 **Done.** The plan's use cases, each "do this → see that". The E2E gate drives
 them; the human gate shows them with their results. One marked `you check`,
-which e2e cannot reach or which is judged by its look alone, is the user's.
+which e2e cannot reach or which is judged by its look alone, is the human's.
 
-**Epic.** Several plans, only on the user's word: their shared decisions and
+**Epic.** Several plans, only on the human's word: their shared decisions and
 the order they go in.
 
 ## Checks at three levels
@@ -76,12 +78,12 @@ runs the checks and holds the caps.
 **The judge.** The `judge` agent, primary, after the E2E gate. It finds nothing
 itself: it reads the gate's results and decides each Open entry and Convention
 (let through, a round with a cause, or a question), writes its prediction of
-the user's notes, and runs `land`.
+the human's notes, and runs `land`.
 
-**The human gate.** Acceptance of the result, after the judge, by the user
+**The human gate.** Acceptance of the result, after the judge, by the human
 or designated acceptor within granted authority. The decisions made
 without them, the judge's report, the use cases with the machine's results and
-the landed commits: the user tries the app and reads the commits, and a
+the landed commits: the human tries the app and reads the commits, and a
 **round**, on their word, builds the open **notes** in the plan's notes file.
 Each note carries a **cause** and, once done, its source against the judge's
 prediction. `accept --by --words` binds approval to the current page and sets `passed`;

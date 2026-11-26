@@ -180,10 +180,8 @@ none
     plan.write_text(draft)
     run(cli, "spec", "check", plan, cwd=prefix)
     run(cli, "approve", plan, cwd=prefix)
-    run(cli, "run", "approve", plan, "--by", "Tester", "--words", "Approve the run")
-    summary = plan.with_suffix(".summary.md")
-    summary.write_text(f"Review [this plan]({plan.name}) and its checks.\n")
-    run(cli, "summary", "approve", plan, "--file", summary, "--by", "Tester", "--words", "Approve the plan")
+    review = json.loads(run(cli, "plan", "review", plan, "--json"))
+    run(cli, "plan", "approve", plan, "--revision", review["revision"], "--by", "Tester", "--words", "Approve the plan and run")
     stamp = (data / "ready").stat().st_mtime_ns
     run(cli, "build", "start", plan)
     run(cli, "phase", "start", plan, "1")

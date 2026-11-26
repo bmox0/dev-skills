@@ -1,17 +1,17 @@
 ---
 name: browser-test
-description: Use when a change has to be checked in the running app — clicking through a flow, filling a form, reading console errors or failed requests, recording WebSocket frames, or taking a screenshot. Runs the use cases as one Playwright scenario in a visible, long-lived tab the user can watch and sign in to; single commands dig into what failed. Drives a web app or an Electron build over CDP.
+description: Use when a change has to be checked in the running app — clicking through a flow, filling a form, reading console errors or failed requests, recording WebSocket frames, or taking a screenshot. Runs the use cases as one Playwright scenario in a visible, long-lived tab the human can watch and sign in to; single commands dig into what failed. Drives a web app or an Electron build over CDP.
 ---
 
 # Browser Test
 
 The web e2e tool: `runweld verify` drives a plan's use cases through it.
 
-One long-lived tab, driven by `tab.mjs`. The browser runs detached on its own profile with a CDP port, in a window the user can watch; the tab, its session and `localStorage` survive between commands and between sessions. A check is a scenario: the whole Done as one Playwright file, run in that tab in one call. Single commands are for digging into what the scenario could not settle.
+One long-lived tab, driven by `tab.mjs`. The browser runs detached on its own profile with a CDP port, in a window the human can watch; the tab, its session and `localStorage` survive between commands and between sessions. A check is a scenario: the whole Done as one Playwright file, run in that tab in one call. Single commands are for digging into what the scenario could not settle.
 
 ## A check is a scenario
 
-1. **`runweld browser-test up <url>`**, the url from the `**Dev server.**` line in the project's `AGENTS.md`; the server must already run. Where the login is the user's, ask them to sign in in that window; the session stays in the profile.
+1. **`runweld browser-test up <url>`**, the url from the `**Dev server.**` line in the project's `AGENTS.md`; the server must already run. Where the login is the human's, ask them to sign in in that window; the session stays in the profile.
 2. **`runweld browser-test map main`** — the controls a user can reach, one line each: `button "Export"`, `searchbox "Search orders"`, `link "ORD-1001" … "ORD-1025" (25 alike)`. Take selectors from it: `role=button[name='Export']`. Map again on each new screen.
 3. **Write the whole Done as one file**, a step per use case, and edit it with the file editor:
 
@@ -27,7 +27,7 @@ export default async ({page, step, expect, net, errors, seen, shot, size}) => {
 }
 ```
 
-4. **`runweld browser-test run done.mjs`** — one line per step, at 250 ms per action while the window is up, so the user can follow it; `--slow 0` when nobody watches.
+4. **`runweld browser-test run done.mjs`** — one line per step, at 250 ms per action while the window is up, so the human can follow it; `--slow 0` when nobody watches.
 5. **Dig into what is not `ok` by hand**, from where the run left the tab, then fix the step and `runweld browser-test run done.mjs --only 3`.
 
 `page` is the live tab with Playwright's API. `expect(fn, expected, label)` polls `fn` for 3 s and, when it fails, prints the states it saw; `net()` and `errors()` are this step's requests and console errors; `seen(locator)` is below; `size(w, h)` sets the width for the rest of the run; a step's return value is printed as its evidence.
@@ -40,7 +40,7 @@ Each step ends one of three ways. `ok`. `FAILED` — the app did something else,
 
 **Click as the user does.** Playwright's click refuses an element something covers, and the run reports that as FAILED. A click that only `el.click()` in `eval` gets through is a failed use case: the user cannot do it.
 
-**The user may be watching.** They see what no check looks for — a form that works and looks wrong. Keep the window up while the scenario runs.
+**The human may be watching.** They see what no check looks for — a form that works and looks wrong. Keep the window up while the scenario runs.
 
 ## Single commands
 

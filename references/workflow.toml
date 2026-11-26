@@ -32,7 +32,7 @@ inputs = ["workflow/plan/GUIDE.md"]
 
 [stages.plan.references]
 "workflow/plan/references/example.md" = "See a completed plan"
-"workflow/plan/references/resume.example.md" = "Write the linked summary"
+"workflow/plan/references/resume.example.md" = "See the human approval, start and resume commands"
 "workflow/plan/references/environment-contract.md" = "Read the project's environment instructions"
 "workflow/run-file/GUIDE.md" = "Configure this task's run"
 "workflow/run-file/references/project-config.md" = "Read the project defaults"

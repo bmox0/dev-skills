@@ -74,7 +74,7 @@ names it; otherwise it is an Observation.
 
 - A different order of work, or a different split into commits.
 - Anything the plan or the epic decided. A decision that looks wrong goes to
-  the user as a question, not into the lists.
+  the human as a question, not into the lists.
 - A finding an earlier pass closed.
 - Formatting a tool enforces.
 - The author's stated rationale. Judge the code.

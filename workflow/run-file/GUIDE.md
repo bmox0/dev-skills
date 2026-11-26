@@ -16,7 +16,7 @@ The run records agreed permissions, checks and ending. Use `runweld` as
 2. **Snapshot.** A task starts with the
    [project configuration](references/project-config.md) and locked release.
    Verify the pair with `CLI executor show --provider <provider>`.
-3. **Agree the ending.** Read the draft. Record the user's local merge method or
+3. **Agree the ending.** Read the draft. Record the human's local merge method or
    merge request and target in `[finish]`. Ask once for missing choices and
    task-specific fixtures or accounts. Keep choices already given.
 4. **Secrets.** For each new secret, in the step 3 message when an answer
@@ -24,7 +24,7 @@ The run records agreed permissions, checks and ending. Use `runweld` as
    stays as written.
 5. **Check.** `CLI run check <plan path>` until it is silent: the file is done.
 
-Then `runweld plan` validates and asks explicit run approval with
-`CLI run approve <plan> --by <name> --words "<unchanged approval>"`, then summary
-approval. After approval readers use the frozen snapshot; changing it requires
-renewed run and summary consent, not compilation alone.
+The planner presents this configuration together with the complete plan using
+`CLI plan review <plan>`. One human approval binds both at the displayed
+revision. Approved readers use the frozen snapshot. A material change requires
+another review and approval, even if the plan itself did not change.

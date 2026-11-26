@@ -150,13 +150,12 @@ Waits for: nothing
         run_file.write_text(snapshot)
         run(runweld, "approve", path, cwd=home)
         skill.unlink()
+        revision = json.loads(run(runweld, "plan", "review", path, "--json"))["revision"]
+        approval = ("plan", "approve", path, "--revision", revision, "--by", "Fixture Human", "--words", "Approve the plan and run")
         run_file.write_text(unpinned)
-        assert "[workflow]" in run(runweld, "run", "approve", path, "--by", "User", "--words", "Approve this run", ok=False)
+        assert "[workflow]" in run(runweld, *approval, ok=False)
         run_file.write_text(snapshot)
-        run(runweld, "run", "approve", path, "--by", "User", "--words", "Approve this run")
-        summary = path.with_suffix(".summary.md")
-        summary.write_text(f"Review [this plan]({path.name}) and its checks.\n")
-        run(runweld, "summary", "approve", path, "--file", summary, "--by", "User", "--words", "Approve summary")
+        run(runweld, *approval)
         return path
 
     a_plan, b_plan = make_plan(a), make_plan(b)
@@ -205,7 +204,7 @@ Waits for: nothing
         run(runweld, "land", plan)
         guide = "Open tracked.\n\n#### Checks\n- **Done 1** Read tracked → the task's change.\n\n#### Decisions\n- —"
         run(runweld, "page", plan, "--guide", guide, *(("--message", "Task merge request") if merge_request else ()))
-        run(runweld, "accept", plan, "--by", "user", "--words", "Accept result")
+        run(runweld, "accept", plan, "--by", "Fixture Human", "--words", "Accept result")
 
     accepted(a, a_plan)
     accepted(b, b_plan)

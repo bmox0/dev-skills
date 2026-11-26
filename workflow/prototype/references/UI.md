@@ -1,12 +1,12 @@
 # UI Prototype
 
 Several radically different UI variants on one route, switched from a
-floating bottom bar, gated by a `?variant=` URL param on the page the user
+floating bottom bar, gated by a `?variant=` URL param on the page the human
 named. Its real data and fetching stay; only the rendered subtree swaps.
 
 ## Where the variants go
 
-On the page the user named, or, when the surface is new, a throwaway route
+On the page the human named, or, when the surface is new, a throwaway route
 following the project's own routing convention, named so it's obviously a
 prototype (e.g. `prototype` in the path). Either way, the same `?variant=`
 param and the same floating bar.
@@ -15,7 +15,7 @@ param and the same floating bar.
 
 1. **State the question**, one line: "Three variants of the settings page,
    switchable via `?variant=`, on `/settings`."
-2. **Generate the variants** the user named, at most 5. Each must fit the
+2. **Generate the variants** the human named, at most 5. Each must fit the
    page's purpose and data, use the project's own component library, and
    export a clear name (`VariantA`, `VariantB`...). They must be
    **structurally different** — layout, information hierarchy, primary

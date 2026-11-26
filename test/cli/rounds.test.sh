@@ -226,7 +226,7 @@ cli land "$plan" >/dev/null || fail "stopped round remains landable"
 cli page "$plan" --guide $'Open the stopped proposal.\n\n#### Checks\n\n- **Done 3** Run e → See f.\n\n#### Decisions\n\n- Decide whether to take d1 in a human round.' --message "stopped round" >/dev/null || fail "stopped round page"
 assert_contains "$(sed -n '/^## Human gate/,$p' "$plan")" "d1" "build#page-from-records: stopped notes stay visible at acceptance" || exit 1
 cli note add "$plan" --text "user round" --cause bug >/dev/null
-cli round start "$plan" | grep -q "(user)" || fail "after a stop the user's round is the user's"
+cli round start "$plan" | grep -q "(human)" || fail "after a stop the user's round is the user's"
 c=$(commit u1)
 cli round report "$plan" --became x --commit "$c" >/dev/null
 cli note edit "$plan" 7 --source missed >/dev/null
@@ -343,12 +343,12 @@ assert_contains "$out" "fix:" "the diagnostic explains how to restore the judge 
 json 'assert c["verdicts"][-1].get("answer") is None' || fail "the answer was recorded before validating the judge file"
 mv "$judge.saved" "$judge"
 b=$(cli brief judge --note "the user said blue" "$plan") || fail "brief judge after an answer"
-grep -q "^Case: after the user's answer" "$b" && grep -q "2026-11-16-r.judge.md" "$b" && grep -q "which colour?" "$b" && grep -q "the user said blue" "$b" || fail "the answer brief names the case, the judge file, the question and the answer"
+grep -q "^Case: after the human's answer" "$b" && grep -q "2026-11-16-r.judge.md" "$b" && grep -q "which colour?" "$b" && grep -q "the user said blue" "$b" || fail "the answer brief names the case, the judge file, the question and the answer"
 # the question and its answer stay in every judge brief until the next verdict is recorded
 cli brief judge --note "the user said blue" "$plan" >/dev/null || fail "the same answer briefs again"
 for n in "evidence recorded" ""; do
   if [ -n "$n" ]; then b=$(cli brief judge --note "$n" "$plan"); else b=$(cli brief judge "$plan"); fi || fail "a brief after the answer, note '$n'"
-  grep -q "^Case: after the user's answer" "$b" && grep -q "which colour?" "$b" && grep -q "The user's answer: the user said blue" "$b" || fail "the question and the recorded answer stay in the brief, note '$n'"
+  grep -q "^Case: after the human's answer" "$b" && grep -q "which colour?" "$b" && grep -q "The human's answer: the user said blue" "$b" || fail "the question and the recorded answer stay in the brief, note '$n'"
 done
 cli verdict round "$plan" --report r --note "make it greener" feel-ui "${vfirst[@]}" >/dev/null || fail "a verdict after the answer"
 cli round start "$plan" >/dev/null || fail "a round after the answer"
