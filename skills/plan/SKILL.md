@@ -10,9 +10,9 @@ Read shared `AGENTS.md` and the executor contract:
 
 Planning uses primary; research helpers use secondary. This session plans and never edits code.
 
-Use `ds` as `CLI` for installed workflows, or
+Use `runweld` as `CLI` for installed workflows, or
 `python3 "<this skill's directory>/../build/pipeline.py"` for legacy plugin runs.
-For ds, [enter or resume the task](../../references/WORKFLOW-PATHS.md)
+For runweld, [enter or resume the task](../../references/WORKFLOW-PATHS.md)
 before planning. Use `CLI status <plan>` once its plan exists.
 
 A plan is always a file, about 1000 words. It holds only what an
@@ -44,7 +44,7 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
 
 ## The file
 
-Use the run file's name with `.md`, written with Status `draft`. For a ds
+Use the run file's name with `.md`, written with Status `draft`. For a runweld
 task, use its branch and base. For legacy only, the base is `—` until build.
 A worked example: [example.md](references/example.md).
 

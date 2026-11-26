@@ -44,7 +44,7 @@ from collections import namedtuple
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-WALK_DIRS = ("skills", "agents", "references", "ds-cli-skill")
+WALK_DIRS = ("skills", "agents", "references", "runweld")
 ALLOWLIST_PATH = Path(__file__).resolve().parent / "link-allow.txt"
 BUDGETS_PATH = Path(__file__).resolve().parent / "word-budgets.txt"
 SKILLS_DIR = REPO_ROOT / "skills"
@@ -195,8 +195,6 @@ def check_r3(path, lineno, line, findings, allow_index, allow_matched):
     tokens = [m.group(0) for m in DS_TOKEN_RE.finditer(line)]
     tokens += [m.group(0) for m in LEGACY_WORD_RE.finditer(line)]
     for token in tokens:
-        if token == "ds-cli-skill":
-            continue
         idxs = allow_index.get((path_key, lineno, token))
         if idxs:
             for i in idxs:
@@ -276,7 +274,7 @@ def check_frontmatter(path, expected_name, findings):
 
 
 def check_frontmatters(findings):
-    standalone = REPO_ROOT / "ds-cli-skill/SKILL.md"
+    standalone = REPO_ROOT / "runweld/SKILL.md"
     if standalone.is_file():
         check_frontmatter(standalone, standalone.parent.name, findings)
     for path in sorted(SKILLS_DIR.glob("*/SKILL.md")):

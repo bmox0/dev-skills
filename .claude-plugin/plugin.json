@@ -1,11 +1,11 @@
 {
   "name": "dev-skills",
   "version": "7.1.0",
-  "description": "Skills and agents for Claude Code and Codex that take a change from discussion to merge: a plan file, phases built by subagents, a review and an e2e check, then human approval.",
+  "description": "Runweld: a deterministic development pipeline for coding agents.",
   "author": {
     "name": "bmox0"
   },
-  "repository": "https://github.com/bmox0/dev-skills",
+  "repository": "https://github.com/bmox0/runweld",
   "license": "MIT",
   "keywords": [
     "workflow",

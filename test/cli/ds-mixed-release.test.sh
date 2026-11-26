@@ -8,7 +8,7 @@ sandbox=$(mktemp_dir)
 sandbox=$(cd "$sandbox" && pwd -P)
 export PATH="$sandbox/bin:$PATH"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-cli() { ds "$@"; }
+cli() { "$launcher" "$@"; }
 
 # distribution#project-lock: use a preceding source or model its strict three-field contract without Git history.
 preceding=${DS_TEST_PRECEDING:-$sandbox/preceding}
@@ -35,16 +35,21 @@ for name, replacements in {
     path.write_text(code)
 PY
 fi
-"$preceding/scripts/install-ds" --prefix "$sandbox" >/dev/null
-a=$(ds --version)
+previous_command=runweld
+if [[ ! -f "$preceding/scripts/install-runweld" ]]; then
+  previous_command=ds
+fi
+launcher="$sandbox/bin/$previous_command"
+"$preceding/scripts/install-$previous_command" --prefix "$sandbox" >/dev/null
+a=$(cli --version)
 bundle="$sandbox/lib/dev-skills/releases/$a"
 cd "$sandbox/project with spaces"
 git init -qb main
 git commit --allow-empty -qm base
-ds init --non-interactive --provider Test --primary-model main --secondary-model helper >/dev/null
+cli init --non-interactive --provider Test --primary-model main --secondary-model helper >/dev/null
 previous=(previous-draft previous-active previous-plan previous-repair previous-adopt)
 for id in "${previous[@]}"; do
-  ds task start "$id" >/dev/null
+  cli task start "$id" >/dev/null
 done
 plan="$PWD/.ds/workflow/plans/previous-active.md"
 base=$(git rev-parse HEAD)
@@ -88,13 +93,13 @@ PLAN
 for id in previous-plan previous-repair previous-adopt; do
   sed "s|ds/previous-active|ds/$id|" "$plan" > "${plan%/*}/$id.md"
 done
-ds approve "${plan%/*}/previous-repair.md" >/dev/null
+cli approve "${plan%/*}/previous-repair.md" >/dev/null
 rm "${plan%/*}/previous-repair.json"
 sed 's/Status: draft/Status: building/' "${plan%/*}/previous-adopt.md" > "$sandbox/adopt.md"
 mv "$sandbox/adopt.md" "${plan%/*}/previous-adopt.md"
 approve_plan "$plan" >/dev/null
-ds build start "$plan" >/dev/null
-ds phase start "$plan" 1 >/dev/null
+cli build start "$plan" >/dev/null
+cli phase start "$plan" 1 >/dev/null
 cp "${plan%.md}.json" "$sandbox/approved.json"
 record_status() {
   local id="$1" destination="$2" format="$3" code=0
@@ -109,7 +114,7 @@ record_status() {
 
 check_status() {
   local id="$1" expected="$2" format="$3" stream
-  record_status "$id" "$sandbox/$id.$format.actual" "$format" ds
+  record_status "$id" "$sandbox/$id.$format.actual" "$format" cli
   for stream in code out err; do
     if ! diff -u "$expected.$stream" "$sandbox/$id.$format.actual.$stream"; then
       echo "distribution#project-lock run#task-worktree: $id $format $stream differs from pinned native scoped inventory" >&2
@@ -134,14 +139,15 @@ for format in text json; do
 done
 cp "$sandbox/active.md" "$plan"
 
-"$repo_root/scripts/install-ds" --prefix "$sandbox" >/dev/null
-ds update >/dev/null
-b=$(ds --version)
+"$repo_root/scripts/install-runweld" --prefix "$sandbox" >/dev/null
+launcher="$sandbox/bin/runweld"
+cli update >/dev/null
+b=$(cli --version)
 [[ "$a" != "$b" ]]
-ds task start current >/dev/null
+cli task start current >/dev/null
 cp .ds/ds.lock "$sandbox/lock"
 
-ds status --json > "$sandbox/inventory"
+cli status --json > "$sandbox/inventory"
 bundle_b="$sandbox/lib/dev-skills/releases/$b"
 for format in text json; do
   record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/skills/build/pipeline.py"
@@ -205,8 +211,8 @@ for state in draft active unreadable repair; do
   case "$state" in
     active)
       approve_plan "$same_plan" >/dev/null
-      ds build start "$same_plan" >/dev/null
-      ds phase start "$same_plan" 1 >/dev/null
+      cli build start "$same_plan" >/dev/null
+      cli phase start "$same_plan" 1 >/dev/null
       ;;
     unreadable)
       printf '%s\n' 'not json' > "${same_plan%.md}.json"
@@ -229,11 +235,11 @@ assert_contains "$(cat "$sandbox/current-corrupt.native.err")" "$current_record"
 check_status current "$sandbox/current-corrupt.native" json
 cp "$sandbox/current-record.json" "$current_record"
 mv "$bundle_b" "$sandbox/missing-b"
-assert_contains "$(cd .ds/workflow/trees/previous-active && ds status --current --json)" "$a" 'distribution#project-lock: pinned current guidance does not require the project release'
+assert_contains "$(cd .ds/workflow/trees/previous-active && cli status --current --json)" "$a" 'distribution#project-lock: pinned current guidance does not require the project release'
 mv "$sandbox/missing-b" "$bundle_b"
 printf 'damaged fixture\n' > "$bundle/references/SESSIONS.md"
 for id in "${previous[@]}"; do
-  if output=$(cd ".ds/workflow/trees/$id" && ds status --current --json 2>&1); then
+  if output=$(cd ".ds/workflow/trees/$id" && cli status --current --json 2>&1); then
     echo "distribution#project-lock: $id accepted a damaged pinned release" >&2
     exit 1
   fi
@@ -242,7 +248,7 @@ for id in "${previous[@]}"; do
   cmp ".ds/workflow/tasks/$id.json" "$sandbox/$id.json"
 done
 mv "$bundle" "$sandbox/damaged-a"
-if output=$(cd .ds/workflow/trees/previous-repair && ds status --current 2>&1); then
+if output=$(cd .ds/workflow/trees/previous-repair && cli status --current 2>&1); then
   echo 'distribution#project-lock: scoped repair guidance cannot use a different release' >&2
   exit 1
 fi
@@ -252,13 +258,13 @@ cmp "${plan%.md}.json" "$sandbox/approved.json"
 cmp .ds/ds.lock "$sandbox/lock"
 
 # Reinstall A for its exact bytes, then B to restore the shared router and default.
-"$preceding/scripts/install-ds" --prefix "$sandbox" >/dev/null
+"$preceding/scripts/install-$previous_command" --prefix "$sandbox" >/dev/null
 cmp .ds/ds.lock "$sandbox/lock"
-cmp "$preceding/bin/ds" "$sandbox/bin/ds"
+cmp "$preceding/bin/$previous_command" "$sandbox/bin/$previous_command"
 assert_eq "$a" "$(cat "$sandbox/lib/dev-skills/default")"
-"$repo_root/scripts/install-ds" --prefix "$sandbox" >/dev/null
+"$repo_root/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 cmp .ds/ds.lock "$sandbox/lock"
-cmp "$repo_root/bin/ds" "$sandbox/bin/ds"
+cmp "$repo_root/bin/runweld" "$sandbox/bin/runweld"
 assert_eq "$b" "$(cat "$sandbox/lib/dev-skills/default")"
 for id in "${previous[@]}"; do
   check_status "$id" "$sandbox/$id.json.native" json

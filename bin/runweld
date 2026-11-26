@@ -59,7 +59,7 @@ def main():
                 if project is not None:
                     release = read_lock(project)
                     if release is None and (project / ".ds/config.toml").exists() and args and args.group not in ("init", "help"):
-                        raise ReleaseError(f"{project}/.ds/ds.lock is missing; run `ds init` to finish setup or restore the lock")
+                        raise ReleaseError(f"{project}/.ds/ds.lock is missing; run `runweld init` to finish setup or restore the lock")
             if release is None:
                 release = installed_default(store)
         engine = verify_release(store, release) / PROGRAM
@@ -67,7 +67,7 @@ def main():
             os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", CURRENT_STATUS, str(engine), str(scoped), *argv])
         os.execv(sys.executable, [sys.executable, str(engine), *argv])
     except ReleaseError as error:
-        print(f"ds: {error}", file=sys.stderr)
+        print(f"runweld: {error}", file=sys.stderr)
         return 1
 
 
@@ -75,4 +75,4 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except (ImportError, OSError, SyntaxError) as error:
-        sys.exit(f"ds: cannot start the installed launcher ({error}); reinstall dev-skills")
+        sys.exit(f"runweld: cannot start the installed launcher ({error}); reinstall Runweld")

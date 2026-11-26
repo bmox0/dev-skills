@@ -722,7 +722,7 @@ def legacy_key(project, checkout):
 def adopt_legacy(project):
     from ds_release import worktrees
     aliases = workflow_subdir(workflow_dir(project) / "legacy")
-    collision = lambda path: Refuse("migration-collision", f"{path} already exists", "move the conflicting item aside and rerun ds init")
+    collision = lambda path: Refuse("migration-collision", f"{path} already exists", "move the conflicting item aside and rerun runweld init")
     for checkout, _ in worktrees(project):
         if not checkout.is_dir():
             continue
@@ -750,7 +750,7 @@ def adopt_legacy(project):
                 raise collision(source)
             continue
         if git("ls-files", "--", LEGACY_DIR, cwd=checkout).stdout:
-            raise Refuse("migration-tracked", f"{source} contains tracked files", "untrack private workflow files before retrying ds init")
+            raise Refuse("migration-tracked", f"{source} contains tracked files", "untrack private workflow files before retrying runweld init")
         aliases.mkdir(parents=True, exist_ok=True)
         with contextlib.ExitStack() as locks:
             # Rename preserves the lock inodes held by previously issued legacy commands.
@@ -759,7 +759,7 @@ def adopt_legacy(project):
                 fcntl.flock(fd, fcntl.LOCK_EX)
             if source.stat().st_dev != aliases.stat().st_dev:
                 raise Refuse("migration-filesystem", f"cannot move {source} to {dest} across filesystems",
-                             "keep the original history and put the project and its linked worktree on one filesystem before retrying ds init")
+                             "keep the original history and put the project and its linked worktree on one filesystem before retrying runweld init")
             if dest.is_symlink() and dest.readlink() == source:
                 dest.unlink()
             elif os.path.lexists(dest):
@@ -1498,7 +1498,7 @@ def executor_selection(plan, provider):
         if source == "approved run snapshot":
             fix = "ask the user to add this provider's primary/secondary profiles to the run and explicitly approve the changed run"
         elif source.endswith("/.ds/config.toml"):
-            fix = "run `ds init --provider NAME` to add this provider's primary/secondary profiles"
+            fix = "run `runweld init --provider NAME` to add this provider's primary/secondary profiles"
         else:
             fix = "add this provider's primary/secondary profiles to AGENTS.md ## Executors"
         raise Refuse("executor-missing", f"executors.{json.dumps(provider, ensure_ascii=False)} is missing from {source}", fix)
@@ -1606,7 +1606,7 @@ def run_diags(v, *, project=False):
         try:
             release_pin(v, "the run file")
         except ReleaseError:
-            out.append(("run-bad-release", "[workflow] must contain only an exact release ID at release", "use the release recorded by ds when it created the run"))
+            out.append(("run-bad-release", "[workflow] must contain only an exact release ID at release", "use the release recorded by runweld when it created the run"))
     if project or "executors" in v:
         out += executor_diags(v.get("executors"))
     if "setup" in v:
@@ -1643,7 +1643,7 @@ def run_diags(v, *, project=False):
     if project and isinstance(finish, dict) and "target" in finish and not single_line(finish["target"]):
         out.append(("run-bad-target", "[finish] target must be a nonblank single-line branch", "set a target branch"))
     if project and isinstance(iso, dict) and iso.get("worktree") is not True:
-        out.append(("run-worktree-required", "[isolation] worktree must be true for ds tasks", "set worktree = true"))
+        out.append(("run-worktree-required", "[isolation] worktree must be true for runweld tasks", "set worktree = true"))
     if isinstance(checks, dict) and isinstance(iso, dict):
         for k, x in checks.items():
             if project and type_ok(x, RUN_SECTIONS["checks"].get(k, "str")) and any(
@@ -1776,7 +1776,7 @@ def read_project_config(path, *, optional=False):
     if text is None:
         if optional:
             return None, None
-        raise Refuse("project-not-initialized", f"{path} is missing", "run `ds init` in this project")
+        raise Refuse("project-not-initialized", f"{path} is missing", "run `runweld init` in this project")
     try:
         values = tomllib.loads(text)
     except tomllib.TOMLDecodeError as error:
@@ -1873,7 +1873,7 @@ def init_settings(project, text, current, a, interactive):
 def init_agents(text):
     start, end = "<!-- ds:begin -->", "<!-- ds:end -->"
     nl = "\r\n" if "\r\n" in text else "\n"
-    block = nl.join((start, "For dev-skills, use the `ds-cli-skill` or run `ds help agents`.", end))
+    block = nl.join((start, "For Runweld, use the `runweld` skill or run `runweld help agents`.", end))
     markers = list(re.finditer(r"(?m)^<!-- ds:(?:begin|end) -->(?=\r?$)", text))
     if not markers:
         return text + (nl if text.endswith("\n") else nl * 2 if text else "") + block + nl
@@ -1903,7 +1903,7 @@ def add_init_profile(path, text, provider, pair):
                 pass
         cursor += len(statement)
     raise Refuse("project-executor-format", f"cannot add this provider without rewriting {path}",
-                 "add the provider with primary and secondary profiles in the executors table and run ds init again")
+                 "add the provider with primary and secondary profiles in the executors table and run runweld init again")
 
 
 def init_ignore(project, text):
@@ -1938,7 +1938,7 @@ def cmd_init(bundle, a):
     from ds_release import ReleaseError, project_root, read_data, read_lock, write_lock
     project = project_root(Path.cwd())
     if project is None:
-        raise Refuse("no-repo", "the current directory is not in a Git project", "run `ds init` in a Git checkout")
+        raise Refuse("no-repo", "the current directory is not in a Git project", "run `runweld init` in a Git checkout")
     common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=project).stdout.strip())
     with (common / "ds-init.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -1949,7 +1949,7 @@ def cmd_init(bundle, a):
         previous, current = read_project_config(config, optional=True)
         locked_release = read_lock(project)
         if locked_release is not None and locked_release != bundle.name:
-            raise ReleaseError(f"{project} locks {locked_release}; run `ds init` without a release override")
+            raise ReleaseError(f"{project} locks {locked_release}; run `runweld init` without a release override")
         agents_before, ignore_before = (read_data(path, str) for path in (agents, ignore))
         agents_after = init_agents(agents_before or "")
         ignore_after = init_ignore(project, ignore_before or "")
@@ -1994,7 +1994,7 @@ def cmd_init(bundle, a):
 
         for path, before in ((config, previous), (agents, agents_before), (ignore, ignore_before)):
             if read_data(path, str) != before:
-                raise Refuse("project-init-changed", f"{path} changed during initialization", "rerun `ds init`")
+                raise Refuse("project-init-changed", f"{path} changed during initialization", "rerun `runweld init`")
         config.parent.mkdir(exist_ok=True)
         write_init_text(config, previous, updated)
         write_init_text(agents, agents_before, agents_after)
@@ -2012,7 +2012,7 @@ def cmd_init(bundle, a):
         adopt_legacy(project)
         if locked_release is None:
             write_lock(project, bundle.name)
-    print(f"Initialized {project} for {provider} on {bundle.name}. Run `ds help agents` for next steps.")
+    print(f"Initialized {project} for {provider} on {bundle.name}. Run `runweld help agents` for next steps.")
     return 0
 
 
@@ -2081,7 +2081,7 @@ def task_stage(task, *, workflow=True):
     if not workflow:
         return row
     step = (work_action("User and planner", "Continue in the task worktree with a grill or plan.", "planner", "grill")
-            if task["ready"] else work_action("Planner", f"Retry `ds task start {task['id']}` to finish task entry.", "planner", "task-start"))
+            if task["ready"] else work_action("Planner", f"Retry `runweld task start {task['id']}` to finish task entry.", "planner", "task-start"))
     return {**row, "workflow": workflow_view(plan, "grill", [step])}
 
 
@@ -2120,7 +2120,7 @@ def cmd_task(bundle, a):
     row = task_lookup(project, name)
     if a.command != "start":
         if row is None:
-            raise Refuse("no-task", f"there is no task {name}", "use `ds task start ID` for new work or `ds status` to find existing work")
+            raise Refuse("no-task", f"there is no task {name}", "use `runweld task start ID` for new work or `runweld status` to find existing work")
         if a.command == "path":
             print(artifact_path(Path(row["artifacts"]), a.area))
             return 0
@@ -2142,7 +2142,7 @@ def cmd_task(bundle, a):
         run_file = Path(run_path(plan))
         if row is None:
             if read_lock(project) != bundle.name:
-                raise ReleaseError(f"{project} does not lock {bundle.name}; run `ds init` or use `ds` without a release override")
+                raise ReleaseError(f"{project} does not lock {bundle.name}; run `runweld init` or use `runweld` without a release override")
             _, config = read_project_config(project / ".ds/config.toml")
             base = a.base or config["finish"]["target"]
             commit = r("rev-parse", "--verify", "-q", "--end-of-options", f"{base}^{{commit}}")
@@ -2154,7 +2154,7 @@ def cmd_task(bundle, a):
             atomic_write(record_path, json.dumps(row).encode(), 0o600)
             row = task_lookup(project, name)
         elif (release := plan_release(plan) or read_lock(project)) != bundle.name:
-            raise ReleaseError(f"this run selects {release}, not {bundle.name}; use `ds` without a release override")
+            raise ReleaseError(f"this run selects {release}, not {bundle.name}; use `runweld` without a release override")
         elif a.base and r("rev-parse", "--verify", "-q", "--end-of-options", f"{a.base}^{{commit}}").stdout.strip() != row["base"]:
             raise Refuse("task-base", f"task {name} already started at {row['base']}", "omit --base to resume this task")
         if row["ready"]:
@@ -2175,7 +2175,7 @@ def cmd_task(bundle, a):
             else:
                 add = r("worktree", "add", *(("-b", branch, str(tree), row["base"]) if not branch_tip else (str(tree), branch)))
                 if add.returncode:
-                    raise Refuse("task-worktree", add.stderr.strip(), f"fix the Git error and retry `ds task start {name}`")
+                    raise Refuse("task-worktree", add.stderr.strip(), f"fix the Git error and retry `runweld task start {name}`")
             row.update(ready=True, release=bundle.name)
             atomic_write(record_path, json.dumps({k: row[k] for k in ("base", "ready", "branch", "release")}).encode(), 0o600)
     if plan.is_file():
@@ -2223,7 +2223,7 @@ def cmd_task_setup(plan, *, implicit=False):
                                 pass_fds=(lock.fileno(),))
         if result.returncode:
             raise Refuse("task-setup-failed", f"setup exited {result.returncode} in {tree}",
-                         f"fix setup and retry `ds task setup {shlex.quote(md)}` in the same task")
+                         f"fix setup and retry `runweld task setup {shlex.quote(md)}` in the same task")
         atomic_write(stamp, binding.encode(), 0o600)
     return 0
 
@@ -2238,7 +2238,7 @@ def cmd_run(command, plan, as_json):
             project = Path(plan_root(plan_paths(plan)[0]))
             task = task_for(plan, project)
             if task is None or task["ready"]:
-                raise Refuse("task-required", "standalone runs are created at task entry", "use `ds task start ID`; restore an existing task's run file from its saved copy")
+                raise Refuse("task-required", "standalone runs are created at task entry", "use `runweld task start ID`; restore an existing task's run file from its saved copy")
             src = snapshot_run(bundle, project, Path(path))
             print(f"run new: {path} (snapshot from {src})")
             return 0
@@ -2512,7 +2512,7 @@ def cmd_consent(plan, kind, a):
             proposed = values.get("workflow", {}).get("release")
             bundle = standalone_bundle()
             if (recorded and proposed != recorded) or (bundle and proposed and proposed != bundle.name):
-                raise Refuse("run-release", "the proposed release differs from the run's selected release", "restore [workflow].release; `ds update` only selects the release for new runs")
+                raise Refuse("run-release", "the proposed release differs from the run's selected release", "restore [workflow].release; `runweld update` only selects the release for new runs")
             if "run" in st and (changes := run_changes(st["run"], values)):
                 record(plan, st, "run file", None, "changed", ", ".join(f"{x} {k}" for x, k in changes))
             st["run"] = values
@@ -2743,7 +2743,7 @@ def plan_release(plan):
 def cli_argv(plan):
     if (bundle := standalone_bundle()) is not None:
         release = plan_release(plan) or bundle.name
-        return [sys.executable, str(bundle.parents[3] / "bin/ds"), "--release", release]
+        return [sys.executable, str(bundle.parents[3] / "bin/runweld"), "--release", release]
     return [sys.executable, os.path.realpath(__file__)]
 
 
@@ -2773,7 +2773,7 @@ def show_next(actions):
 
 
 def cmd_workflow(as_json):
-    action = (work_action("Planner", "Run `ds task start ID` for new work, or `ds status --current` to resume.", "planner", "task-entry")
+    action = (work_action("Planner", "Run `runweld task start ID` for new work, or `runweld status --current` to resume.", "planner", "task-entry")
               if standalone_bundle() else work_action(
                   "user and planner", "Discuss open decisions in a grill, or continue to planning. Offer an optional prototype before writing the plan.",
                   "planner", "grill"))
@@ -3385,7 +3385,7 @@ def cmd_build_start(plan, base, worktree, branch, note):
             ensure_task_tree(task, root)
             if worktree or branch or st["branch"] != task["branch"] or st["base"] != task["base"]:
                 raise Refuse("task-identity", "build cannot replace the registered task branch, base or worktree",
-                             "use `ds build start PLAN` to reuse the task checkout")
+                             "use `runweld build start PLAN` to reuse the task checkout")
             base = base or task["base"]
         elif not base:
             raise Refuse("base-required", "this plan started without a registered task checkout", "pass --base REF")
@@ -5593,9 +5593,9 @@ class RoutingParser(argparse.ArgumentParser):
 
 def parse_cli(argv, *, standalone=False, routing=False, version=None):
     parser = RoutingParser if routing else argparse.ArgumentParser
-    p = parser(prog="ds" if standalone else "pipeline.py")
+    p = parser(prog="runweld" if standalone else "pipeline.py")
     if standalone:
-        p.add_argument("--version", action="version", version=version or "ds", help="print the exact selected release")
+        p.add_argument("--version", action="version", version=version or "runweld", help="print the exact selected release")
     top = p.add_subparsers(dest="group", required=True)
     if standalone:
         help_parser = top.add_parser("help", help="show terminal help or the installed agent workflow")
@@ -5668,7 +5668,7 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     bp = top.add_parser("build", help="the build as a whole")
     s = bp.add_subparsers(dest="command", required=True).add_parser(
         "start", help="cut the plan's branch at --base and set the plan to building")
-    s.add_argument("--base", required=not standalone, help="the ref the legacy branch starts at; a new ds task already has a base")
+    s.add_argument("--base", required=not standalone, help="the ref the legacy branch starts at; a new runweld task already has a base")
     s.add_argument("--worktree", metavar="PATH", help="cut the branch in a new git worktree at PATH instead of here")
     s.add_argument("--branch", metavar="NAME", help="the branch to cut, when not the plan's Status line's")
     s.add_argument("--note", help="why")
@@ -5855,7 +5855,7 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     s.add_argument("plan", help="the plan file, passed or a merge request's link")
     rp = top.add_parser("run", help="the run file beside the plan: its path need not exist yet")
     rsub = rp.add_subparsers(dest="command", required=True)
-    new_help = ("snapshot defaults for an interrupted task entry; start new tasks with ds task start" if standalone else
+    new_help = ("snapshot defaults for an interrupted task entry; start new tasks with runweld task start" if standalone else
                 "copy the newest run file in the plan's directory, else the shipped example")
     s = rsub.add_parser("new", help=new_help + "; refused if the file exists")
     s.add_argument("plan", help="the plan file, which need not exist")
@@ -5884,16 +5884,16 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
 
 def agent_help(bundle):
     from ds_release import GUIDE_SKILLS, ROLES
-    print(f"dev-skills {bundle.name}\n")
+    print(f"Runweld {bundle.name}\n")
     print(f"Session and dispatch rules: {bundle / 'references/SESSIONS.md'}")
     print(f"Workflow paths: {bundle / 'references/WORKFLOW-PATHS.md'}")
     print(f"Human review: {bundle / 'skills/build/references/human-guide.md'}")
-    print(f"To set up a checkout, run `ds init`. Configuration: {bundle / 'skills/run-file/references/project-config.md'}")
+    print(f"To set up a checkout, run `runweld init`. Configuration: {bundle / 'skills/run-file/references/project-config.md'}")
     print()
-    print("Inspect the entry with `ds workflow`, or resume with `ds status --current` or `ds task resume ID`.")
-    print("For new work, run `ds task start ID` before grill, reproduction or planning.")
+    print("Inspect the entry with `runweld workflow`, or resume with `runweld status --current` or `runweld task resume ID`.")
+    print("For new work, run `runweld task start ID` before grill, reproduction or planning.")
     print("Work in the returned tree and keep private records at the returned shared paths.")
-    print("For a known plan, use `ds status --json --provider NAME PLAN`. Run each permitted argv as printed.")
+    print("For a known plan, use `runweld status --json --provider NAME PLAN`. Run each permitted argv as printed.")
     print("For a work assignment, use its brief's role source, protocol, preset and report commands.")
     print("An ask or wait needs its named input. Summary approval launches nothing.")
     print()
@@ -5916,7 +5916,7 @@ def main(*, current_task=None):
             selected_plan = command_plan(a, Path.cwd())
             required = run_pin(selected_plan) if selected_plan else None
             if required is not None and required != bundle.name:
-                raise ReleaseError(f"this run selects {required}, not {bundle.name}; use `ds` without a release override")
+                raise ReleaseError(f"this run selects {required}, not {bundle.name}; use `runweld` without a release override")
             if a.group == "update":
                 update_project(bundle.parents[1], a.version)
                 return 0
@@ -5924,9 +5924,9 @@ def main(*, current_task=None):
                 try:
                     return cmd_init(bundle, a)
                 except (EOFError, KeyboardInterrupt):
-                    raise ReleaseError("initialization cancelled; rerun `ds init` to continue") from None
+                    raise ReleaseError("initialization cancelled; rerun `runweld init` to continue") from None
                 except (OSError, Fail) as error:
-                    raise ReleaseError(f"initialization could not finish: {error}; correct the issue and rerun `ds init`") from None
+                    raise ReleaseError(f"initialization could not finish: {error}; correct the issue and rerun `runweld init`") from None
             if a.group == "task" and a.command != "setup":
                 return cmd_task(bundle, a)
             if a.group == "path":
@@ -6005,7 +6005,7 @@ def main(*, current_task=None):
         if a.group == "brief":
             return cmd_brief(a.plan, a.command, getattr(a, "n", None), a.note, [int(x) for x in getattr(a, "cases", "").split(",") if x.strip()], a.provider)
     except ReleaseError as error:
-        print(f"ds: {error}", file=sys.stderr)
+        print(f"runweld: {error}", file=sys.stderr)
         return 1
     except Refuse as e:
         for code, message, fix in e.diags:

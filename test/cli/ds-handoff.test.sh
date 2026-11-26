@@ -26,9 +26,14 @@ with tempfile.TemporaryDirectory() as folder:
         assert (result.returncode == 0) == ok, result.stdout + result.stderr
         return result.stdout if ok else result.stdout + result.stderr
 
-    run(source / "scripts/install-ds")
-    release = run("ds", "--version").strip()
-    guide = run("ds", "help", "agents")
+    old_command = home / ".local/bin/ds"
+    old_command.parent.mkdir(parents=True)
+    old_command.write_text("#!/bin/sh\necho unrelated-tool\n")
+    old_command.chmod(0o755)
+    run(source / "scripts/install-runweld")
+    assert run(old_command).strip() == "unrelated-tool"
+    release = run("runweld", "--version").strip()
+    guide = run("runweld", "help", "agents")
     bundle = home / ".local/lib/dev-skills/releases" / release
 
     def reference(name, help_text=guide):
@@ -45,10 +50,10 @@ with tempfile.TemporaryDirectory() as folder:
     for name in ("Session and dispatch rules", "Workflow paths", "Human review", "implementer", "reviewer"):
         assert reference(name).strip()
 
-    entry = source / "ds-cli-skill"
+    entry = source / "runweld"
     assert [p.name for p in entry.iterdir()] == ["SKILL.md"]
-    assert (bundle / "ds-cli-skill/SKILL.md").read_bytes() == (entry / "SKILL.md").read_bytes()
-    assert "ds help agents" in (entry / "SKILL.md").read_text()
+    assert (bundle / "runweld/SKILL.md").read_bytes() == (entry / "SKILL.md").read_bytes()
+    assert "runweld help agents" in (entry / "SKILL.md").read_text()
     assert not (home / ".agents/skills").exists() and not (home / ".claude/skills").exists()
 
     # A local Git remote exercises the piped installer without contacting GitHub.
@@ -60,17 +65,22 @@ with tempfile.TemporaryDirectory() as folder:
     prefix = home / "custom prefix"
     bootstrap_env = dict(env, GIT_CONFIG_COUNT="1",
                          GIT_CONFIG_KEY_0=f"url.{upstream.as_uri()}.insteadOf",
-                         GIT_CONFIG_VALUE_0="https://github.com/bmox0/dev-skills.git")
+                         GIT_CONFIG_VALUE_0="https://github.com/bmox0/runweld.git")
     with (source / "install.sh").open() as script:
         subprocess.run(["bash", "-s", "--", "--prefix", str(prefix)], stdin=script,
                        cwd=home, env=bootstrap_env, check=True, timeout=30)
-    assert run(prefix / "bin/ds", "--version").strip() == release
+    assert run(prefix / "bin/runweld", "--version").strip() == release
+    assert not (prefix / "bin/ds").exists()
+    foreign = prefix / "bin/runweld"
+    foreign.write_text("another launcher\n")
+    assert "not a managed Runweld launcher" in run(source / "scripts/install-runweld", "--prefix", prefix, ok=False)
+    assert foreign.read_text() == "another launcher\n"
 
     codex, claude = home / "Codex checkout", home / "Claude clone"
     codex.mkdir()
     run("git", "init", "-qb", "main", cwd=codex)
     (codex / "hello.txt").write_text("before\n")
-    run("ds", "init", "--non-interactive", "--provider", "GPT", "--primary-model", "codex-primary",
+    run("runweld", "init", "--non-interactive", "--provider", "GPT", "--primary-model", "codex-primary",
         "--secondary-model", "codex-secondary", "--phase-check", "git diff --check",
         "--full-check", "test -s hello.txt", cwd=codex)
     config = codex / ".ds/config.toml"
@@ -78,23 +88,23 @@ with tempfile.TemporaryDirectory() as folder:
     config.write_text(initial + '\n[graph]\nfinish_without_acceptance = true\n')
     run("git", "add", ".", cwd=codex)
     run("git", "commit", "-qm", "initial project", cwd=codex)
-    assert "[graph]" in run("ds", "task", "start", "forged", cwd=codex, ok=False)
-    assert json.loads(run("ds", "status", "--json", cwd=codex)) == []
+    assert "[graph]" in run("runweld", "task", "start", "forged", cwd=codex, ok=False)
+    assert json.loads(run("runweld", "status", "--json", cwd=codex)) == []
     config.write_text(initial)
     run("git", "commit", "-qam", "use release graph", cwd=codex)
 
     def lifecycle(project, provider, recorded_grill, prototype):
         run("git", "config", "core.hooksPath", "/dev/null", cwd=project)
         before = (project / "hello.txt").read_text()
-        assert release in run("ds", "help", "agents", cwd=project)
-        entry = json.loads(run("ds", "workflow", "--json", cwd=project))
+        assert release in run("runweld", "help", "agents", cwd=project)
+        entry = json.loads(run("runweld", "workflow", "--json", cwd=project))
         assert entry["actions"][0]["assignment"]["kind"] == "task-entry"
         slug = provider.lower() + "-message"
-        task = json.loads(run("ds", "task", "start", slug, "--json", cwd=project))
+        task = json.loads(run("runweld", "task", "start", slug, "--json", cwd=project))
         plan, tree = map(Path, (task["plan"], task["tree"]))
-        assert task["tree"] in run("ds", "task", "resume", slug, cwd=project)
+        assert task["tree"] in run("runweld", "task", "resume", slug, cwd=project)
         assert task["release"] == release
-        assert reference("plan", run("ds", "help", "agents", "--plan", plan))
+        assert reference("plan", run("runweld", "help", "agents", "--plan", plan))
         if prototype:
             prototype = Path(task["artifacts"]) / "preview.txt"
             prototype.write_text(f"hello {provider}\n")
@@ -139,7 +149,7 @@ none
 """)
 
         def status():
-            return json.loads(run("ds", "status", "--json", "--provider", provider, plan))["workflow"]
+            return json.loads(run("runweld", "status", "--json", "--provider", provider, plan))["workflow"]
 
         def actions():
             return status()["actions"]
@@ -163,18 +173,18 @@ none
             assert fields["Tree"] == str(tree)
             return body, fields
 
-        run("ds", "spec", "check", plan)
-        run("ds", "approve", plan)
+        run("runweld", "spec", "check", plan)
+        run("runweld", "approve", plan)
         seen = {step["id"]: step["state"] for step in status()["stages"]}
         assert seen["grill"] == recorded_grill and seen["prototype"] == ("done" if prototype else "skipped")
-        assert "run-unapproved" in run("ds", "build", "start", plan, ok=False)
-        run("ds", "run", "approve", plan, "--by", "user", "--words", "Fixture run approved")
+        assert "run-unapproved" in run("runweld", "build", "start", plan, ok=False)
+        run("runweld", "run", "approve", plan, "--by", "user", "--words", "Fixture run approved")
         summary = plan.with_suffix(".summary.md")
         summary.write_text(f"Review [the plan]({plan.name}) and its checks. No live host runs.\n")
-        run("ds", "summary", "approve", plan, "--file", summary, "--by", "user",
+        run("runweld", "summary", "approve", plan, "--file", summary, "--by", "user",
             "--words", "Fixture summary approved")
         assert actions()[0]["waiting_for"] == "start-instruction"
-        run("ds", "build", "start", plan)  # Separate fixture start instruction.
+        run("runweld", "build", "start", plan)  # Separate fixture start instruction.
         advertised("phase", "start")
         implementer, fields = brief("implementer", "secondary")
         assert str(bundle / "skills/tdd/SKILL.md") in fields["Skills to read first"]
@@ -216,21 +226,21 @@ none
         human = (f"Open the landed checkout at {tree}. Tell me whether to finish.\n\n"
                  f"#### What to try\n- **Done 2** Read hello.txt → hello {provider}\n\n"
                  "#### Decisions\n- —\n")
-        assert run("ds", "page", plan, "--guide", human) == human
-        assert run("ds", "page", plan, "--show") == human
+        assert run("runweld", "page", plan, "--guide", human) == human
+        assert run("runweld", "page", plan, "--show") == human
         assert actions()[0]["input"] == "acceptance"
-        assert "current authorized" in run("ds", "finish", plan, ok=False)
+        assert "current authorized" in run("runweld", "finish", plan, ok=False)
         assert (project / "hello.txt").read_text() == before
-        run("ds", "accept", plan, "--by", "user", "--words", "Fixture result accepted")
+        run("runweld", "accept", plan, "--by", "user", "--words", "Fixture result accepted")
         advertised("finish")  # Fixture authorization to integrate.
         assert (project / "hello.txt").read_text() == f"hello {provider}\n"
         assert not tree.exists() and status()["actions"] == []
 
     lifecycle(codex, "GPT", "done", True)
     run("git", "clone", "-q", codex, claude)
-    run("ds", "init", "--non-interactive", "--provider", "Claude", "--primary-model", "claude-primary",
+    run("runweld", "init", "--non-interactive", "--provider", "Claude", "--primary-model", "claude-primary",
         "--secondary-model", "claude-secondary", cwd=claude)
-    assert json.loads(run("ds", "status", "--json", cwd=claude)) == []
+    assert json.loads(run("runweld", "status", "--json", cwd=claude)) == []
     clone_config = tomllib.loads((claude / ".ds/config.toml").read_text())
     assert set(clone_config["executors"]) == {"GPT", "Claude"}
     assert clone_config["checks"] == tomllib.loads(initial)["checks"]

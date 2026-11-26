@@ -8,14 +8,14 @@ description: Write the run file a plan is built under — what the run may do, h
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
 
-The run records agreed permissions, checks and ending. Use `ds` as `CLI` for an
+The run records agreed permissions, checks and ending. Use `runweld` as `CLI` for an
 installed workflow, or `python3 "<this skill's directory>/../build/pipeline.py"`
 for a legacy plugin run. The keys are in [example.run.toml](references/example.run.toml).
 
-1. **Locate.** For ds, use the plan path and companion run from
+1. **Locate.** For runweld, use the plan path and companion run from
    [task entry](../../references/WORKFLOW-PATHS.md). For legacy, choose a
    branch and `.ai-workflow/plans/YYYY-MM-DD-<slug>.md` with branch `/` written `-`.
-2. **Snapshot.** A ds task starts with the
+2. **Snapshot.** A runweld task starts with the
    [project configuration](references/project-config.md) and locked release.
    For legacy, `CLI run new <plan path>` copies the latest run or the
    credential-free example with current AGENTS presets. Verify the pair with

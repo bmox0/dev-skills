@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export INSTALLER="$repo_root/scripts/install-ds"
+export INSTALLER="$repo_root/scripts/install-runweld"
 python3 -B <<'PY'
 import json
 import os
@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory() as folder:
         return command('git', *args, **kwargs)
 
     def ds(*args, **kwargs):
-        return command(prefix / 'bin/ds', *args, **kwargs)
+        return command(prefix / 'bin/runweld', *args, **kwargs)
 
     def terminal(input_, ok=True):
         master, slave = pty.openpty()
@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert read(config)['isolation']['worktree'] is True
     assert read(config)['setup'] == {'command': 'touch must-not-run-at-init'}
     assert read(lock) == {'release': release}
-    assert instructions in agents.read_text() and agents.read_text().count('ds help agents') == 1
+    assert instructions in agents.read_text() and agents.read_text().count('runweld help agents') == 1
     git('check-ignore', '.ds/workflow/plans/example.md')
     for file in ('.ds/config.toml', '.ds/ds.lock', 'docs/spec/example.md'):
         git('check-ignore', file, ok=False)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export INSTALLER="$repo_root/scripts/install-ds"
+export INSTALLER="$repo_root/scripts/install-runweld"
 export DS_TEST_LEGACY_ROOT="${DS_TEST_LEGACY_ROOT:-$repo_root}"
 python3 -B <<'PY'
 import fcntl
@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as folder:
     root.mkdir()
     env = dict(os.environ, GIT_AUTHOR_NAME="Tester", GIT_AUTHOR_EMAIL="test@example.org",
                GIT_COMMITTER_NAME="Tester", GIT_COMMITTER_EMAIL="test@example.org")
-    ds = home / "bin/ds"
+    ds = home / "bin/runweld"
     legacy = Path(os.environ["DS_TEST_LEGACY_ROOT"]).resolve()
     legacy_cli = [sys.executable, "-B", legacy / "skills/build/pipeline.py"]
 

@@ -2,8 +2,8 @@
 
 A plan's Checks names the commands each phase runs, the full commands run after
 all phases, and how e2e drives the system. Plan and verify read the run file.
-For standalone `ds`, shared checks come from `.ds/config.toml`. The project's
-`AGENTS.md` environment block can suggest commands at `ds init` or fill a
+For standalone `runweld`, shared checks come from `.ds/config.toml`. The project's
+`AGENTS.md` environment block can suggest commands at `runweld init` or fill a
 legacy example:
 
 ```markdown

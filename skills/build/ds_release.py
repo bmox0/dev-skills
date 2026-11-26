@@ -19,7 +19,7 @@ INSTRUCTIONS = "scripts/word-budgets.txt"
 GUIDE_SKILLS = ("grill", "prototype", "run-file", "plan", "build", "review", "verify", "land", "finish",
                 "bug", "epic", "handoff", "retro", "spec", "domain-modeling", "tdd", "browser-test", "commit-work")
 ROLES = ("implementer", "reviewer", "judge")
-REQUIRED = {str(PROGRAM), "bin/ds", "skills/build/ds_release.py", INSTRUCTIONS, "ds-cli-skill/SKILL.md",
+REQUIRED = {str(PROGRAM), "skills/build/ds_release.py", INSTRUCTIONS,
             *(f"skills/build/_marko/{name}.py" for name in ("__init__", "block", "element", "helpers", "inline",
                                                          "inline_parser", "parser", "patterns", "source")),
             "skills/browser-test/tab.mjs", "skills/run-file/references/example.run.toml",
@@ -83,11 +83,12 @@ def release_files(root):
     return files
 
 
-def manifest_bytes(root, version):
+def manifest_bytes(root, version, *, legacy=False):
     if not isinstance(version, str) or not re.fullmatch(VERSION, version):
         raise ValueError(f"invalid release version {version!r}")
     files = release_files(root)
-    if missing := REQUIRED - files.keys():
+    entry = {"bin/ds", "ds-cli-skill/SKILL.md"} if legacy else {"bin/runweld", "runweld/SKILL.md"}
+    if missing := (REQUIRED | entry) - files.keys():
         raise ValueError(f"missing release resources: {', '.join(sorted(missing))}")
     instructions = {line.split()[0] for line in regular_bytes(root / INSTRUCTIONS).decode("utf-8").splitlines()
                     if line.strip() and not line.lstrip().startswith("#")}
@@ -111,7 +112,8 @@ def verify_release(store, release):
         expected = json.loads(manifest)
         if release_id(expected["version"], manifest) != release:
             raise ValueError("release manifest does not match its ID")
-        actual = json.loads(manifest_bytes(root, expected["version"]))
+        legacy = "bin/runweld" not in expected["files"] and "bin/ds" in expected["files"]
+        actual = json.loads(manifest_bytes(root, expected["version"], legacy=legacy))
         if expected != actual:
             changed = next(p for p in sorted(expected["files"].keys() | actual["files"].keys())
                            if expected["files"].get(p) != actual["files"].get(p))
@@ -190,7 +192,7 @@ def read_lock(project):
     value = read_data(path, tomllib.loads)
     if value is not None:
         if set(value) != {"release"} or not valid_release(value["release"]):
-            raise ReleaseError(f"{path} needs one exact release ID as `release = \"…\"`; run `ds update RELEASE` or restore the lock")
+            raise ReleaseError(f"{path} needs one exact release ID as `release = \"…\"`; run `runweld update RELEASE` or restore the lock")
         return value["release"]
 
 
@@ -244,7 +246,7 @@ def task_pin(pin, task, path):
             expected = f" {recorded}" if recorded else ""
             raise ReleaseError(f"{path} must retain the task's original [workflow].release{expected}; restore the run file or snapshot")
     elif pin is not None:
-        raise ReleaseError(f"{path} pins a release without a registered task; use `ds task start ID` and the returned plan path")
+        raise ReleaseError(f"{path} pins a release without a registered task; use `runweld task start ID` and the returned plan path")
     return pin
 
 
@@ -275,14 +277,14 @@ def installed_default(store):
     path = store / "default"
     value = read_data(path, str.strip)
     if not valid_release(value):
-        raise ReleaseError(f"{path} has no installed default; reinstall dev-skills")
+        raise ReleaseError(f"{path} has no installed default; reinstall Runweld")
     return value
 
 
 def update_project(store, requested):
     project = project_root(Path.cwd())
     if project is None or not os.path.lexists(lock_path(project)):
-        raise ReleaseError("no project lock; run `ds init` in the project first")
+        raise ReleaseError("no project lock; run `runweld init` in the project first")
     release = requested if requested is not None else installed_default(store)
     verify_release(store, release)
     write_lock(project, release)

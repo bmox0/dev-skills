@@ -3,7 +3,7 @@
 # A change that raises a budget names what it removes. Words are counted as
 # whitespace-separated tokens, the way wc -w counts them.
 
-ds-cli-skill/SKILL.md 130
+runweld/SKILL.md 130
 agents/implementer.md 482
 agents/judge.md 100
 agents/reviewer.md 100

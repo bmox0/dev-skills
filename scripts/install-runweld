@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Install Runweld and its launcher, keeping older releases."""
+
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+source = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(source / "skills/build"))
+
+from ds_release import MANIFEST, PROGRAM, ReleaseError, atomic_write, manifest_bytes, release_id, verify_release
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--prefix", type=Path, default=Path.home() / ".local", help="installation prefix (default: ~/.local)")
+    prefix = parser.parse_args().prefix.expanduser().resolve()
+    store = prefix / "lib" / "dev-skills"
+    releases = store / "releases"
+    launcher = prefix / "bin" / "runweld"
+    resources = ("skills", "agents", "references", "adapters", "scripts", "hooks", "docs",
+                 ".claude-plugin", ".codex-plugin", ".qoder-plugin", ".agents", "bin", "runweld")
+    if any(prefix.is_relative_to(source / name) for name in resources):
+        raise ReleaseError("choose an installation prefix outside the release resource directories")
+    version = json.loads((source / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
+    releases.mkdir(parents=True, exist_ok=True)
+    with (store / "install.lock").open("a") as lock, tempfile.TemporaryDirectory(dir=releases) as tmp:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        stage = Path(tmp) / "release"
+        stage.mkdir()
+        if os.path.lexists(launcher):
+            if launcher.is_symlink() or not launcher.is_file():
+                raise ReleaseError(f"{launcher} is not a managed Runweld launcher; choose another --prefix")
+            existing = launcher.read_bytes()
+            if existing != (source / "bin/runweld").read_bytes() and not any(
+                existing == path.read_bytes() for path in releases.glob("*/bin/runweld") if path.is_file()
+            ):
+                raise ReleaseError(f"{launcher} is not a managed Runweld launcher; choose another --prefix")
+        for name in resources:
+            shutil.copytree(source / name, stage / name, symlinks=True,
+                            ignore=shutil.ignore_patterns("__pycache__", ".DS_Store"))
+        for name in ("README.md", "LICENSE"):
+            shutil.copy2(source / name, stage / name)
+        manifest = manifest_bytes(stage, version)
+        for file in (*stage.rglob("*.py"), stage / "bin/runweld"):
+            compile(file.read_bytes(), str(file.relative_to(stage)), "exec")
+        release = release_id(version, manifest)
+        final = releases / release
+        try:
+            verify_release(store, release)
+        except ReleaseError:
+            (stage / MANIFEST).write_bytes(manifest)
+            replaced = Path(tmp) / "damaged"
+            if os.path.lexists(final):
+                final.rename(replaced)
+            try:
+                stage.rename(final)
+            except OSError:
+                if os.path.lexists(replaced):
+                    replaced.rename(final)
+                raise
+        launcher.parent.mkdir(parents=True, exist_ok=True)
+        # A valid router stays usable even if one release's files later go missing.
+        for origin, target in ((PROGRAM, "route_pipeline.py"), ("skills/build/ds_release.py", "ds_release.py")):
+            atomic_write(store / target, (final / origin).read_bytes())
+        atomic_write(store / "default", (release + "\n").encode())
+        atomic_write(launcher, (final / "bin/runweld").read_bytes(), 0o755)
+    print(f"Installed {release}\nRun {launcher} or add {launcher.parent} to PATH")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ReleaseError, OSError, ValueError, KeyError, SyntaxError) as error:
+        sys.exit(f"install-runweld: {error}")

@@ -15,11 +15,11 @@ and never edits code. Select each worker's executor from the shared contract.
 ## 1. The branch
 
 Read the plan, its epic and the project's `AGENTS.md`.
-`CLI` is the installed `ds` selected for the plan, or
+`CLI` is the installed `runweld` selected for the plan, or
 `python3 "<this skill's directory>/pipeline.py"` on the legacy path.
 `CLI status` lists project runs. Report shared territories to the contact.
 
-For a ds task, run `CLI build start <plan>` to reuse its registered checkout.
+For a runweld task, run `CLI build start <plan>` to reuse its registered checkout.
 For legacy, run `CLI build start --base <ref> [--worktree <path>] <plan>`.
 The command sets `building`. Every phase commits in the reported worktree.
 Give each worker that tree and the absolute plan path. See

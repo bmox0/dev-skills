@@ -6,7 +6,7 @@ description: Propose environment changes after a merged plan — a check, a stan
 # Retro
 
 Read what the plan cost: the plan with its `## Human gate` page, the commits,
-and where the session stalled or was corrected. For ds, use the release
+and where the session stalled or was corrected. For runweld, use the release
 in the plan's status. Then propose
 changes to the environment, so the next plan does not pay the same cost.
 

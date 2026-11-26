@@ -15,7 +15,7 @@ function artifactDirectory() {
   try {
     const branch = execFileSync("git", ["branch", "--show-current"], {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim()
     const task = branch.match(/^ds\/([a-z0-9][a-z0-9-]*)$/)?.[1]
-    const cli = path.resolve(bundle, "../../../../bin/ds")
+    const cli = path.resolve(bundle, "../../../../bin/runweld")
     const resolve = args => execFileSync(cli, args, {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim()
     if (task) {
       try {

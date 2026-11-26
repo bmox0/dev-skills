@@ -5,7 +5,7 @@ are optional advice and confer no approval. Always run prescribed CLI checks.
 
 ## Select executors
 
-`CLI` is `ds` or, for legacy, `python3 "<build skill directory>/pipeline.py"`.
+`CLI` is `runweld` or, for legacy, `python3 "<build skill directory>/pipeline.py"`.
 `CLI executor show --provider NAME` reads project configuration (legacy:
 literal project-root AGENTS Executors). Add `PLAN` for the frozen snapshot.
 Request missing profiles.

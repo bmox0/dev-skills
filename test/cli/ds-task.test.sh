@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export INSTALLER="$repo_root/scripts/install-ds"
+export INSTALLER="$repo_root/scripts/install-runweld"
 python3 -B <<'PY'
 import json
 import os
@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory() as folder:
     project.mkdir()
     env = dict(os.environ, GIT_AUTHOR_NAME="Tester", GIT_AUTHOR_EMAIL="test@example.org",
                GIT_COMMITTER_NAME="Tester", GIT_COMMITTER_EMAIL="test@example.org")
-    ds = home / "bin/ds"
+    ds = home / "bin/runweld"
 
     def run(*args, cwd=project, ok=True):
         p = subprocess.run(args, cwd=cwd, env=env, capture_output=True, text=True)
