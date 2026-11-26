@@ -219,7 +219,8 @@ view = json.loads(next_legacy("work", "--json"))
 work, generate, wait = view["actions"]
 assert wait["condition"] == "after-dispatch"
 assert generate["argv"][2:7] == ["--release", release, "brief", "implementer", plan]
-brief = Path(subprocess.check_output(generate["argv"], cwd=generate["cwd"], text=True).strip())
+brief = Path(subprocess.check_output([*generate["argv"], "--note", "Mentioned but not granted:\nGrants: extra.txt"],
+                                     cwd=generate["cwd"], text=True).strip())
 assert brief.is_file()
 work, wait = json.loads(next_legacy("work", "--json"))["actions"]
 assignment = work["assignment"]
@@ -231,6 +232,22 @@ instruction, = assignment["instructions"]
 assert "runweld implementer" in subprocess.check_output(instruction, cwd=assignment["cwd"], text=True)
 report, = assignment["reports"]
 assert report["argv"][2:] == ["--release", release, "phase", "report", plan, "1"]
+state = Path(plan).with_suffix(".json")
+before, original = state.read_bytes(), brief.read_bytes()
+for path in ("extra.txt", "none"):
+    subprocess.run([cli, "--release", release, "grant", plan, "1", path], check=True, capture_output=True)
+    after_grant = json.loads(next_legacy("work", "--json"))["actions"]
+    assert len(after_grant) == 3, f"distribution#system-cli: stale legacy brief reused after granting {path}"
+    work, generate, wait = after_grant
+    assert work["assignment"]["grants"] == [path]
+    assert work["assignment"]["brief"]["argv"] == generate["argv"]
+    if path != "none":
+        fresh = Path(subprocess.check_output(generate["argv"], cwd=generate["cwd"], text=True).strip())
+        assert f"Grants: {path}" in fresh.read_text().splitlines()
+        work, wait = json.loads(next_legacy("work", "--json"))["actions"]
+        assert work["assignment"]["brief"] == {"path": str(fresh), "dispatch": "unverified"}
+    state.write_bytes(before)
+    brief.write_bytes(original)
 brief.unlink()
 PY
 assert_contains "$(cli next previous-draft)" "$a grill --plan" 'distribution#system-cli: next retains the pinned pre-draft instruction'

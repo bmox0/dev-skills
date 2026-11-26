@@ -3916,6 +3916,9 @@ def legacy_brief(plan, status, brief, work):
     label = f"{brief} phase {assignment['phase']}" if brief == "implementer" else brief
     expected = [f"Plan: {plan}", f"Tree: {assignment['cwd']}", f"Branch: {status['branch']}",
                 f"Assignment: {label}", f"Run release: {release}", f"Role source: {assignment['role_source']}"]
+    grants = assignment.get("grants", [])
+    if brief == "implementer" and grants == ["none"]:
+        return None  # The legacy brief uses the same text for no grants.
     if executor := work.get("executor"):
         expected += [f"Executor {k}: {executor[k]}" for k in ("provider", "tier", "model", "effort") if k in executor]
     if brief in ("reviewer", "verify", "judge"):
@@ -3938,6 +3941,11 @@ def legacy_brief(plan, status, brief, work):
             continue
         if not all(line in lines for line in expected):
             continue
+        if brief == "implementer":
+            saved = next((line for line, following in zip(lines, lines[1:])
+                          if line.startswith("Grants: ") and following.startswith("Skills to read first: ")), None)
+            if saved != f"Grants: {', '.join(grants) or 'none'}":
+                continue
         if brief == "reviewer":
             binding = shlex.join([plan, "--assignment", assignment["id"], "--range", assignment["range"]])
             if not any(line.startswith("- Complete the review: ") and line.endswith(binding) for line in lines):
