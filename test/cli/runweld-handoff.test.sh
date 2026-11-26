@@ -27,12 +27,7 @@ with tempfile.TemporaryDirectory() as folder:
         assert (result.returncode == 0) == ok, result.stdout + result.stderr
         return result.stdout if ok else result.stdout + result.stderr
 
-    old_command = home / ".local/bin/ds"
-    old_command.parent.mkdir(parents=True)
-    old_command.write_text("#!/bin/sh\necho unrelated-tool\n")
-    old_command.chmod(0o755)
     run(source / "scripts/install-runweld")
-    assert run(old_command).strip() == "unrelated-tool"
     release = (home / ".local/lib/dev-skills/default").read_text().strip()
     guide = run("runweld", "help", "agents")
     bundle = home / ".local/lib/dev-skills/releases" / release
@@ -72,7 +67,6 @@ with tempfile.TemporaryDirectory() as folder:
                        cwd=home, env=bootstrap_env, check=True, timeout=30)
     assert run(prefix / "bin/runweld", "--version", "--verbose").splitlines() == [
         f"CLI version: {release.partition('@')[0]}", f"Build ID: {release}"]
-    assert not (prefix / "bin/ds").exists()
     # distribution#project-lock: updating a custom prefix keeps the project's choice until explicit consent.
     cli = prefix / "bin/runweld"
     locked = home / "locked project"
@@ -86,17 +80,21 @@ with tempfile.TemporaryDirectory() as folder:
     run(cli, "init", "--non-interactive", "--provider", "Test", "--primary-model", "p", "--secondary-model", "s", cwd=locked)
     lock = locked / ".runweld/runweld.lock"
     before = lock.read_bytes()
-    (upstream / "README.md").write_text("Global update fixture\n")
+    lock.write_text(f'release = "{release}"\n')
+    old_format = lock.read_bytes()
+    assert "update --project" in run(cli, "--version", "--verbose", cwd=locked, ok=False)
+    with (upstream / "agents/reviewer.md").open("a") as f:
+        f.write("\nGlobal update fixture\n")
     run("git", "commit", "-qam", "second build", cwd=upstream)
     subprocess.run([cli, "update", "--cli"], cwd=locked, env=bootstrap_env, check=True, timeout=30)
     latest = (prefix / "lib/dev-skills/default").read_text().strip()
-    assert latest != release and lock.read_bytes() == before
+    assert latest != release and lock.read_bytes() == old_format
     assert (home / ".local/lib/dev-skills/default").read_text().strip() == release
     bare = subprocess.run([cli, "update"], cwd=locked, env=env, stdin=subprocess.DEVNULL, capture_output=True)
     assert bare.returncode and b"--cli or --project" in bare.stderr
     assert "--project" in run(cli, "update", "--cli", "--project", cwd=locked, ok=False)
     assert "release ID" in run(cli, "update", "--cli", release, cwd=locked, ok=False)
-    assert lock.read_bytes() == before
+    assert lock.read_bytes() == old_format
     master, slave = pty.openpty()
     try:
         for answer, ok in ((b"\n", False), (b"project\n", True)):
@@ -104,11 +102,16 @@ with tempfile.TemporaryDirectory() as folder:
             choice = subprocess.run([cli, "update"], cwd=locked, env=env, stdin=slave,
                                     capture_output=True, timeout=30)
             assert (choice.returncode == 0) == ok and b"cli or project" in choice.stdout
-            assert (lock.read_bytes() != before) == ok
+            assert (lock.read_bytes() != old_format) == ok
     finally:
         os.close(master)
         os.close(slave)
-    assert latest in lock.read_text()
+    updated = tomllib.loads(lock.read_text())
+    original = tomllib.loads(before.decode())
+    assert updated['release'] == latest and updated['roles']['reviewer'] != original['roles']['reviewer']
+    updated['release'] = release
+    updated['roles']['reviewer'] = original['roles']['reviewer']
+    assert updated == original
     nested = locked / "src"
     nested.mkdir()
     run(cli, "update", "--project", release, cwd=nested)

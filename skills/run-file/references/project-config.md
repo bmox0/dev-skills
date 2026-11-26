@@ -22,7 +22,7 @@ opens its release's instructions.
 
 Every runweld task uses a dedicated worktree. Planning does not run setup.
 Set `[setup].command` to an existing preparation command if needed. It runs
-in the task tree and receives `DS_SOURCE_CHECKOUT`, `DS_TASK_PATH`, `DS_PLAN`,
-`DS_WORKFLOW`, `DS_ARTIFACTS`, and `DS_PORT` / `DS_DATA_DIR` when allocated.
+in the task tree and receives `RUNWELD_SOURCE_CHECKOUT`, `RUNWELD_TASK_PATH`, `RUNWELD_PLAN`,
+`RUNWELD_WORKFLOW`, `RUNWELD_ARTIFACTS`, and `RUNWELD_PORT` / `RUNWELD_DATA_DIR` when allocated.
 Use these output locations to keep the checkout clean. Failures retry in
 place. A successful setup is reused for those inputs.

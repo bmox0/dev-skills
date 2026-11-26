@@ -33,7 +33,7 @@ sys.exit(pipeline.main())
 
 
 def main():
-    from ds_release import ReleaseError, command_plan, installed_default, project_root, read_lock, run_pin, update_installation, verify_release, PROGRAM
+    from runweld_release import ReleaseError, command_plan, installed_default, project_root, read_lock, run_pin, update_installation, verify_release, PROGRAM
 
     argv = sys.argv[1:]
     project_pin = None
@@ -60,7 +60,7 @@ def main():
             if release is None:
                 project = project_root(Path(plan).absolute().parent if plan else Path.cwd())
                 if project is not None:
-                    project_pin = read_lock(project)
+                    project_pin = read_lock(project, store)
                     release = project_pin
                     if release is None and (project / ".runweld/config.toml").exists() and args and args.group not in ("init", "help"):
                         raise ReleaseError(f"{project}/.runweld/runweld.lock is missing; run `runweld init` to finish setup or restore the lock")

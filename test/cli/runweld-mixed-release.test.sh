@@ -11,9 +11,9 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER
 cli() { "$launcher" "$@"; }
 
 # distribution#project-lock: use a preceding source or model its strict three-field contract without Git history.
-preceding=${DS_TEST_PRECEDING:-$sandbox/preceding}
+preceding=${RUNWELD_TEST_PRECEDING:-$sandbox/preceding}
 mkdir "$sandbox/project with spaces"
-if [[ -z ${DS_TEST_PRECEDING:-} ]]; then
+if [[ -z ${RUNWELD_TEST_PRECEDING:-} ]]; then
   mkdir "$preceding"
   cp -R "$repo_root/." "$preceding/"
   python3 - "$preceding/skills/build" <<'PY'
@@ -22,7 +22,7 @@ import sys
 
 root = Path(sys.argv[1])
 for name, replacements in {
-    'ds_release.py': [('set(value) not in (fields, fields | {"release"})', 'set(value) != fields')],
+    'runweld_release.py': [('set(value) not in (fields, fields | {"release"})', 'set(value) != fields')],
     'pipeline.py': [(', "ready": False, "release": bundle.name}', ', "ready": False}'),
                     ('("base", "ready", "branch", "release")', '("base", "ready", "branch")'),
                     ('def main(*, current_task=None):', 'def main():\n    current_task = None')],
@@ -35,12 +35,8 @@ for name, replacements in {
     path.write_text(code)
 PY
 fi
-previous_command=runweld
-if [[ ! -f "$preceding/scripts/install-runweld" ]]; then
-  previous_command=ds
-fi
-launcher="$sandbox/bin/$previous_command"
-"$preceding/scripts/install-$previous_command" --prefix "$sandbox" >/dev/null
+launcher="$sandbox/bin/runweld"
+"$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 a=$(cat "$sandbox/lib/dev-skills/default")
 bundle="$sandbox/lib/dev-skills/releases/$a"
 cd "$sandbox/project with spaces"
@@ -56,7 +52,7 @@ base=$(git rev-parse HEAD)
 cat > "$plan" <<PLAN
 # Plan: Retain pinned guidance
 
-Status: draft · branch \`ds/previous-active\` · base \`$base\`
+Status: draft · branch \`runweld/previous-active\` · base \`$base\`
 
 ## Result
 
@@ -91,7 +87,7 @@ Waits for: nothing
 none
 PLAN
 for id in previous-plan previous-repair previous-adopt; do
-  sed "s|ds/previous-active|ds/$id|" "$plan" > "${plan%/*}/$id.md"
+  sed "s|runweld/previous-active|runweld/$id|" "$plan" > "${plan%/*}/$id.md"
 done
 cli approve "${plan%/*}/previous-repair.md" >/dev/null
 rm "${plan%/*}/previous-repair.json"
@@ -205,7 +201,7 @@ rm .runweld/workflow/tasks/unrelated.json .runweld/workflow/plans/unrelated.{jso
 
 # Also compare the same-release launcher to the native command as a new task gains and loses state.
 same_plan="${plan%/*}/current.md"
-sed 's|ds/previous-plan|ds/current|' "${plan%/*}/previous-plan.md" > "$same_plan"
+sed 's|runweld/previous-plan|runweld/current|' "${plan%/*}/previous-plan.md" > "$same_plan"
 for state in draft active unreadable repair; do
   expected_code=0
   case "$state" in
@@ -258,9 +254,9 @@ cmp "${plan%.md}.json" "$sandbox/approved.json"
 cmp .runweld/runweld.lock "$sandbox/lock"
 
 # Reinstall A for its exact bytes, then B to restore the shared router and default.
-"$preceding/scripts/install-$previous_command" --prefix "$sandbox" >/dev/null
+"$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 cmp .runweld/runweld.lock "$sandbox/lock"
-cmp "$preceding/bin/$previous_command" "$sandbox/bin/$previous_command"
+cmp "$preceding/bin/runweld" "$sandbox/bin/runweld"
 assert_eq "$a" "$(cat "$sandbox/lib/dev-skills/default")"
 "$repo_root/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 cmp .runweld/runweld.lock "$sandbox/lock"

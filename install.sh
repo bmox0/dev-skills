@@ -10,9 +10,9 @@ install_runweld() (
   runweld_checkout=$(mktemp -d)
   trap 'rm -rf -- "$runweld_checkout"' EXIT
   git -C "$runweld_checkout" init --quiet
-  git -C "$runweld_checkout" fetch --quiet --depth 1 https://github.com/bmox0/runweld.git "${RUNWELD_REF:-${DS_REF:-refs/heads/main}}"
+  git -C "$runweld_checkout" fetch --quiet --depth 1 https://github.com/bmox0/runweld.git "${RUNWELD_REF:-refs/heads/main}"
   git -C "$runweld_checkout" checkout --quiet --detach FETCH_HEAD
-  "$runweld_checkout/scripts/install-ds" "$@"
+  "$runweld_checkout/scripts/install-runweld" "$@"
 )
 
 install_runweld "$@"

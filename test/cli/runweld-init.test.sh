@@ -29,14 +29,14 @@ with tempfile.TemporaryDirectory() as folder:
     def git(*args, **kwargs):
         return command('git', *args, **kwargs)
 
-    def ds(*args, **kwargs):
+    def runweld(*args, **kwargs):
         return command(prefix / 'bin/runweld', *args, **kwargs)
 
     def terminal(input_, ok=True):
         master, slave = pty.openpty()
         try:
             os.write(master, input_)
-            return ds('init', stdin=slave, ok=ok, timeout=10)
+            return runweld('init', stdin=slave, ok=ok, timeout=10)
         finally:
             os.close(master)
             os.close(slave)
@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory() as folder:
     lock = project / '.runweld/runweld.lock'
 
     # distribution#system-cli, run#executor-presets, run#contract-checked: a terminal collects one pair and project defaults.
-    assert 'init' in ds('--help'), 'distribution#system-cli: the installed CLI must advertise initialization'
+    assert 'init' in runweld('--help'), 'distribution#system-cli: the installed CLI must advertise initialization'
     stopped = terminal(b'\x04', ok=False)
     assert 'cancelled' in stopped and not config.exists() and not lock.exists()
     assert agents.read_text() == instructions and ignore.read_text() == 'private-notes\n'
@@ -72,22 +72,53 @@ with tempfile.TemporaryDirectory() as folder:
     assert read(config)['checks'] == {'phase': ['scripts/lint'], 'full': ['scripts/lint', 'scripts/test old']}
     assert read(config)['isolation']['worktree'] is True
     assert read(config)['setup'] == {'command': 'touch must-not-run-at-init'}
-    assert read(lock) == {'release': release}
-    assert instructions in agents.read_text() and agents.read_text().count('runweld help agents') == 1
+    pins = read(lock)
+    assert pins['version'] == 1 and pins['release'] == release
+    assert set(pins['roles']) == {'implementer', 'reviewer', 'judge'}
+    assert {'plan', 'build', 'review'} <= pins['skills'].keys()
+    assert {'claude', 'codex', 'qoder'} <= pins['adapters'].keys()
+    assert pins['cli'].keys() == {'engine', 'launcher'}
+    generated = lock.read_bytes()
+    lock.write_bytes(generated.replace(pins['roles']['judge'].encode(), b'sha256:' + b'0' * 64))
+    assert 'does not match the components' in runweld('task', 'start', 'altered', ok=False)
+    runweld('update', '--project', release)
+    assert lock.read_bytes() == generated
+    block = ('<!-- runweld:begin -->\n'
+             'For Runweld, use the `runweld` skill or run `runweld help agents`.\n'
+             '<!-- runweld:end -->')
+    assert agents.read_text() == f'{instructions}\n\n{block}\n'
     git('check-ignore', '.runweld/workflow/plans/example.md')
     for file in ('.runweld/config.toml', '.runweld/runweld.lock', 'docs/spec/example.md'):
         git('check-ignore', file, ok=False)
     managed = {file: file.read_bytes() for file in (config, lock, agents, ignore)}
-    assert 'provider' in ds('init', '--non-interactive', ok=False).lower()
-    ds('init', '--provider', 'GPT', '--non-interactive')
+    assert 'provider' in runweld('init', '--non-interactive', ok=False).lower()
+    runweld('init', '--provider', 'GPT', '--non-interactive')
     assert all(file.read_bytes() == data for file, data in managed.items())
-    assert 'executors."Other".primary.model' in ds('init', '--provider', 'Other', '--primary-model', ' ',
+    assert 'executors."Other".primary.model' in runweld('init', '--provider', 'Other', '--primary-model', ' ',
                                                    '--secondary-model', 'helper', '--non-interactive', ok=False)
     assert all(file.read_bytes() == data for file, data in managed.items())
     # A retry after all shared writes except the lock keeps their bytes.
     lock.unlink()
-    ds('init', '--provider', 'GPT', '--non-interactive')
+    runweld('init', '--provider', 'GPT', '--non-interactive')
     assert all(file.read_bytes() == data for file, data in managed.items())
+
+    # distribution#local-workflow: refresh the managed block without changing neighboring text.
+    before = b'# Local rules\r\n\r\n'
+    after = b'\r\n\r\nKeep this text without a trailing newline.'
+    begin, end = b'<!-- runweld:begin -->', b'<!-- runweld:end -->'
+    agents.write_bytes(before + b'\r\n'.join((begin, b'Old instructions', end)) + after)
+    expected = before + block.replace('\n', '\r\n').encode() + after
+    for _ in range(2):
+        runweld('init', '--provider', 'GPT', '--non-interactive')
+        assert agents.read_bytes() == expected
+    for markers in ((begin,), (end,), (end, begin), (begin, end, begin, end)):
+        broken = before + b'\r\n'.join(markers) + after
+        agents.write_bytes(broken)
+        problem = runweld('init', '--provider', 'GPT', '--non-interactive', ok=False)
+        assert 'project-agents-block' in problem
+        assert agents.read_bytes() == broken
+        assert all(file.read_bytes() == managed[file] for file in (config, lock, ignore))
+    agents.write_bytes(managed[agents])
 
     # distribution#project-lock, distribution#local-workflow, run#executor-presets: the clone adds only its missing pair.
     with config.open('a') as f:
@@ -98,10 +129,10 @@ with tempfile.TemporaryDirectory() as folder:
     plans = project / '.runweld/workflow/plans'
     plans.mkdir(parents=True)
     first = plans / 'first.md'
-    ds('task', 'start', 'first')
+    runweld('task', 'start', 'first')
     first.write_text(f'''# Plan: First
 
-Status: draft · branch `ds/first` · base `{git('rev-parse', 'HEAD')}`
+Status: draft · branch `runweld/first` · base `{git('rev-parse', 'HEAD')}`
 
 ## Result
 
@@ -139,12 +170,12 @@ none
     first_values = first.with_suffix('.run.toml')
     with first_values.open('a') as f:
         f.write('credential = "keychain:example/private"\n')
-    ds('approve', first)
-    ds('run', 'approve', first, '--by', 'User', '--words', 'Approve first run')
+    runweld('approve', first)
+    runweld('run', 'approve', first, '--by', 'User', '--words', 'Approve first run')
     clone = home / 'Claude clone'
     git('clone', '-q', project, clone, cwd=home)
     assert not (clone / '.runweld/workflow').exists()
-    ds('init', '--primary-model', 'claude-main', '--secondary-model', 'claude-helper',
+    runweld('init', '--primary-model', 'claude-main', '--secondary-model', 'claude-helper',
        '--non-interactive', cwd=clone, with_env={**env, 'CLAUDECODE': '1'})
     clone_config = clone / '.runweld/config.toml'
     assert clone_config.read_bytes().startswith(original)
@@ -161,30 +192,30 @@ none
         + original.decode().split('[executors.', 1)[0])
     extra_pair = ('--provider', 'Claude', '--primary-model', 'claude-main',
                   '--secondary-model', 'claude-helper', '--non-interactive')
-    ds('init', *extra_pair, cwd=inline)
+    runweld('init', *extra_pair, cwd=inline)
     assert read(inline_config) == read(clone_config) and '# keep this annotation' in inline_config.read_text()
-    ds('init', *extra_pair, cwd=inline)
+    runweld('init', *extra_pair, cwd=inline)
 
     # run#starts-from-last, run#changes-through-approve: current defaults are not taken from old local runs.
     config.write_text(config.read_text().replace('scripts/test old', 'scripts/test new'))
     second = plans / 'second.md'
-    ds('task', 'start', 'second')
+    runweld('task', 'start', 'second')
     snapshot = read(second.with_suffix('.run.toml'))
     assert snapshot['checks']['full'] == ['scripts/lint', 'scripts/test new']
     assert snapshot['executors'] == profiles and snapshot['setup'] == read(config)['setup']
     assert snapshot['workflow'] == {'release': release} and snapshot['run'] == {}
-    shown = json.loads(ds('run', 'show', first, '--json'))
+    shown = json.loads(runweld('run', 'show', first, '--json'))
     assert shown['approved'] and shown['run']['workflow'] == {'release': release}
     assert shown['run']['checks']['full'] == ['scripts/lint', 'scripts/test old']
     assert shown['run']['run'] == {'credential': 'keychain:example/private'}
-    assert json.loads(ds('executor', 'show', '--provider', 'Claude', '--json', cwd=clone))['source'] == str(clone_config)
+    assert json.loads(runweld('executor', 'show', '--provider', 'Claude', '--json', cwd=clone))['source'] == str(clone_config)
 
     # run#contract-checked: shared configuration cannot supply graph rules or task values.
     for forbidden in ('graph', 'run', 'workflow'):
         before = config.read_text()
         config.write_text(before + f'\n[{forbidden}]\nvalue = "must not be consumed"\n')
         bad = plans / f'{forbidden}.md'
-        problem = ds('task', 'start', forbidden, ok=False)
+        problem = runweld('task', 'start', forbidden, ok=False)
         assert f'[{forbidden}]' in problem and str(config) in problem
         assert not bad.with_suffix('.run.toml').exists()
         config.write_text(before)
@@ -194,7 +225,7 @@ none
     explicit.mkdir()
     git('init', '-q', '-b', 'trunk', cwd=explicit)
     (explicit / '.gitignore').write_text('/.runweld/\n')
-    ds('init', '--provider', 'Other provider', '--primary-model', 'opaque model', '--secondary-model', 'other model',
+    runweld('init', '--provider', 'Other provider', '--primary-model', 'opaque model', '--secondary-model', 'other model',
        '--phase-check', 'lint -- arg', '--full-check', 'test one', '--full-check', 'test two',
        '--finish-how', 'no-ff', '--finish-target', 'stable', '--no-delete-backups',
        '--port', '--data-dir', '--dev', 'serve {port} {data_dir}', '--url', 'http://localhost:{port}',

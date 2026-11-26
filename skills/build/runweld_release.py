@@ -20,7 +20,7 @@ INSTRUCTIONS = "scripts/word-budgets.txt"
 GUIDE_SKILLS = ("grill", "prototype", "run-file", "plan", "build", "review", "verify", "land", "finish",
                 "bug", "epic", "handoff", "retro", "spec", "domain-modeling", "tdd", "browser-test", "commit-work")
 ROLES = ("implementer", "reviewer", "judge")
-REQUIRED = {str(PROGRAM), "skills/build/ds_release.py", INSTRUCTIONS,
+REQUIRED = {str(PROGRAM), INSTRUCTIONS, "bin/runweld", "runweld/SKILL.md", "skills/build/runweld_release.py",
             *(f"skills/build/_marko/{name}.py" for name in ("__init__", "block", "element", "helpers", "inline",
                                                          "inline_parser", "parser", "patterns", "source")),
             "skills/browser-test/tab.mjs", "skills/run-file/references/example.run.toml",
@@ -84,12 +84,11 @@ def release_files(root):
     return files
 
 
-def manifest_bytes(root, version, *, legacy=False):
+def manifest_bytes(root, version):
     if not isinstance(version, str) or not re.fullmatch(VERSION, version):
         raise ValueError(f"invalid release version {version!r}")
     files = release_files(root)
-    entry = {"bin/ds", "ds-cli-skill/SKILL.md"} if legacy else {"bin/runweld", "runweld/SKILL.md"}
-    if missing := (REQUIRED | entry) - files.keys():
+    if missing := REQUIRED - files.keys():
         raise ValueError(f"missing release resources: {', '.join(sorted(missing))}")
     instructions = {line.split()[0] for line in regular_bytes(root / INSTRUCTIONS).decode("utf-8").splitlines()
                     if line.strip() and not line.lstrip().startswith("#")}
@@ -102,10 +101,9 @@ def release_id(version, manifest):
     return f"{version}@{hashlib.sha256(manifest).hexdigest()}"
 
 
-def verify_release(store, release):
+def release_manifest(root, release):
     if not valid_release(release):
         raise ReleaseError(f"invalid release {release!r}; use the exact ID printed by the installer")
-    root = store / "releases" / release
     try:
         if root.is_symlink() or not root.is_dir():
             raise OSError("release directory is missing or is not a real directory")
@@ -113,8 +111,18 @@ def verify_release(store, release):
         expected = json.loads(manifest)
         if release_id(expected["version"], manifest) != release:
             raise ValueError("release manifest does not match its ID")
-        legacy = "bin/runweld" not in expected["files"] and "bin/ds" in expected["files"]
-        actual = json.loads(manifest_bytes(root, expected["version"], legacy=legacy))
+        if set(expected) != {"version", "files"} or not isinstance(expected["files"], dict):
+            raise ValueError("invalid release manifest")
+        return expected
+    except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+        raise ReleaseError(f"{release} at {root}: {error}; install this exact release from its source") from None
+
+
+def verify_release(store, release):
+    root = store / "releases" / release
+    expected = release_manifest(root, release)
+    try:
+        actual = json.loads(manifest_bytes(root, expected["version"]))
         if expected != actual:
             changed = next(p for p in sorted(expected["files"].keys() | actual["files"].keys())
                            if expected["files"].get(p) != actual["files"].get(p))
@@ -188,24 +196,60 @@ def lock_path(project):
     return project / ".runweld" / "runweld.lock"
 
 
-def read_lock(project):
+def component_key(path):
+    parts = path.split("/")
+    if parts[0] == "agents" and len(parts) == 2 and path.endswith(".md"):
+        return "roles", parts[1][:-3]
+    if parts[0] == "skills" and len(parts) >= 3:
+        if parts[1] == "build" and (path.endswith(".py") or parts[2] == "_marko"):
+            return "cli", "engine"
+        return "skills", parts[1]
+    if parts[0] == "adapters" and len(parts) >= 3:
+        return "adapters", parts[1]
+    if parts[0] == "bin":
+        return "cli", "launcher"
+    return "resources", parts[0]
+
+
+def project_lock(bundle):
+    release = bundle.name
+    manifest = release_manifest(bundle, release)
+    groups = {}
+    for path, entry in manifest["files"].items():
+        section, name = component_key(path)
+        groups.setdefault(section, {}).setdefault(name, {})[path] = entry
+    lines = ["version = 1", f'release = "{release}"']
+    for section, components in sorted(groups.items()):
+        lines.extend(["", f"[{section}]"])
+        for name, entries in sorted(components.items()):
+            digest = hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()
+            lines.append(f'{json.dumps(name)} = "sha256:{digest}"')
+    return "\n".join(lines) + "\n"
+
+
+def read_lock(project, store):
     path = lock_path(project)
     value = read_data(path, tomllib.loads)
-    if value is not None:
-        if set(value) != {"release"} or not valid_release(value["release"]):
-            raise ReleaseError(f"{path} needs one exact release ID as `release = \"…\"`; run `runweld update --project RELEASE` or restore the lock")
-        return value["release"]
-
-
-def write_lock(project, release):
-    path = lock_path(project)
+    if value is None:
+        return None
+    release = value.get("release")
     if not valid_release(release):
-        raise ReleaseError(f"invalid release {release!r}; use the exact ID printed by the installer")
+        raise ReleaseError(f"{path} needs one exact release ID as `release = \"…\"`; run `runweld update --project RELEASE` or restore the lock")
+    if type(value.get("version")) is not int or value["version"] != 1:
+        raise ReleaseError(f"{path} needs lock format 1; run `runweld update --project` or restore the lock")
+    expected = tomllib.loads(project_lock(store / "releases" / release))
+    if expected != value:
+        raise ReleaseError(f"{path} does not match the components of {release}; run `runweld update --project {release}` or restore the lock")
+    return release
+
+
+def write_lock(project, bundle):
+    path = lock_path(project)
     if path.is_symlink() or path.parent.is_symlink():
         raise ReleaseError(f"{path} must be a regular project file in a real .runweld directory")
     try:
         path.parent.mkdir(exist_ok=True)
-        atomic_write(path, f"release = {json.dumps(release)}\n".encode())
+        atomic_write(path, project_lock(bundle).encode())
     except OSError as error:
         raise ReleaseError(f"cannot write {path}: {error}; repair the project lock location") from None
 
@@ -229,7 +273,7 @@ def read_task_record(path):
     # Retained engines expect the three-field record to stay unchanged.
     if (not isinstance(value, dict) or set(value) not in (fields, fields | {"release"}) or
             not isinstance(value["base"], str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["base"]) or
-            type(value["ready"]) is not bool or value["branch"] != "ds/" + path.stem or
+            type(value["ready"]) is not bool or value["branch"] != "runweld/" + path.stem or
             ("release" in value and not valid_release(value["release"]))):
         raise ReleaseError(f"{path} has an invalid task record; restore the task record from a known-good copy")
     return value
@@ -304,6 +348,6 @@ def update_installation(store, scope, requested):
     if not os.path.lexists(lock_path(project)):
         raise ReleaseError(f"{lock_path(project)} is missing; run `runweld init` in this repository or restore its lock")
     release = requested if requested is not None else installed_default(store)
-    verify_release(store, release)
-    write_lock(project, release)
+    bundle = verify_release(store, release)
+    write_lock(project, bundle)
     print(f"Updated {lock_path(project)} to {release}")

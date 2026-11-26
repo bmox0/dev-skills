@@ -15,7 +15,7 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER
 
 # distribution#system-cli: a terminal outside the source tree uses standalone help and resources.
 if ! install=$(cd "$sandbox" && "$repo_root/scripts/install-runweld" --prefix "$prefix" 2>&1); then
-  echo "distribution#system-cli: an outside terminal can install ds: $install" >&2
+  echo "distribution#system-cli: an outside terminal can install Runweld: $install" >&2
   exit 1
 fi
 cli() { runweld "$@"; }
@@ -47,7 +47,7 @@ repo_worktree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])
 cat > "$plan" <<PLAN
 # Plan: A run bound to its installed release
 
-Status: draft · branch \`ds/run-a\` · base \`$base\`
+Status: draft · branch \`runweld/run-a\` · base \`$base\`
 
 ## Result
 
@@ -84,7 +84,7 @@ none
 PLAN
 cp "${plan%.md}.run.toml" "$sandbox/run-a.toml"
 mkdir docs
-sed 's|ds/run-a|solo|' "$plan" > docs/solo.md
+sed 's|runweld/run-a|solo|' "$plan" > docs/solo.md
 cp "$sandbox/run-a.toml" docs/solo.run.toml
 refuse_solo() {
   local out
@@ -103,19 +103,19 @@ refuse_solo build start --base main --note 'Fixture override'
 rm docs/solo.md docs/solo.run.toml
 approve_plan "$plan" >/dev/null
 runweld build start "$plan" >/dev/null
-ds_task=$(runweld task start release-task --json)
-ds_task_tree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$ds_task")
-ds_task_run="$project/.runweld/workflow/plans/release-task.run.toml"
-cp "$ds_task_run" "$sandbox/task-a.toml"
+release_task=$(runweld task start release-task --json)
+release_task_tree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$release_task")
+release_task_run="$project/.runweld/workflow/plans/release-task.run.toml"
+cp "$release_task_run" "$sandbox/task-a.toml"
 
 # run#starts-from-last: a draft cannot remove its registered release before compilation or approval.
-sed '/^\[workflow\]$/{N;d;}' "$sandbox/task-a.toml" > "$ds_task_run"
-if out=$(runweld run check "${ds_task_run%.run.toml}.md" 2>&1); then
+sed '/^\[workflow\]$/{N;d;}' "$sandbox/task-a.toml" > "$release_task_run"
+if out=$(runweld run check "${release_task_run%.run.toml}.md" 2>&1); then
   echo 'run#starts-from-last: a task without its entry pin cannot validate' >&2
   exit 1
 fi
 assert_contains "$out" '[workflow].release' 'run#starts-from-last: a missing entry pin identifies the field to restore'
-cp "$sandbox/task-a.toml" "$ds_task_run"
+cp "$sandbox/task-a.toml" "$release_task_run"
 
 # distribution#project-lock: the preceding release stored only base, ready and branch.
 runweld task start previous-record >/dev/null
@@ -194,8 +194,8 @@ assert_contains "$(runweld task start interrupted --json)" "$a" 'distribution#pr
 fresh="$project/.runweld/workflow/plans/run-b.md"
 runweld task start run-b >/dev/null
 assert_contains "$(runweld run show "$fresh" --json)" "$b" 'run#starts-from-last: a new run snapshots the newly locked release B'
-assert_contains "$(cd "$ds_task_tree" && runweld run show .runweld/workflow/plans/release-task.md --json)" "$a" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
-assert_contains "$(cd "$ds_task_tree" && runweld task resume release-task --json)" "$a" 'distribution#project-lock: resume reports the release captured at task entry'
+assert_contains "$(cd "$release_task_tree" && runweld run show .runweld/workflow/plans/release-task.md --json)" "$a" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
+assert_contains "$(cd "$release_task_tree" && runweld task resume release-task --json)" "$a" 'distribution#project-lock: resume reports the release captured at task entry'
 runweld status --current --json | python3 -c '
 import json, sys
 rows = {r["plan"]: r for r in json.load(sys.stdin)}
@@ -203,13 +203,13 @@ assert rows["release-task"]["workflow"]["actions"][0]["action"] == "Continue in 
 assert rows["previous-record"]["release"] == rows["release-task"]["release"]
 assert rows["run-b"]["workflow"]["actions"][0]["action"] == "Continue using release B."
 '
-sed "s/$a/$b/" "$sandbox/task-a.toml" > "$ds_task_run"
+sed "s/$a/$b/" "$sandbox/task-a.toml" > "$release_task_run"
 if out=$(runweld task resume release-task 2>&1); then
   echo 'run#starts-from-last: an edited draft cannot move a registered task to the current project release' >&2
   exit 1
 fi
 assert_contains "$out" "$a" 'run#starts-from-last: replacing the draft pin identifies its entry release'
-cp "$sandbox/task-a.toml" "$ds_task_run"
+cp "$sandbox/task-a.toml" "$release_task_run"
 
 # Approved snapshots take priority over edited run files and the new project lock.
 sed "s/$a/$b/" "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
@@ -252,7 +252,7 @@ if out=$(cd "$sandbox" && runweld phase done "$plan" 1 2>&1); then
   exit 1
 fi
 assert_contains "$out" "$a" 'distribution#project-lock: a damaged run names its release'
-if out=$(cd "$ds_task_tree" && runweld task resume release-task 2>&1); then
+if out=$(cd "$release_task_tree" && runweld task resume release-task 2>&1); then
   echo 'distribution#project-lock: a task resume cannot substitute the current release' >&2
   exit 1
 fi
@@ -262,7 +262,7 @@ if out=$(runweld task path release-task browser-test 2>&1); then
   exit 1
 fi
 assert_contains "$out" "$a" 'distribution#project-lock: task path names the damaged entry release'
-if out=$(cd "$ds_task_tree" && runweld status --current --json 2>&1); then
+if out=$(cd "$release_task_tree" && runweld status --current --json 2>&1); then
   echo 'distribution#project-lock: current task guidance cannot substitute the current release' >&2
   exit 1
 fi

@@ -10,7 +10,7 @@ code block):
   R1 file links      - [text](target) resolves to a file that exists
   R2 namespace        - dev-skills:<name> names a skill under skills/ or an
                         agent under agents/
-  R3 legacy tokens     - ds-<name>, retired skill, agent and hook names are
+  R3 legacy tokens     - retired skill, agent and hook names are
                         findings unless allowlisted
 
 and two things per file:
@@ -56,7 +56,6 @@ FENCE_RE = re.compile(r"^\s*`{3,}")
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 NAMESPACE_RE = re.compile(r"\bdev-skills:([A-Za-z0-9][A-Za-z0-9-]*)")
-DS_TOKEN_RE = re.compile(r"\bds-[A-Za-z0-9][A-Za-z0-9-]*\b")
 LEGACY_WORDS = (
     "diagnose",
     "brainstorming",
@@ -192,9 +191,8 @@ def check_r2(path, lineno, line, findings):
 def check_r3(path, lineno, line, findings, allow_index, allow_matched):
     path_key = rel(path)
     key = f"{path_key}:{lineno}"
-    tokens = [m.group(0) for m in DS_TOKEN_RE.finditer(line)]
-    tokens += [m.group(0) for m in LEGACY_WORD_RE.finditer(line)]
-    for token in tokens:
+    for match in LEGACY_WORD_RE.finditer(line):
+        token = match.group(0)
         idxs = allow_index.get((path_key, lineno, token))
         if idxs:
             for i in idxs:

@@ -2,7 +2,7 @@
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export INSTALLER="$repo_root/scripts/install-runweld"
-export DS_TEST_LEGACY_ROOT="${DS_TEST_LEGACY_ROOT:-$repo_root}"
+export RUNWELD_TEST_LEGACY_ROOT="${RUNWELD_TEST_LEGACY_ROOT:-$repo_root}"
 python3 -B <<'PY'
 import fcntl
 import hashlib
@@ -20,8 +20,8 @@ with tempfile.TemporaryDirectory() as folder:
     root.mkdir()
     env = dict(os.environ, GIT_AUTHOR_NAME="Tester", GIT_AUTHOR_EMAIL="test@example.org",
                GIT_COMMITTER_NAME="Tester", GIT_COMMITTER_EMAIL="test@example.org")
-    ds = home / "bin/runweld"
-    legacy = Path(os.environ["DS_TEST_LEGACY_ROOT"]).resolve()
+    runweld = home / "bin/runweld"
+    legacy = Path(os.environ["RUNWELD_TEST_LEGACY_ROOT"]).resolve()
     legacy_cli = [sys.executable, "-B", legacy / "skills/build/pipeline.py"]
 
     def run(*args, cwd=root, ok=True):
@@ -159,7 +159,7 @@ none
         example = legacy / "skills/run-file/references/example.run.toml"
         path.with_suffix(".run.toml").write_text(example.read_text().replace('full = ["scripts/check", "scripts/test"]', 'full = ["true"]'))
         run(*legacy_cli, "approve", path)
-        run(*legacy_cli, "run", "approve", path, "--by", "User", "--words", "Approved before ds")
+        run(*legacy_cli, "run", "approve", path, "--by", "User", "--words", "Approved before standalone Runweld")
         summary = path.with_suffix(".summary.md")
         if external_summary:
             summary.symlink_to(external_summary)
@@ -223,7 +223,7 @@ none
     archived_main = private_alias / "plans/main-active.md"
     private_alias.parent.mkdir(parents=True)
     private_alias.write_text("existing private path")
-    init = [ds, "init", "--non-interactive", "--provider", "Test", "--primary-model", "main", "--secondary-model", "helper"]
+    init = [runweld, "init", "--non-interactive", "--provider", "Test", "--primary-model", "main", "--secondary-model", "helper"]
     assert "migration-collision" in run(*init, ok=False)
     assert private_alias.read_text() == "existing private path" and evidence.read_text() == "Evidence, unchanged"
     private_alias.rename(private_alias.with_name("saved"))
@@ -268,29 +268,29 @@ none
             )
 
     for source in (main_plan, archived_main):
-        migrated = json.loads(run(ds, "status", source, "--json"))
+        migrated = json.loads(run(runweld, "status", source, "--json"))
         check_routes([r["capture"] for r in migrated["cycles"][0]["results"]], routes)
     before = {p: p.read_bytes() for p in (plan, run_file, summary, evidence, cross_capture, archive, done)}
     there.parent.unlink()  # Simulate an interruption after the rename but before restoring the old path.
     run(*init)
     assert all(p.read_bytes() == data for p, data in before.items())
-    assert "task-collision" in run(ds, "task", "start", "active", ok=False)
+    assert "task-collision" in run(runweld, "task", "start", "active", ok=False)
 
     # run#changes-through-approve: invoke exactly the previously issued command, then read the same state through its alias.
-    before_build = json.loads(run(ds, "status", old_alias / "plans/active.md", "--json", cwd=home))
+    before_build = json.loads(run(runweld, "status", old_alias / "plans/active.md", "--json", cwd=home))
     assert before_build["tree"] == str(checkout), "distribution#local-workflow: adoption must not reassign the linked legacy checkout"
     run(*issued, cwd=home)
-    state = json.loads(run(ds, "status", old_alias / "plans/active.md", "--json", cwd=home))
+    state = json.loads(run(runweld, "status", old_alias / "plans/active.md", "--json", cwd=home))
     assert state["approvals"] == approved and not state["drift"], state["drift"]
     assert state["release"] is None, "historical work must not be relabeled with the project release"
     assert state["tree"] == str(home / "old build tree")
     run(*legacy_cli, "phase", "start", plan, "1", cwd=home)
     expected_inventory = [("active", "building"), ("historical", "merged"), ("main-active", "building")]
-    inventory = json.loads(run(ds, "status", "--json"))
+    inventory = json.loads(run(runweld, "status", "--json"))
     assert sorted((row["plan"], row["status"]) for row in inventory) == expected_inventory
-    current, = json.loads(run(ds, "status", "--current", "--json", cwd=home / "old build tree"))
+    current, = json.loads(run(runweld, "status", "--current", "--json", cwd=home / "old build tree"))
     assert Path(current["path"]).resolve() == plan.resolve() and current["phases"][0]["status"] == "in progress"
-    assert json.loads(run(ds, "run", "show", plan, "--json"))["approved"]
+    assert json.loads(run(runweld, "run", "show", plan, "--json"))["approved"]
     assert "?? .runweld/config.toml" in run("git", "status", "--short", "--untracked-files=all")
     assert "?? .runweld/runweld.lock" in run("git", "status", "--short", "--untracked-files=all")
     for cwd in (root, checkout):
@@ -306,7 +306,7 @@ none
                        *(path for path, _ in linked_routes)]
     raw = land(plan, home / "old build tree", linked_captures)
     for source in (plan, old_alias / "plans/active.md"):
-        migrated = json.loads(run(ds, "status", source, "--json"))
+        migrated = json.loads(run(runweld, "status", source, "--json"))
         check_routes([r["capture"] for r in migrated["cycles"][0]["results"]], linked_routes)
 
     # distribution#local-workflow: the normal removal of a linked checkout keeps its adopted history.
@@ -314,9 +314,9 @@ none
     run("git", "worktree", "remove", other_checkout)
     assert not checkout.exists() and (old_alias / "plans/active.capture.txt").read_text() == "Evidence, unchanged"
     run(*init)
-    inventory = json.loads(run(ds, "status", "--json"))
+    inventory = json.loads(run(runweld, "status", "--json"))
     assert sorted((row["plan"], row["status"]) for row in inventory) == expected_inventory
-    kept = json.loads(run(ds, "status", old_alias / "plans/active.md", "--json"))
+    kept = json.loads(run(runweld, "status", old_alias / "plans/active.md", "--json"))
     assert kept["approvals"] == approved and not kept["drift"]
     saved_plan = old_alias / "plans/active.md"
     saved_capture = old_alias / "plans/active.capture.txt"
@@ -335,10 +335,10 @@ none
     assert kept["cycles"][0]["results"][2]["capture"] == str(saved_cross), "distribution#local-workflow: the nested linked checkout owns its retained evidence"
     check_hopped(kept["cycles"][0]["results"][5]["capture"])
     check_routes([r["capture"] for r in kept["cycles"][0]["results"]], linked_routes)
-    absent = json.loads(run(ds, "status", archived_main, "--json"))
+    absent = json.loads(run(runweld, "status", archived_main, "--json"))
     check_hopped(absent["cycles"][0]["results"][5]["capture"])
     check_routes([r["capture"] for r in absent["cycles"][0]["results"]], routes)
-    assert str(saved_capture) in run(ds, "status", saved_plan)
+    assert str(saved_capture) in run(runweld, "status", saved_plan)
     assert saved_plan.with_suffix(".json").read_bytes() == raw, "status does not rewrite the judge's evidence"
 
     # distribution#local-workflow: a new checkout at the old path is not the owner of archived evidence.
@@ -360,7 +360,7 @@ none
     archive_hop.symlink_to(cross_root / "actual/child", target_is_directory=True)
     summary.write_text("Unrelated checkout's summary")
     plan.write_text("# Unrelated checkout's plan\n")
-    kept = json.loads(run(ds, "status", saved_plan, "--json"))
+    kept = json.loads(run(runweld, "status", saved_plan, "--json"))
     assert kept["cycles"][0]["results"][0]["capture"] == str(saved_capture), "distribution#local-workflow: archive provenance wins over the reused pathname"
     assert kept["approvals"] == approved and not kept["drift"]
     assert Path(kept["cycles"][0]["results"][0]["capture"]).read_text() == "Evidence, unchanged"
@@ -370,7 +370,7 @@ none
     guide = "Open fixture.txt\n\n#### Checks\n\n- **Done 1** Read fixture.txt → Fixture change.\n\n#### Decisions\n\n- —"
 
     def check_displays(path, recorded, approvals, same_owner, via_alias, originals, expected_routes, *, cwd=root):
-        state = json.loads(run(ds, "status", path, "--json", cwd=cwd))
+        state = json.loads(run(runweld, "status", path, "--json", cwd=cwd))
         assert state["approvals"] == approvals and not state["drift"]
         actual = [r["capture"] for r in state["cycles"][0]["results"]]
         assert actual[2] == str(saved_cross), f"distribution#local-workflow: {path} picks {actual[2]} instead of the adopted owner's {saved_cross}"
@@ -379,9 +379,9 @@ none
         check_hopped(actual[5])
         check_routes(actual, expected_routes)
         assert path.with_suffix(".json").read_bytes() == recorded
-        judge = Path(run(ds, "brief", "judge", path, cwd=cwd))
-        run(ds, "page", path, "--guide", guide, "--message", "Fixture change", cwd=cwd)
-        for view in (run(ds, "status", path, cwd=cwd), judge.read_text(), path.read_text()):
+        judge = Path(run(runweld, "brief", "judge", path, cwd=cwd))
+        run(runweld, "page", path, "--guide", guide, "--message", "Fixture change", cwd=cwd)
+        for view in (run(runweld, "status", path, cwd=cwd), judge.read_text(), path.read_text()):
             assert all(expected in view for expected in actual)
             assert all(str(original) not in view for original in originals)
         stored = json.loads(path.with_suffix(".json").read_text())
@@ -401,7 +401,7 @@ none
         live_plan.parent.mkdir(parents=True, exist_ok=True)
         live_plan.write_text(saved_plan.read_text())
         live_plan.with_suffix(".json").write_bytes(raw)
-        live = json.loads(run(ds, "status", live_plan, "--json"))
+        live = json.loads(run(runweld, "status", live_plan, "--json"))
         assert live["path"] == str(live_plan)
         actual = [r["capture"] for r in live["cycles"][0]["results"]]
         assert actual == list(map(str, linked_captures)), \
@@ -413,9 +413,9 @@ none
     saved_hopped.unlink()
     external_file.unlink()
     external_summary.unlink()
-    missing_summary = json.loads(run(ds, "status", saved_plan, "--json"))["drift"]
+    missing_summary = json.loads(run(runweld, "status", saved_plan, "--json"))["drift"]
     assert any(f"{external_summary} does not exist" in line for line in missing_summary), missing_summary
-    missing = json.loads(run(ds, "status", archived_main, "--json"))["cycles"][0]["results"]
+    missing = json.loads(run(runweld, "status", archived_main, "--json"))["cycles"][0]["results"]
     assert missing[2]["capture"] == str(saved_cross) and not saved_cross.exists(), "distribution#local-workflow: a missing adopted capture cannot become unrelated live evidence"
     missing_hopped = Path(missing[5]["capture"])
     assert missing_hopped.resolve() == saved_hopped and not missing_hopped.exists()

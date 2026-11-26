@@ -114,7 +114,7 @@ PACKAGE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__fil
 
 def standalone_bundle():
     if os.path.basename(os.path.dirname(PACKAGE)) == "releases" and os.path.isfile(os.path.join(PACKAGE, "release.json")):
-        from ds_release import installed_root
+        from runweld_release import installed_root
         return installed_root(__file__)
     return None
 
@@ -653,7 +653,7 @@ def read_required(path, code, fix, *, optional=False, newline=None):
 
 def plan_paths(plan):
     """-> (plan .md, state .json, lock), all absolute."""
-    from ds_release import history_path
+    from runweld_release import history_path
     md = str(history_path(plan))
     if not md.endswith(".md"):
         raise Refuse("bad-plan", f"{plan} is not a .md file", "pass the plan file")
@@ -686,7 +686,7 @@ def workflow_subdir(path):
 
 
 def plan_root(md):
-    from ds_release import project_root
+    from runweld_release import project_root
     root = project_root(Path(md).parent)
     if root is None:
         raise Refuse("no-repo", f"{md} is not inside a git repository", "keep plans inside the project")
@@ -697,7 +697,7 @@ def plan_checkout(md):
     directory = Path(md).parent
     backing = directory.parent
     if backing.parent.parts[-3:] == (".runweld", "workflow", "legacy"):
-        from ds_release import worktrees
+        from runweld_release import worktrees
         for checkout, _ in worktrees(backing.parent.parents[2]):
             alias = checkout / LEGACY_DIR
             if alias.is_symlink() and alias.readlink() == backing:
@@ -711,7 +711,7 @@ def plan_checkout(md):
 
 
 def legacy_workflows(root):
-    from ds_release import worktrees
+    from runweld_release import worktrees
     return [path / LEGACY_DIR for path, _ in worktrees(root) if (path / LEGACY_DIR).is_dir()]
 
 
@@ -720,7 +720,7 @@ def legacy_key(project, checkout):
 
 
 def adopt_legacy(project):
-    from ds_release import worktrees
+    from runweld_release import worktrees
     aliases = workflow_subdir(workflow_dir(project) / "legacy")
     collision = lambda path: Refuse("migration-collision", f"{path} already exists", "move the conflicting item aside and rerun runweld init")
     for checkout, _ in worktrees(project):
@@ -1486,7 +1486,7 @@ def executor_selection(plan, provider):
             tree = plan_checkout(os.path.join(directory, "executor.md"))
         config = None
         if standalone_bundle() is not None:
-            from ds_release import project_root
+            from runweld_release import project_root
             if project := project_root(tree):
                 config = project / ".runweld/config.toml"
         if config is not None and os.path.lexists(config):
@@ -1571,7 +1571,7 @@ def settings_toml(values):
 
 def read_run(plan):
     """-> (values, []) or (None, [(code, message, fix)]); the file is read as written."""
-    from ds_release import ReleaseError, registered_task, task_pin
+    from runweld_release import ReleaseError, registered_task, task_pin
     path = run_path(plan)
     try:
         _, values = read_run_file(path)
@@ -1602,7 +1602,7 @@ def run_diags(v, *, project=False):
         if sec not in allowed:
             out.append(("run-unknown-section", f"[{sec}] is not allowed here", "use only " + ", ".join(f"[{name}]" for name in allowed)))
     if "workflow" in v:
-        from ds_release import ReleaseError, release_pin
+        from runweld_release import ReleaseError, release_pin
         try:
             release_pin(v, "the run file")
         except ReleaseError:
@@ -1771,7 +1771,7 @@ def validate_project_config(path, values):
 
 
 def read_project_config(path, *, optional=False):
-    from ds_release import read_data
+    from runweld_release import read_data
     text = read_data(path, str)
     if text is None:
         if optional:
@@ -1871,14 +1871,14 @@ def init_settings(project, text, current, a, interactive):
 
 
 def init_agents(text):
-    start, end = "<!-- ds:begin -->", "<!-- ds:end -->"
+    start, end = "<!-- runweld:begin -->", "<!-- runweld:end -->"
     nl = "\r\n" if "\r\n" in text else "\n"
     block = nl.join((start, "For Runweld, use the `runweld` skill or run `runweld help agents`.", end))
-    markers = list(re.finditer(r"(?m)^<!-- ds:(?:begin|end) -->(?=\r?$)", text))
+    markers = list(re.finditer(r"(?m)^<!-- runweld:(?:begin|end) -->(?=\r?$)", text))
     if not markers:
         return text + (nl if text.endswith("\n") else nl * 2 if text else "") + block + nl
     if [marker.group() for marker in markers] != [start, end]:
-        raise Refuse("project-agents-block", "AGENTS.md has mismatched ds block markers", "repair or remove the ds markers")
+        raise Refuse("project-agents-block", "AGENTS.md has mismatched Runweld block markers", "repair or remove the managed block markers")
     return text[:markers[0].start()] + block + text[markers[1].end():]
 
 
@@ -1928,26 +1928,26 @@ def init_ignore(project, text):
 
 
 def write_init_text(path, before, after):
-    from ds_release import atomic_write
+    from runweld_release import atomic_write
     if before != after:
         mode = stat.S_IMODE(path.stat().st_mode) if before is not None else 0o644
         atomic_write(path, after.encode("utf-8"), mode)
 
 
 def cmd_init(bundle, a):
-    from ds_release import ReleaseError, project_root, read_data, read_lock, write_lock
+    from runweld_release import ReleaseError, project_root, read_data, read_lock, write_lock
     project = project_root(Path.cwd())
     if project is None:
         raise Refuse("no-repo", "the current directory is not in a Git project", "run `runweld init` in a Git checkout")
     common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=project).stdout.strip())
-    with (common / "ds-init.lock").open("a") as lock:
+    with (common / "runweld-init.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         config, agents, ignore = (project / path for path in (".runweld/config.toml", "AGENTS.md", ".gitignore"))
         for path in (config.parent, config, agents, ignore):
             if path.is_symlink():
                 raise Refuse("project-init-path", f"{path} is a symbolic link", "use a regular project file or directory")
         previous, current = read_project_config(config, optional=True)
-        locked_release = read_lock(project)
+        locked_release = read_lock(project, bundle.parent.parent)
         if locked_release is not None and locked_release != bundle.name:
             raise ReleaseError(f"{project} locks {locked_release}; run `runweld init` without a release override")
         agents_before, ignore_before = (read_data(path, str) for path in (agents, ignore))
@@ -2011,13 +2011,13 @@ def cmd_init(bundle, a):
             write_init_text(local_exclude, excluded, (excluded or "").rstrip("\n") + "\n" + "\n".join(missing) + "\n")
         adopt_legacy(project)
         if locked_release is None:
-            write_lock(project, bundle.name)
+            write_lock(project, bundle)
     print(f"Initialized {project} for {provider} on {bundle.name}. Run `runweld help agents` for next steps.")
     return 0
 
 
 def snapshot_run(bundle, project, path):
-    from ds_release import atomic_write
+    from runweld_release import atomic_write
     src = project / ".runweld/config.toml"
     _, settings = read_project_config(src)
     text = settings_toml({**settings, "workflow": {"release": bundle.name}, "run": {}})
@@ -2043,7 +2043,7 @@ def task_paths(project, name):
 
 
 def task_lookup(project, name):
-    from ds_release import read_task_record
+    from runweld_release import read_task_record
     if not re.fullmatch(ID, name):
         raise Refuse("task-name", f"{name!r} is not a task ID", "use lowercase letters, numbers and hyphens")
     path, plan, tree, artifacts = task_paths(project, name)
@@ -2092,7 +2092,7 @@ def artifact_path(root, area):
 
 
 def cmd_path(area):
-    from ds_release import project_root
+    from runweld_release import project_root
     project = project_root(Path.cwd())
     if project is None:
         raise Refuse("no-repo", "not inside a Git project", "run this command in the project")
@@ -2112,7 +2112,7 @@ def task_output(row, as_json):
 
 
 def cmd_task(bundle, a):
-    from ds_release import ReleaseError, atomic_write, project_root, read_lock
+    from runweld_release import ReleaseError, atomic_write, project_root, read_lock
     project = project_root(Path.cwd())
     if project is None:
         raise Refuse("no-repo", "not inside a Git project", "run this command in the project")
@@ -2137,11 +2137,11 @@ def cmd_task(bundle, a):
         fcntl.flock(lock, fcntl.LOCK_EX)
         row = task_lookup(project, name)
         r = lambda *args: git(*args, cwd=project, check=False)
-        branch = "ds/" + name
+        branch = "runweld/" + name
         branch_tip = r("rev-parse", "--verify", "-q", f"refs/heads/{branch}").stdout.strip()
         run_file = Path(run_path(plan))
         if row is None:
-            if read_lock(project) != bundle.name:
+            if read_lock(project, bundle.parent.parent) != bundle.name:
                 raise ReleaseError(f"{project} does not lock {bundle.name}; run `runweld init` or use `runweld` without a release override")
             _, config = read_project_config(project / ".runweld/config.toml")
             base = a.base or config["finish"]["target"]
@@ -2153,7 +2153,7 @@ def cmd_task(bundle, a):
             row = {"base": commit.stdout.strip(), "branch": branch, "ready": False, "release": bundle.name}
             atomic_write(record_path, json.dumps(row).encode(), 0o600)
             row = task_lookup(project, name)
-        elif (release := plan_release(plan) or read_lock(project)) != bundle.name:
+        elif (release := plan_release(plan) or read_lock(project, bundle.parent.parent)) != bundle.name:
             raise ReleaseError(f"this run selects {release}, not {bundle.name}; use `runweld` without a release override")
         elif a.base and r("rev-parse", "--verify", "-q", "--end-of-options", f"{a.base}^{{commit}}").stdout.strip() != row["base"]:
             raise Refuse("task-base", f"task {name} already started at {row['base']}", "omit --base to resume this task")
@@ -2185,15 +2185,15 @@ def cmd_task(bundle, a):
 
 
 def task_env(task, project, alloc):
-    values = {"DS_SOURCE_CHECKOUT": project, "DS_TASK_PATH": task["tree"], "DS_PLAN": task["plan"],
-              "DS_WORKFLOW": workflow_dir(project), "DS_ARTIFACTS": task["artifacts"],
-              "DS_PORT": alloc.get("port"), "DS_DATA_DIR": alloc.get("data_dir")}
+    values = {"RUNWELD_SOURCE_CHECKOUT": project, "RUNWELD_TASK_PATH": task["tree"], "RUNWELD_PLAN": task["plan"],
+              "RUNWELD_WORKFLOW": workflow_dir(project), "RUNWELD_ARTIFACTS": task["artifacts"],
+              "RUNWELD_PORT": alloc.get("port"), "RUNWELD_DATA_DIR": alloc.get("data_dir")}
     return {**{k: v for k, v in os.environ.items() if k not in values},
             **{k: str(v) for k, v in values.items() if v is not None}}
 
 
 def cmd_task_setup(plan, *, implicit=False):
-    from ds_release import atomic_write, read_data
+    from runweld_release import atomic_write, read_data
     md = plan_paths(plan)[0]
     root = plan_root(md)
     task = task_for(plan, root)
@@ -2733,7 +2733,7 @@ def workflow_action(owner, kind, action, **context):
 
 
 def plan_release(plan):
-    from ds_release import ReleaseError, run_pin
+    from runweld_release import ReleaseError, run_pin
     try:
         return run_pin(plan_paths(plan)[0])
     except ReleaseError as error:
@@ -3074,7 +3074,7 @@ def status_workflow(plan, head, stage, actions):
 
 
 def pinned_workflow(bundle, plan, cwd, provider, command):
-    from ds_release import PROGRAM, ReleaseError, verify_release
+    from runweld_release import PROGRAM, ReleaseError, verify_release
     if bundle is None or not (release := plan_release(plan)) or release == bundle.name:
         return None
     engine = verify_release(bundle.parents[1], release) / PROGRAM
@@ -3325,12 +3325,12 @@ def phase_of(st, n):
 
 
 def main_worktree(root):
-    from ds_release import project_root
+    from runweld_release import project_root
     return str(project_root(root) or root)
 
 
 def branch_tree(root, branch):
-    from ds_release import worktrees
+    from runweld_release import worktrees
     return next((str(path) for path, name in worktrees(root) if name == branch), None)
 
 
@@ -5534,7 +5534,7 @@ def cmd_finish(plan, merged):
             return 0
         else:
             common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=root).stdout.strip())
-            with (common / "ds-integration.lock").open("a") as lock:
+            with (common / "runweld-integration.lock").open("a") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 require_acceptance(plan, st)
                 how = f"{fin['how']} into {fin['target']} at {local_merge(st, root, fin)[:7]}"
@@ -5894,7 +5894,7 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
 
 
 def agent_help(bundle):
-    from ds_release import GUIDE_SKILLS, ROLES
+    from runweld_release import GUIDE_SKILLS, ROLES
     print(f"Runweld {bundle.name}\n")
     print(f"Session and dispatch rules: {bundle / 'references/SESSIONS.md'}")
     print(f"Workflow paths: {bundle / 'references/WORKFLOW-PATHS.md'}")
@@ -5916,14 +5916,14 @@ def agent_help(bundle):
 
 
 def main(*, current_task=None):
-    from ds_release import ReleaseError
+    from runweld_release import ReleaseError
     bundle = standalone_bundle()
     p, a = parse_cli(sys.argv[1:] or (["--help"] if bundle else []), standalone=bundle is not None,
                      version=bundle.name if bundle else None)
     try:
         plan_arg = getattr(a, "plan", None)
         if bundle is not None:
-            from ds_release import command_plan, run_pin, update_installation
+            from runweld_release import command_plan, run_pin, update_installation
             selected_plan = command_plan(a, Path.cwd())
             required = run_pin(selected_plan) if selected_plan else None
             if required is not None and required != bundle.name:

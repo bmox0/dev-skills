@@ -14,7 +14,7 @@ sys.dont_write_bytecode = True
 source = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(source / "skills/build"))
 
-from ds_release import MANIFEST, PROGRAM, ReleaseError, atomic_write, manifest_bytes, release_id, verify_release
+from runweld_release import MANIFEST, PROGRAM, ReleaseError, atomic_write, manifest_bytes, release_id, verify_release
 
 
 def main():
@@ -67,7 +67,7 @@ def main():
                 raise
         launcher.parent.mkdir(parents=True, exist_ok=True)
         # A valid router stays usable even if one release's files later go missing.
-        for origin, target in ((PROGRAM, "route_pipeline.py"), ("skills/build/ds_release.py", "ds_release.py")):
+        for origin, target in ((PROGRAM, "route_pipeline.py"), ("skills/build/runweld_release.py", "runweld_release.py")):
             atomic_write(store / target, (final / origin).read_bytes())
         atomic_write(store / "default", (release + "\n").encode())
         atomic_write(launcher, (final / "bin/runweld").read_bytes(), 0o755)

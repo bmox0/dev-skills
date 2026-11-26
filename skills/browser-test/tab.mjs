@@ -9,12 +9,13 @@ import zlib from "node:zlib"
 const HERE = fileURLToPath(import.meta.url)
 
 function artifactDirectory() {
-  if (process.env.DS_ARTIFACTS) return path.join(process.env.DS_ARTIFACTS, "browser-test")
+  const artifacts = process.env.RUNWELD_ARTIFACTS
+  if (artifacts) return path.join(artifacts, "browser-test")
   const bundle = path.resolve(path.dirname(HERE), "../..")
   if (!existsSync(path.join(bundle, "release.json"))) return path.resolve(".ai-workflow", "browser-test")
   try {
     const branch = execFileSync("git", ["branch", "--show-current"], {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim()
-    const task = branch.match(/^ds\/([a-z0-9][a-z0-9-]*)$/)?.[1]
+    const task = branch.match(/^runweld\/([a-z0-9][a-z0-9-]*)$/)?.[1]
     const cli = path.resolve(bundle, "../../../../bin/runweld")
     const resolve = args => execFileSync(cli, args, {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim()
     if (task) {

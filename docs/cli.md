@@ -11,8 +11,8 @@ another location.
 
 Run `runweld update --cli` from any directory to install the current version
 from `main` into the same prefix as the CLI you invoked. Existing project locks
-and running tasks keep their selected builds. For an older CLI that lacks the
-scope flags, rerun the installer once:
+and running tasks keep their selected builds. If an older CLI cannot run the update,
+install the current CLI directly:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bash
@@ -22,7 +22,15 @@ curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bas
 
 Run `runweld update --project` in an initialized checkout to select the installed
 default for new tasks. Commit `.runweld/runweld.lock` to share the selection.
+The version 1 TOML lock records the exact release ID and SHA-256 digests for
+the CLI, each skill, role and host adapter, and the remaining package resources.
+A component digest covers its packaged paths, contents and executable flags.
+Review these entries in the Git diff when updating. Components ship together
+under the release version. Project models and checks live in `.runweld/config.toml`.
+
 Use `runweld update --project RELEASE` to select a specific installed build ID.
+Run `runweld update --project` once to replace a one-line lock with the installed
+build’s component lock.
 
 In a terminal, `runweld update` asks you to choose `cli` or `project`.
 Scripts must pass a scope explicitly. Outside an initialized project,
