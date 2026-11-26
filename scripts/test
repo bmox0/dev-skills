@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run every shell test, or just one discovered path."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from itertools import islice
 import os
 from pathlib import Path
 import subprocess
@@ -27,15 +28,31 @@ def main():
             return 1
         files = [target]
     workers = min(8, os.cpu_count() or 1)
+    pending = iter(sorted(files, key=lambda path: -Path(path).stat().st_size))
+    reporting = iter(files)
+    next_report = next(reporting, None)
+    results = {}
     failed = False
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        jobs = {path: pool.submit(run, path) for path in sorted(files, key=lambda path: -Path(path).stat().st_size)}
-        for path in files:
-            passed, output = jobs[path].result()
-            print(f"{'ok  ' if passed else 'FAIL'}  {path}", flush=True)
-            if not passed:
-                failed = True
-                print(textwrap.indent(output.rstrip(), "      "), flush=True)
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        jobs = {pool.submit(run, path): path for path in islice(pending, workers)}
+        while jobs:
+            done, _ = wait(jobs, return_when=FIRST_COMPLETED)
+            for job in done:
+                results[jobs.pop(job)] = job.result()
+            for path in islice(pending, len(done)):
+                jobs[pool.submit(run, path)] = path
+            while next_report in results:
+                passed, output = results.pop(next_report)
+                print(f"{'ok  ' if passed else 'FAIL'}  {next_report}", flush=True)
+                if not passed:
+                    failed = True
+                    print(textwrap.indent(output.rstrip(), "      "), flush=True)
+                next_report = next(reporting, None)
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        pool.shutdown(cancel_futures=True)
     return int(failed)
 
 

@@ -96,6 +96,47 @@ assert_exit 1 "a failed test fails the default run" || exit 1
 assert_eq $'FAIL  test/nested/fail.test.sh\n      fixture error\nok    test/pass.test.sh' "$out" || exit 1
 assert_eq $'fail\npass' "$(sort "$runner/calls")" "the default run runs each test once" || exit 1
 
+python3 - "$runner" <<'PY' || exit 1
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+root = Path(sys.argv[1])
+for path in (root / "test").rglob("*.test.sh"):
+    path.unlink()
+calls = root / "calls"
+calls.write_text("")
+workers = min(8, os.cpu_count() or 1)
+for n in range(workers + 1):
+    fixture = root / "test" / f"{n}.test.sh"
+    fixture.write_text("#!/bin/sh\nprintf x >> calls\nexec sleep 30\n")
+    fixture.chmod(0o755)
+
+def wait_for(condition):
+    deadline = time.monotonic() + 5
+    while not condition():
+        assert time.monotonic() < deadline, "timed out waiting for the test runner"
+        time.sleep(0.01)
+
+runner = subprocess.Popen([root / "scripts/test"], start_new_session=True,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+try:
+    wait_for(lambda: calls.stat().st_size >= workers)
+    os.killpg(runner.pid, signal.SIGINT)
+    wait_for(lambda: runner.poll() is not None or calls.stat().st_size > workers)
+    assert calls.stat().st_size == workers, "an interrupt started a queued test"
+    output, _ = runner.communicate(timeout=5)
+    assert runner.returncode in (-signal.SIGINT, 128 + signal.SIGINT), output
+    assert "Traceback" not in output, output
+finally:
+    if runner.poll() is None:
+        os.killpg(runner.pid, signal.SIGKILL)
+        runner.communicate()
+PY
+
 # frontmatter FILE — the YAML block between the first two '---' lines, or
 # nothing if the file has none.
 frontmatter() {

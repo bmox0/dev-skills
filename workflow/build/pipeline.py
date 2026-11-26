@@ -751,6 +751,15 @@ def read_plan(md):
     return split_gate(text.split("\n"))
 
 
+def phase_brief_text(lines, n):
+    mask = fenced(lines)
+    i = next((k for k, line in enumerate(lines) if not mask[k] and (m := PHASE_HEAD.match(line)) and int(m[1]) == n), None)
+    if i is None:
+        return None
+    j = next((k for k in range(i + 1, len(lines)) if lines[k].startswith("#") and not mask[k]), len(lines))
+    return [f"## Phase {n}, verbatim from the plan", "", *lines[i:j], ""]
+
+
 def head_hash(head):
     return hashlib.sha256(markdown_newlines("\n".join(head)).encode()).hexdigest()
 
@@ -3905,7 +3914,7 @@ def bind_legacy_planning_action(step, plan, tree, bundle):
                                       "records": plan})
 
 
-def legacy_brief(plan, status, brief, work):
+def legacy_brief(plan, head, status, brief, work):
     assignment = work["assignment"]
     scopes = {"implementer": ("phase",), "fix": ("cycle", "fix"), "round": ("round",),
               "reviewer": ("id",), "verify": ("cycle",), "judge": ("cycle",)}
@@ -3917,8 +3926,12 @@ def legacy_brief(plan, status, brief, work):
     expected = [f"Plan: {plan}", f"Tree: {assignment['cwd']}", f"Branch: {status['branch']}",
                 f"Assignment: {label}", f"Run release: {release}", f"Role source: {assignment['role_source']}"]
     grants = assignment.get("grants", [])
-    if brief == "implementer" and grants == ["none"]:
-        return None  # The legacy brief uses the same text for no grants.
+    if brief == "implementer":
+        if grants == ["none"]:  # The legacy brief uses the same text for no grants.
+            return None
+        if not (phase := phase_brief_text(head, assignment["phase"])):
+            return None
+        phase.append(f"Grants: {', '.join(grants) or 'none'}")
     if executor := work.get("executor"):
         expected += [f"Executor {k}: {executor[k]}" for k in ("provider", "tier", "model", "effort") if k in executor]
     if brief in ("reviewer", "verify", "judge"):
@@ -3936,15 +3949,15 @@ def legacy_brief(plan, status, brief, work):
             mtime = path.stat().st_mtime
             if datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") < approved:
                 continue
-            lines = read_required(path, "brief", "restore the prepared brief").splitlines()
+            lines = read_required(path, "brief", "restore the prepared brief").split("\n")
         except (OSError, Refuse):
             continue
         if not all(line in lines for line in expected):
             continue
         if brief == "implementer":
-            saved = next((line for line, following in zip(lines, lines[1:])
-                          if line.startswith("Grants: ") and following.startswith("Skills to read first: ")), None)
-            if saved != f"Grants: {', '.join(grants) or 'none'}":
+            # The writer's first section contains the literal phase before its grant metadata.
+            start = next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))
+            if lines[start:start + len(phase)] != phase:
                 continue
         if brief == "reviewer":
             binding = shlex.join([plan, "--assignment", assignment["id"], "--range", assignment["range"]])
@@ -3958,7 +3971,7 @@ def legacy_brief(plan, status, brief, work):
     return max(found)[1] if found else None
 
 
-def bind_legacy_actions(status, workflow, plan, task, bundle, provider):
+def bind_legacy_actions(status, workflow, plan, head, task, bundle, provider):
     actions = workflow["actions"]
     roles = {role: source for stage in workflow["stages"] for role, source in stage.get("roles", {}).items()}
     briefs = {digest(step["assignment"]): step for step in actions
@@ -4010,7 +4023,7 @@ def bind_legacy_actions(status, workflow, plan, task, bundle, provider):
         generation = briefs.get(digest(assignment))
         bind_assignment(plan, status, brief, step, legacy=(bundle, roles[role]))
         if generation:
-            if path := legacy_brief(plan, status, brief, step):
+            if path := legacy_brief(plan, head, status, brief, step):
                 assignment["brief"] = {"path": path, "dispatch": "unverified"}
                 step["action"] += " Recover the prepared brief. Inspect the host for a live assignment before dispatch or continuation."
                 prepared.append(generation)
@@ -4033,6 +4046,7 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
         plan = plan_paths(selected_plan)[0]
         task = task_for(plan)
         has_plan = os.path.lexists(plan)
+        head = []
         goal = task.get("goal") if task else None
         if legacy_release:
             command = ("task", "resume", task["id"]) if task and not has_plan else ("status", plan)
@@ -4051,7 +4065,7 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
             goal = "\n".join(sections(head).get("Result", (0, []))[1]).strip() or goal
         workflow = status.pop("workflow")
         stage = workflow["stage"]
-        actions = (bind_legacy_actions(status, workflow, plan, task, bundle.parent / legacy_release, a.provider)
+        actions = (bind_legacy_actions(status, workflow, plan, head, task, bundle.parent / legacy_release, a.provider)
                    if legacy_release else workflow["actions"])
         for step in actions:
             if step["kind"] == "run":
@@ -4584,15 +4598,11 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
         out += ["Apply this model and effort explicitly; do not inherit another role preset.", ""]
     if kind == "implementer":
         ph = phase_of(st, n)
-        mask = fenced(lines)
-        i = next((k for k, l in enumerate(lines) if not mask[k] and (m := PHASE_HEAD.match(l)) and int(m[1]) == n), None)
-        if i is None:
+        if not (phase := phase_brief_text(lines, n)):
             raise Refuse("phase-text-gone", f"the plan file has no heading for phase {n}", f"run `pipeline.py approve {plan}` or restore the heading")
-        j = next((k for k in range(i + 1, len(lines)) if lines[k].startswith("#") and not mask[k]), len(lines))
         sk = [phase_instruction(tree, x) for x in ph["skills"]]
         sp = [os.path.join(tree, x) for x in ph["spec"]]
-        out += [f"## Phase {n}, verbatim from the plan", "", *lines[i:j], "",
-                f"Grants: {', '.join(ph.get('grants', [])) or 'none'}",
+        out += [*phase, f"Grants: {', '.join(ph.get('grants', [])) or 'none'}",
                 f"Skills to read first: {', '.join(sk) or 'none'}", f"Spec area files: {', '.join(sp) or 'none'}", ""]
         out += ["## Checks for this phase", "", "Red before green. First show the public behaviour failing, then make it pass and run the affected fixtures.",
                 "Run each configured phase check below for your territory. Report `--check 'COMMAND' passed` or `--check 'COMMAND' 'failed: REASON'` for each.",

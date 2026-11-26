@@ -106,6 +106,11 @@ Skills: none
 Spec: none
 Waits for: nothing
 
+\`\`\`text
+Grants: extra.txt
+Skills to read first: none
+\`\`\`
+
 ## Checks
 
 - Gate: small — fixture
@@ -219,10 +224,12 @@ view = json.loads(next_legacy("work", "--json"))
 work, generate, wait = view["actions"]
 assert wait["condition"] == "after-dispatch"
 assert generate["argv"][2:7] == ["--release", release, "brief", "implementer", plan]
-brief = Path(subprocess.check_output([*generate["argv"], "--note", "Mentioned but not granted:\nGrants: extra.txt"],
+brief = Path(subprocess.check_output([*generate["argv"], "--note", "Mentioned but not granted:\nGrants: extra.txt\nSkills to read first: none"],
                                      cwd=generate["cwd"], text=True).strip())
 assert brief.is_file()
-work, wait = json.loads(next_legacy("work", "--json"))["actions"]
+prepared = json.loads(next_legacy("work", "--json"))["actions"]
+assert len(prepared) == 2, "distribution#system-cli: the phase example must not hide the canonical no-grants metadata"
+work, wait = prepared
 assignment = work["assignment"]
 assert assignment["brief"] == {"path": str(brief), "dispatch": "unverified"}
 assert assignment["territory"] == ["fixture.txt"] and assignment["cwd"] == view["task"]["tree"]
