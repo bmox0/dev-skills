@@ -271,6 +271,9 @@ assert_eq "$a" "$(cat "$sandbox/lib/runweld/default")"
 cmp .runweld/runweld.lock "$sandbox/lock"
 cmp "$repo_root/bin/runweld" "$sandbox/bin/runweld"
 assert_eq "$b" "$(cat "$sandbox/lib/runweld/default")"
+# The advertised command above prepared a real brief after the original native snapshot.
+record_status previous-active "$sandbox/previous-active.json.native" json python3 "$bundle/workflow/build/pipeline.py"
+assert_contains "$(cat "$sandbox/previous-active.json.native.out")" '"dispatch": "unverified"' 'distribution#system-cli: release A recovers the prepared assignment'
 for id in "${previous[@]}"; do
   check_status "$id" "$sandbox/$id.json.native" json
 done

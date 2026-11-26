@@ -132,7 +132,11 @@ matching = [a for a in view["actions"] if a["kind"] == kind and a["owner"] == ow
 assert matching, view
 action = matching[0]
 for key, value in json.loads(expected or "{}").items():
-    assert action.get(key) == value, action
+    actual = action.get(key)
+    if key == "assignment":
+        assert {k: actual.get(k) for k in value} == value, action
+    else:
+        assert actual == value, action
 if mode == "run":
     subprocess.run(action["argv"], cwd="/", check=True, stdout=subprocess.DEVNULL)
 print(f"{owner} — " + action["action"])
@@ -882,7 +886,7 @@ failed=0
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'record first case'
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'record second case'
   cli verdict evidence-owed "$route" --owed verify --report 'Capture Done 1 again' >/dev/null || fail 'record judge recapture request'
-  if next_actions | grep -q 'Issue `brief judge'; then fail 'build#workflow-progress: status must wait for the owed recapture'; fi
+  if next_actions | grep -q 'Generate the `brief judge'; then fail 'build#workflow-progress: status must wait for the owed recapture'; fi
   cli verdict evidence-owed "$route" --owed verify --case 2 --report 'Capture the other case' >/dev/null || fail 'request a second recapture'
   cli result "$route" --case 2 --outcome passed --capture unrelated >/dev/null || fail 'record unrelated capture'
   route_step build-verification Verify 'Capture Done 1 again'
@@ -926,7 +930,7 @@ failed=0
   assert_contains "$out" 'review-missing' 'build#review-completion: the verdict needs the new review' || exit 1
   complete_review "$route" --provider fixture || fail 'complete requested review'
   route_step build-verification Verify 'Recapture the first case'
-  if next_actions | grep -Eq 'Revisit the review|Recapture the second case|Issue `brief judge'; then fail 'build#review-completion: only first recapture and its exception remain'; fi
+  if next_actions | grep -Eq 'Revisit the review|Recapture the second case|Generate the `brief judge'; then fail 'build#review-completion: only first recapture and its exception remain'; fi
   out=$(cli brief judge "$route" --provider fixture); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: the first request still gates the brief' || exit 1
   assert_contains "$out" 'Done 1 lacks current E2E evidence' 'build#review-completion: the brief names only the remaining requested case' || exit 1
@@ -975,7 +979,7 @@ failed=0
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'recapture second assigned case'
   out=$(cli brief judge "$route" --provider fixture); rc=$?
   assert_eq 0 "$rc" "build#workflow-progress: fresh captures fulfill the unscoped small-gate request ($out)" || exit 1
-  route_step judge Coordinator 'Issue `brief judge'
+  route_step judge Judge 'Decide from the current evidence'
   if next_actions | grep -q 'Recapture all assigned cases'; then fail 'build#workflow-progress: the fulfilled request leaves no work for Verify'; fi
 ) || failed=1
 (

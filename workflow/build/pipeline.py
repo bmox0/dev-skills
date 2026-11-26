@@ -1084,7 +1084,7 @@ def state_problem(st, md):
         "land_stops": [{"lands": int, "kind": str, "message": str}],
         "decisions": [{"at": str, "phase": nullable_int, "by": str, "question": str, "source": str, "answer": str, "why": str, "cost": str}],
         "approvals": dict, "run": dict, "alloc": dict, "tree": str, "tail_hash": str, "cleanup_pending": str,
-        "build_provider": str,
+        "build_provider": str, "integration": {"how": str, "target": str, "landed": str, "commit?": str, "request?": str},
         "acceptance": {"page": str}, "request": {"tip": str, "acceptance": str}, "pushed": {"tip": str},
         "check_transition": {"cycle": str, "id": str, "command": str, "target": nullable_int, "host": nullable_text,
                              "child": ({"pgid": int, "start": str}, type(None)), "note?": nullable_text},
@@ -1099,6 +1099,10 @@ def state_problem(st, md):
         return "state needs a gate level and at least one phase"
     if (page := st.get("page")) and page["ending"]["how"] not in CHOICES["finish", "how"]:
         return "state.page.ending.how must name a supported finish strategy"
+    if finish := st.get("integration"):
+        result = "request" if finish["how"] == "merge-request" else "commit"
+        if finish["how"] not in CHOICES["finish", "how"] or not finish.get(result):
+            return "state.integration needs the approved ending and its resulting commit or request"
     if (transition := st.get("check_transition")) and transition["command"] not in ("gate start", "fix done", "round done"):
         return "state.check_transition.command must name a full-check transition"
     for i, cycle in enumerate(st.get("cycles", [])):
@@ -2468,6 +2472,39 @@ def setup_actions(task):
             workflow_action("Planner", "run", "Prepare the task worktree if reproduction needs this setup.", cwd=tree, argv=argv)]
 
 
+def setup_paths(tree, *, ignored=False):
+    args = ("--ignored", "--exclude-standard") if ignored else ("--cached",)
+    result = subprocess.run(["git", "ls-files", "-z", "--others", *args], cwd=tree, capture_output=True)
+    if result.returncode == 0:
+        return set(map(os.fsdecode, filter(None, result.stdout.split(b"\0"))))
+    return None
+
+
+def setup_identity(tree, name):
+    path = Path(tree) / name
+    try:
+        if not path.is_relative_to(tree) or path.parent.resolve() != path.parent:
+            return None
+        info = path.lstat()
+    except (OSError, RuntimeError):
+        return None
+    if stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+        return [info.st_dev, info.st_ino, info.st_ctime_ns, info.st_mtime_ns, info.st_size, info.st_mode]
+    return None
+
+
+def setup_ownership(task):
+    from runweld_release import ReleaseError, read_data
+    path = Path(task["artifacts"]) / ".setup-outputs.json"
+    outputs = read_data(path, json.loads)
+    if outputs is None and not os.path.lexists(path):
+        return path, {}
+    if not isinstance(outputs, dict) or any(not isinstance(identity, list) or len(identity) != 6
+                                            or not all(type(part) is int for part in identity) for identity in outputs.values()):
+        raise ReleaseError(f"{path} has invalid setup ownership records")
+    return path, outputs
+
+
 def cmd_task_setup(plan, *, implicit=False, reproduction=False, preview=False):
     from runweld_release import atomic_write, read_data
     md = plan_paths(plan)[0]
@@ -2504,9 +2541,17 @@ def cmd_task_setup(plan, *, implicit=False, reproduction=False, preview=False):
         binding = digest([command, alloc])
         if read_data(stamp, str) == binding:
             return 0
+        ownership, previous = setup_ownership(task)
+        existing = setup_paths(tree)
+        still_owned = {name for name, identity in previous.items() if identity == setup_identity(tree, name)}
         show_setup(setup_effects(task, run, alloc))
         result = subprocess.run(command, cwd=tree, shell=True, env=task_env(task, root, alloc),
                                 pass_fds=(lock.fileno(),))
+        if existing is not None and (ignored := setup_paths(tree, ignored=True)) is not None:
+            # Cleanup owns unchanged records, not an entire ignored directory.
+            outputs = {name: identity for name in ignored if name in still_owned or name not in existing
+                       if (identity := setup_identity(tree, name)) is not None}
+            atomic_write(ownership, json.dumps(outputs).encode(), 0o600)
         if result.returncode:
             suffix = " --reproduction" if reproduction else ""
             raise Refuse("task-setup-failed", f"setup exited {result.returncode} in {tree}",
@@ -3048,9 +3093,14 @@ def cli_argv(plan=None, *, release=None):
     return [sys.executable, os.path.realpath(__file__)]
 
 
+def plan_command(plan, command, *args, cwd=None, **options):
+    return {"cwd": cwd or plan_root(plan),
+            "argv": [*cli_argv(plan), *command.split(), plan_paths(plan)[0], *map(str, args)],
+            **({"options": options} if options else {})}
+
+
 def run_action(plan, owner, action, command, *args):
-    return workflow_action(owner, "run", action, cwd=plan_root(plan), argv=[
-        *cli_argv(plan), *command.split(), plan_paths(plan)[0], *map(str, args)])
+    return workflow_action(owner, "run", action, **plan_command(plan, command, *args))
 
 
 def work_action(owner, action, role, kind, **context):
@@ -3083,24 +3133,46 @@ def show_next(actions):
         print("Next:")
         for step in actions:
             print(f"  {step['owner']} — {step['action']} [{step['kind']}]")
-            command = step if step["kind"] == "run" else step.get("command")
-            if command:
-                if "cwd" in command:
-                    print(f"    In {command['cwd']}: {shlex.join(command['argv'])}")
-                else:
-                    print(f"    {shlex.join(command['argv'])}")
-                if options := command.get("options"):
-                    print(f"    Inputs: {', '.join(options.values())}")
+            for command in ([step] if step["kind"] == "run" else [step["command"]] if step.get("command") else []) + step.get("alternatives", []):
+                show_command(command)
                 if effects := step.get("effects"):
                     show_setup(effects)
             for evidence in step.get("evidence", []):
                 print(f"    {evidence}")
+            if authority := step.get("authority"):
+                print(f"    Acceptance authority: {authority}")
             if executor := step.get("executor"):
                 print(f"    Executor: {executor['provider']} {executor['tier']} — {executor['model']}" +
                       (f" (effort {executor['effort']})" if "effort" in executor else ""))
-            assignment = step.get("assignment", {})
+            assignment = step.get("assignment", {}) if step["kind"] != "run" else {}
+            if steps := {key: val for key, val in assignment.items()
+                         if key in ("phase", "territory", "grants", "range", "cases", "cycle", "fix", "round", "notes", "items", "verdict")}:
+                print("    Assignment: " + ", ".join(f"{key} {val}" for key, val in steps.items()))
+            if source := assignment.get("role_source"):
+                print(f"    Role source: {source}\n    Protocol: {assignment['protocol']}")
+            if brief := assignment.get("brief", {}).get("path"):
+                print(f"    Prepared brief: {brief} (dispatch unverified)")
             for instruction in assignment.get("instructions", []):
                 print(f"    In {assignment['cwd']}: {shlex.join(instruction)}")
+            if channel := assignment.get("return_channel"):
+                print(f"    Return: {channel['contact']} via {channel['method']}. Records: {channel['records']}")
+            if records := step.get("records"):
+                print(f"    Records: {records}")
+            for report in assignment.get("reports", []):
+                print(f"    {report['label']}:")
+                show_command(report)
+            if check := assignment.get("herdr_check"):
+                print("    Before dispatch via Herdr:")
+                show_command(check)
+    else:
+        print("Next: no remaining actions.")
+
+
+def show_command(command):
+    where = f"In {command['cwd']}: " if "cwd" in command else ""
+    print(f"    {where}{shlex.join(command['argv'])}")
+    if options := command.get("options"):
+        print(f"    Inputs: {', '.join(options.values())}")
 
 
 def cmd_workflow(as_json, stage=None):
@@ -3165,8 +3237,12 @@ def build_actions(plan, st, ready, provider):
         owner = f"Implementer for phase {n}"
         if p["status"] == "in progress":
             if p.get("report") and (missing := missing_phase_checks(st, p["report"])):
-                actions.append(work_action(owner, f"Record the outcomes for {', '.join(missing)} with `phase report <plan> {n} --check COMMAND OUTCOME`.",
-                                           "implementer", "phase", phase=n, checks=missing))
+                work = work_action(owner, f"Record the outcomes for {', '.join(missing)} with `phase report <plan> {n} --check COMMAND OUTCOME`.",
+                                   "implementer", "phase", phase=n, checks=missing)
+                bind_assignment(plan, st, "implementer", work)
+                if executor := p.get("executor"):
+                    work["executor"] = executor
+                actions.append(work)
             elif p.get("report"):
                 actions.append(run_action(plan, "Coordinator", f"Check the report and run `phase done <plan> {n}`.", "phase done", n))
             else:
@@ -3190,17 +3266,141 @@ def brief_tier(brief, review_assignment=None):
     return "primary" if brief == "judge" or (brief == "reviewer" and review_assignment == "gate") else "secondary"
 
 
+def role_definition(role):
+    return next(stage for stage in workflow_catalog()["stages"].values() if role in stage.get("roles", {}))
+
+
+def bind_assignment(plan, st, brief, work):
+    role, assignment = work["role"], work["assignment"]
+    md, state, _ = plan_paths(plan)
+    tree = tree_fact(plan, st)
+
+    def report(label, command, *args, **options):
+        return {"label": label, **plan_command(plan, command, *args, cwd=tree, **options)}
+
+    if brief in ("implementer", "fix", "round"):
+        args = (assignment["phase"],) if brief == "implementer" else ()
+        command = "phase report" if brief == "implementer" else f"{brief} report"
+        reports = [report("Report work", command, *args, became="--became TEXT", commits="--commit SHA", checks="--checks TEXT")]
+        if brief == "implementer":
+            reports[0]["options"]["phase_checks"] = "--check COMMAND OUTCOME"
+            phase = phase_of(st, assignment["phase"])
+            assignment.update(territory=phase["territory"], grants=phase.get("grants", []))
+    elif brief == "reviewer":
+        args = ("--assignment", assignment["id"], "--range", assignment["range"])
+        reports = [report("Record a finding", "finding", *args, kind="--kind KIND", text="--text TEXT"),
+                   report("Complete the review", "review complete", *args)]
+    elif brief == "verify":
+        reports = [report("Record each verification result", "result", "--cycle", assignment["cycle"], "--head", assignment["head"],
+                          case="--case NUMBER", outcome="--outcome OUTCOME", capture="--capture PATH_OR_OUTPUT", detail="--detail TEXT")]
+    else:
+        reports = [report("Record a verdict", f"verdict {kind}", report="--report TEXT", **options)
+                   for kind, options in (("pass", {}), ("round", {"note": "--note TEXT CAUSE"}),
+                                         ("question", {"question": "--question TEXT"}), ("evidence-owed", {"owed": "--owed ROLE"}))]
+        for record in reports:
+            if "evidence-owed" not in record["argv"]:
+                record["options"]["decisions"] = "--decide ID ACTION REASON (for each open item or convention)"
+                if all(v["kind"] == "evidence-owed" for v in st.get("verdicts", [])):
+                    record["options"].update(predicted="--predicted pass|round", engine="--engine NAME")
+    assignment.update(cwd=tree, role_source=os.path.join(PACKAGE, role_definition(role)["roles"][role]),
+                      protocol=os.path.join(PACKAGE, "references/SESSIONS.md"),
+                      instructions=[[*cli_argv(plan), role, "--plan", md]], reports=reports,
+                      return_channel={"contact": "dispatching build coordinator",
+                                      "method": "native message or agreed result channel",
+                                      "records": state})
+    if standalone_bundle() is not None:
+        assignment["herdr_check"] = plan_command(plan, "handoff herdr", workspace="--workspace ID", pane="--pane ID")
+
+
+def herdr_handoff(plan, a):
+    def refuse(message):
+        raise Refuse("herdr-target", message, "inspect the live Herdr workspace and pane, then pass their IDs")
+
+    if os.environ.get("HERDR_ENV") != "1":
+        refuse("Herdr handoff must be checked from a Herdr session")
+    try:
+        result = subprocess.run(["herdr", "api", "snapshot"], capture_output=True, text=True, check=True, timeout=10)
+        snapshot = json.loads(result.stdout)["result"]["snapshot"]
+        workspaces, panes, agents = (snapshot[key] for key in ("workspaces", "panes", "agents"))
+        workspace = next((w for w in workspaces if w.get("workspace_id") == a.workspace), None)
+        pane = next((p for p in panes if p.get("pane_id") == a.pane and p.get("workspace_id") == a.workspace), None)
+        agent = next((x for x in agents if x.get("pane_id") == a.pane and x.get("workspace_id") == a.workspace), None)
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError, KeyError, TypeError):
+        refuse("cannot read the live Herdr snapshot")
+    if not workspace or not pane:
+        refuse(f"pane {a.pane} is not live in workspace {a.workspace}")
+    st = load_state(plan, required=True)
+    tree = tree_of(plan, st)
+    on_branch(st, tree)
+    cwd = pane.get("foreground_cwd") or pane.get("cwd")
+    if not isinstance(cwd, str) or os.path.realpath(cwd) != tree:
+        refuse(f"pane {a.pane} is not in the assigned worktree {tree}")
+    if a.agent:
+        if not agent or agent.get("name") != a.agent or agent.get("agent_status") not in ("idle", "done"):
+            refuse(f"{a.agent} is not a ready agent in pane {a.pane}")
+    elif agent or pane.get("agent"):
+        refuse(f"pane {a.pane} already has an agent; pass its name to check a continuation")
+    print(f"handoff: Herdr workspace {a.workspace}, pane {a.pane} is live in {tree}")
+    return 0
+
+
+def brief_binding(plan, st, kind, provider, *, phase=None, cases=(), review=None):
+    state = st.get("approvals", {})
+    if kind == "implementer":
+        scope = phase
+    elif kind == "round":
+        scope = st["rounds"][-1]["n"]
+    elif kind == "fix":
+        cycle = cycle_of(st)
+        scope = (cycle_label(cycle), cycle["fixes"][-1]["n"])
+    else:
+        tree = tree_fact(plan, st)
+        head = head_sha(None, tree)
+        cycle = cycle_of(st)
+        if kind == "reviewer":
+            scope = ["review", *(review or review_target(st, cycle, tree, head))[:2]]
+        elif kind == "verify":
+            scope = [cycle_label(cycle), head, sorted(cases)]
+        else:
+            scope = [cycle_label(cycle), head, judge_evidence(st)]
+        scope = [scope, (st.get("verdicts") or [None])[-1]]
+    return digest([kind, provider, scope, state.get("plan") or state.get("summary")])
+
+
+def prepared_brief(plan, st, kind, provider, args):
+    if standalone_bundle() is None:
+        return None
+    phase = args[0] if kind == "implementer" else None
+    cases = list(map(int, args[1].split(","))) if kind == "verify" and args else []
+    marker = "Assignment binding: " + brief_binding(plan, st, kind, provider, phase=phase, cases=cases)
+    prefix = f"{plan_slug(st)}.brief-{kind}-"
+    found = []
+    for candidate in Path(plan_paths(plan)[0]).parent.glob("*.md"):
+        if not candidate.name.startswith(prefix) or candidate.is_symlink() or not candidate.is_file():
+            continue
+        try:
+            with candidate.open(encoding="utf-8") as body:
+                if any(line.rstrip("\n") == marker for line in body):
+                    found.append((os.fstat(body.fileno()).st_mtime_ns, str(candidate)))
+        except (OSError, UnicodeError):
+            continue
+    return max(found)[1] if found else None
+
+
 def add_brief_actions(actions, plan, st, provider, brief, work, *args):
     actions.append(work)
+    bind_assignment(plan, st, brief, work)
+    assignment_args = args
     executor = phase_of(st, args[0]).get("executor") if brief == "implementer" else None
     provider = provider or st.get("build_provider")
     if executor:
+        provider = executor["provider"]
         work["executor"] = executor
-        args = (*args, "--provider", executor["provider"])
+        args = (*args, "--provider", provider)
         needed = None
     elif provider is None and "executors" in st.get("run", {}):
-        needed = workflow_action("Coordinator", "ask", "Supply the current provider with `status --provider NAME` to get executable brief commands.",
-                                 input="provider")
+        needed = workflow_action("Coordinator", "ask", "Supply the current provider to get executable brief commands.",
+                                 input="provider", command=plan_command(plan, "status", provider="--provider NAME"))
     elif provider is not None:
         try:
             selection = executor_selection(plan, provider)
@@ -3215,8 +3415,16 @@ def add_brief_actions(actions, plan, st, provider, brief, work, *args):
     else:
         needed = None
     if needed is None:
-        step = run_action(plan, "Coordinator", f"Generate the `brief {brief}` assignment for {work['owner']}.", f"brief {brief}", *args)
-        actions.append({**step, "role": work["role"], "assignment": work["assignment"]})
+        if path := prepared_brief(plan, st, brief, provider, assignment_args):
+            work["action"] += " Recover the prepared brief. Inspect the host for a live assignment before dispatch or continuation."
+            work["assignment"]["brief"] = {"path": path, "dispatch": "unverified"}
+        else:
+            step = run_action(plan, "Coordinator", f"Generate the `brief {brief}` assignment for {work['owner']}.", f"brief {brief}", *args)
+            work["assignment"]["brief"] = {k: step[k] for k in ("argv", "cwd")}
+            actions.append({**step, "role": work["role"], "assignment": work["assignment"]})
+        actions.append(workflow_action("Coordinator", "wait", f"Only after confirming dispatch, wait for {work['owner']} to record the result before advancing.",
+                                       waiting_for=f"{brief}-report", assigned_to=work["owner"],
+                                       condition="after-dispatch", records=work["assignment"]["return_channel"]["records"]))
     elif needed not in actions:
         actions.append(needed)
 
@@ -3272,11 +3480,20 @@ def verification_workflow(plan, st, c, tree, provider):
         judge = workflow_brief(st, "judge")
         if pending or owed:
             actions.append(workflow_action("Coordinator", "ask", f"For an explicit E2E exception, issue `{judge} --note REASON`. Record the reason with `verdict --evidence-note REASON`.",
-                                           input="evidence-exception"))
+                                           input="evidence-exception", command=judge_note_command(plan, st, provider, "REASON")))
         else:
-            add_brief_actions(actions, plan, st, provider, "judge", work_action("Coordinator", f"Issue `{judge}`.", "judge", "judge", cycle=label))
+            add_brief_actions(actions, plan, st, provider, "judge", work_action("Judge", f"Decide from the current evidence in `{judge}`.", "judge", "judge", cycle=label))
             return stage_after("build-verification", "evidence_ready"), actions
     return "build-verification", actions
+
+
+def judge_note_command(plan, st, provider, note):
+    provider = provider or st.get("build_provider")
+    args = ("--provider", provider) if provider else ()
+    options = {"note": f"--note {note}"}
+    if not provider and st.get("run", {}).get("executors"):
+        options["provider"] = "--provider NAME"
+    return plan_command(plan, "brief judge", *args, **options)
 
 
 def finish_workflow(plan, st, tip):
@@ -3287,13 +3504,15 @@ def finish_workflow(plan, st, tip):
         if not current_request:
             return "finish", [work_action("Coordinator", "The linked request has no current finish record. Recover its accepted tip and authorization before confirming a merge.",
                                           "coordinator", "finish", request=status)]
-        confirm = "finish" if forge_of(status) == "github" else "finish --merged"
-        return "finish", [workflow_action("Coordinator", "wait", f"Wait for {status} to merge, then confirm it with `{confirm} <plan>`.",
-                                          waiting_for="merge", request=status)]
+        confirm = () if forge_of(status) == "github" else ("--merged",)
+        return "finish", [workflow_action("Coordinator", "wait", f"Wait for {status} to merge, then confirm the merge.",
+                                          waiting_for="merge", request=status, command=plan_command(plan, "finish", *confirm))]
     if (st.get("pushed") or {}).get("tip") == tip:
-        return "finish", [work_action("Coordinator", "Find the outstanding request and record its link with `plan status <plan> LINK`.", "coordinator", "request-link")]
+        return "finish", [{**work_action("Coordinator", "Find the outstanding request and record its link with `plan status`.", "coordinator", "request-link"),
+                           "command": plan_command(plan, "plan status", link="LINK")}]
     if current_request:
-        return "finish", [work_action("Coordinator", "Open the request on the forge and record its link with `plan status <plan> LINK`.", "coordinator", "request-link")]
+        return "finish", [{**work_action("Coordinator", "Open the request on the forge and record its link with `plan status`.", "coordinator", "request-link"),
+                           "command": plan_command(plan, "plan status", link="LINK")}]
     fin = st["run"]["finish"]
     if fin["how"] == "merge-request" and not remote_url(plan_root(plan_paths(plan)[0])):
         return "finish", [work_action("Coordinator", "Configure the request's `origin` remote before running `finish <plan>`.", "coordinator", "finish")]
@@ -3305,11 +3524,14 @@ def land_workflow(plan, st, tree, c, verdict, provider):
     current_land = land and (land.get("judge") == verdict["n"] or same_tree_land(st, c, tree, land, verdict["head"]))
     if current_land and land["difference"] and not land["accepted"]:
         return "judge", [workflow_action("Judge", "ask", "Decide the land hook's changes with `land accept <plan> --note WHY` or `land revert <plan>`.",
-                                         input="land-difference", land=land["n"])]
+                                         input="land-difference", land=land["n"],
+                                         alternatives=[plan_command(plan, "land accept", note="--note WHY"), plan_command(plan, "land revert")])]
     human_notes = [n["n"] for n in open_notes(st) if human_authored(n)]
     if current_land and st["status"] == "at the human gate" and st.get("page") and human_notes:
         return "human-review", [workflow_action("Human", "ask", "Review the open notes. If you authorize a round, the coordinator runs `round start <plan>`.",
-                                                input="round-authorization", notes=human_notes)]
+                                                input="round-authorization", notes=human_notes,
+                                                command=plan_command(plan, "round start"), evidence=[
+                                                    note_line(st, n) for n in open_notes(st) if human_authored(n)])]
     try:
         if current_land:
             page = require_page(plan, st)
@@ -3319,7 +3541,11 @@ def land_workflow(plan, st, tree, c, verdict, provider):
         code = error.diags[0][0]
         if code in ("land-stale", "no-page", "page-stale"):
             role = "judge" if code == "land-stale" else "coordinator"
-            return "judge", [work_action(role.title(), fix, role, "land" if code == "land-stale" else "page") for _, _, fix in error.diags]
+            action = [work_action(role.title(), fix, role, "land" if code == "land-stale" else "page") for _, _, fix in error.diags]
+            if code != "land-stale":
+                for task in action:
+                    task["command"] = page_command(plan, st)
+            return "judge", action
         return verification_workflow(plan, st, c, tree, provider)
     if not current_land:
         if dirty := dirty_lines(tree):
@@ -3335,7 +3561,8 @@ def land_workflow(plan, st, tree, c, verdict, provider):
         return "judge", [run_action(plan, "Judge", "Use the current commit shape to run `land <plan>`.", "land")]
     status = st["status"]
     if status == "building":
-        return "judge", [work_action("Coordinator", "Return to human review with `page <plan> --guide-file PATH`.", "coordinator", "page")]
+        return "judge", [{**work_action("Coordinator", "Write the guide to the landed result and return it for human review.",
+                                        "coordinator", "page"), "command": page_command(plan, st)}]
     accepted = (st.get("acceptance") or {}).get("page") == digest(page)
     if status == "at the human gate" and accepted:
         return "human-review", [run_action(plan, "Coordinator", "Restore the accepted status with `plan status <plan> passed`.", "plan status", "passed")]
@@ -3346,12 +3573,20 @@ def land_workflow(plan, st, tree, c, verdict, provider):
         authority = acceptance_authority(st)
         acceptor = authority["acceptor"]
         page_path = plan_paths(plan)[0] + "#human-gate"
-        command = run_action(plan, acceptor, "", "accept", "--by", acceptor)
         return stage_after("judge", "landed"), [workflow_action("Human", "ask",
             f"Review the current page at {page_path}. Use `accept` to record unchanged acceptance from {acceptor}.",
             input="acceptance", page=page_path, acceptor=acceptor, authority=authority.get("authority"),
-            command={"cwd": command["cwd"], "argv": command["argv"], "options": {"words": "--words ACCEPTANCE"}})]
+            command=plan_command(plan, "accept", "--by", acceptor, words="--words ACCEPTANCE"),
+            alternatives=[plan_command(plan, "page", "--show"),
+                          plan_command(plan, "note add", text="--text FEEDBACK", cause="--cause CAUSE")])]
     return finish_workflow(plan, st, land["tip"])
+
+
+def page_command(plan, st):
+    options = {"guide": "--guide-file PATH"}
+    if st["run"]["finish"]["how"] != "ff-only":
+        options["message"] = "--message TEXT"
+    return plan_command(plan, "page", **options)
 
 
 def start_actions(plan, st, provider):
@@ -3409,8 +3644,9 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
                 f"Work from the round {round_['n']} brief and record `round report <plan>`.", "implementer", "round", round=round_["n"], notes=round_["notes"]))
             return "build", actions
         if missing := missing_note_sources(st, round_):
-            return "build", [work_action("Coordinator", f"Record the note sources for round {round_['n']} before `round done <plan>`.",
-                                         "coordinator", "note-sources", round=round_["n"], notes=missing)]
+            return "build", [{**work_action("Coordinator", f"Record the note sources for round {round_['n']} before closing it.",
+                                           "coordinator", "note-sources", round=round_["n"], notes=missing),
+                              "alternatives": [plan_command(plan, "note edit", n, source="--source PREDICTION_OR_MISSED") for n in missing]}]
         return "build", [run_action(plan, "Coordinator", f"Check round {round_['n']}'s report and note sources, then run `round done <plan>`.", "round done")]
     fix = (c["fixes"] or [None])[-1]
     if fix and not fix["done"]:
@@ -3428,7 +3664,8 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
     if v["kind"] == "question":
         if not v.get("answer"):
             return "judge", [workflow_action("Human", "ask", f"Answer the judge's question: {v['question']}", input="judge-answer", verdict=v["n"]),
-                             workflow_action("Coordinator", "wait", f"Relay the human's answer with `{workflow_brief(st, 'judge')} --note ANSWER`.", waiting_for="judge-answer")]
+                             workflow_action("Coordinator", "wait", f"Relay the human's answer with `{workflow_brief(st, 'judge')} --note ANSWER`.",
+                                             waiting_for="judge-answer", command=judge_note_command(plan, st, provider, "ANSWER"))]
         try:
             require_current_checks(plan, st, c)
             require_evidence(st, c, tree, None)
@@ -3436,7 +3673,7 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
             return verification_workflow(plan, st, c, tree, provider)
         actions = []
         add_brief_actions(actions, plan, st, provider, "judge", work_action(
-            "Coordinator", f"Use `{workflow_brief(st, 'judge')}` with the recorded answer.", "judge", "judge", cycle=cycle_label(c), verdict=v["n"]))
+            "Judge", f"Use `{workflow_brief(st, 'judge')}` with the recorded answer.", "judge", "judge", cycle=cycle_label(c), verdict=v["n"]))
         return "judge", actions
     if v["kind"] == "round":
         return "judge", [run_action(plan, "Coordinator", "Open the judge-ordered round with `round start <plan>`, then issue the round brief.", "round start")]
@@ -3477,8 +3714,9 @@ def summary(plan, st, head, tail=None, *, workflow=False, provider=None):
     cycles = []
     for c in st.get("cycles", []):
         cycles.append({**c, "list": items(c)})
-    out = {**{k: st.get(k) for k in ("title", "status", "branch", "base", "epic", "level", "phases", "history", "decisions")},
+    out = {**{k: st.get(k) for k in ("title", "status", "branch", "base", "epic", "level", "phases", "history")},
            "done": st.get("done", []), "verdicts": st.get("verdicts", []), "rounds": st.get("rounds", []), "notes": st.get("notes", []), "lands": st.get("lands", []), "land_stops": land_stops(st), "cycles": cycles, "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st), "alloc": st.get("alloc"),
+           "decisions": st.get("decisions") or [], "integration": st.get("integration"), "cleanup_pending": st.get("cleanup_pending"),
            "stale": stale_evidence(plan, st), "page": st.get("page"), "approvals": st.get("approvals", {}), "acceptance": st.get("acceptance"),
            "drift": [f"{m} — fix: {f}" for _, m, f in plan_drift + run_drift(plan, st) + consent]}
     if standalone_bundle() is not None:
@@ -3582,6 +3820,8 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
                 done = sum(p["status"] == "done" for p in r["phases"])
                 print(f"{r['plan']} — {r['status']} · {done}/{len(r['phases'])} phases done · ready: {', '.join(map(str, r['ready'])) or 'none'}"
                       + ("".join(f"\n  {x}" for x in r["drift"])))
+                if reason := r.get("cleanup_pending"):
+                    print(f"  Cleanup pending: {reason}")
         return 0
     md = plan_paths(plan)[0]
     st = load_state(plan)
@@ -3662,7 +3902,7 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
                    if stage == "reproduce" else workflow_catalog()["stages"][stage].get("purpose", stage))
         view.update(task={**status, "id": status["plan"], "artifacts": task["artifacts"] if task else str(Path(plan).parent),
                           "goal": goal, **({"discovery": discovery} if task else {})},
-                    stage=stage, purpose=purpose, actions=actions)
+                    stage=stage, purpose=purpose, actions=actions, evidence=next_evidence(status))
     elif not project:
         view["actions"] = [workflow_action("Human", "ask", "Open a Git checkout, clone one, or run `git init` for a new project.", input="project")]
     else:
@@ -3700,14 +3940,38 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
             print(f"Branch: {task['branch']} · Base: {task['base']} · Release: {task['release']}")
             print(f"Tree: {task['tree']}\nPlan: {task['path']}\nArtifacts: {task['artifacts']}")
             show_discovery(task.get("discovery", {}))
-            for decision in task.get("decisions", []):
+            for decision in task.get("decisions") or []:
                 print(f"Decision ({decision['by']}): {decision['question']} — {decision['answer']}")
             if approval := task.get("approvals", {}).get("plan"):
                 print(f"Plan approval: {approval['by']} at revision {approval['revision']}")
-            for fact in task.get("drift", []) + task.get("stale", []):
-                print(f"Evidence: {fact}")
+            if view["evidence"]:
+                print("Evidence:")
+                for fact in view["evidence"]:
+                    print(f"  {fact}")
         show_next(view["actions"])
     return 0
+
+
+def next_evidence(status):
+    evidence = []
+    for phase in status.get("phases", []):
+        if report := phase.get("report"):
+            evidence.append(f"Phase {phase['n']} ({phase['status']}): {report['became']}")
+    if status.get("cycles"):
+        cycle = status["cycles"][-1]
+        if run := selected_run(cycle):
+            evidence.extend(show_run(run, True))
+        evidence.extend(show_cycle(cycle, status))
+        evidence.extend(show_judging(status))
+        evidence.extend(show_land(status))
+    if acceptance := status.get("acceptance"):
+        evidence.append(f"Result accepted by {acceptance['by']}: {acceptance['words']}")
+    if integration := status.get("integration"):
+        destination = integration.get("commit", integration.get("request"))
+        evidence.append(f"Integrated {integration['how']} into {integration['target']}: {destination}")
+    if pending := status.get("cleanup_pending"):
+        evidence.append(f"Cleanup pending: {pending}")
+    return evidence + status.get("drift", []) + status.get("stale", [])
 
 
 def show_status(s, st):
@@ -4126,10 +4390,9 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
            "Rules: " + (", ".join(x for x in (os.path.join(tree, "docs", "spec"), os.path.join(tree, "AGENTS.md")) if os.path.exists(x)) or "none"), ""]
     package = PACKAGE
     role = "implementer" if kind in ("implementer", "fix", "round") else kind
-    stages = workflow_catalog()["stages"]
-    definition = next(stage for stage in stages.values() if role in stage.get("roles", {}))
+    definition = role_definition(role)
     source = os.path.join(package, definition["roles"][role])
-    out += [f"Role: {role}", f"Instructions: runweld {role} --plan {shell_md}", f"Role source: {source}", f"Protocol: {os.path.join(package, 'references', 'SESSIONS.md')}",
+    out += [f"Role: {role}", f"Instructions: {cli} {role} --plan {shell_md}", f"Role source: {source}", f"Protocol: {os.path.join(package, 'references', 'SESSIONS.md')}",
             f"Assignment: {kind}" + (f" phase {n}" if n is not None else ""),
             "Return contact: dispatching build coordinator; use native messages or the agreed result/artifact channel.", "",
             "Initialization evidence: run the instructions command before work; return their loaded paths, brief path, "
@@ -4219,12 +4482,19 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
     else:
         body, name = brief_judge(plan, st, cli, md, note)
         out += body + [f"Drift: {m} — fix: {f}" for _, m, f in drift]
+        work = work_action("Judge", "", "judge", "judge")
+        bind_assignment(md, st, "judge", work)
+        out += ["", "## Record", ""]
+        for report in work["assignment"]["reports"]:
+            out.append("- " + shlex.join(report["argv"]) + " " + " ".join(report["options"].values()))
         last = (st.get("verdicts") or [{}])[-1]
         if last.get("kind") == "question" and note and last.get("answer") is None:
             with writing(plan) as w:
                 w["verdicts"][-1]["answer"] = note
+                st = w
     if standalone_bundle() is not None:
-        out += ["", f"Run release: {plan_release(plan) or 'unversioned run'}"]
+        binding = brief_binding(plan, st, kind, provider, phase=n, cases=cases, review=review)
+        out += ["", f"Run release: {plan_release(plan) or 'unversioned run'}", f"Assignment binding: {binding}"]
     if task := task_for(plan, root):
         out += [f"Task artifacts: {task['artifacts']}"]
     out += ["## Orchestrator's note", "", note or "none", ""]
@@ -5350,12 +5620,15 @@ def show_judging(st):
     out = []
     for v in st.get("verdicts", []):
         out.append(f"Verdict {v['n']}: {v['kind']} at {v['head'][:7]} ({v['cycle']})")
+        out.append(f"  Report: {v['report']}")
         out += [f"  {d['id']} {d['action']} — {d['reason']}" for d in v["decisions"]]
         if v.get("evidence_note"):
             out.append(f"  evidence exception: {v['evidence_note']}")
         if v["kind"] == "evidence-owed":
             out.append(f"  owed by {v['owed']}: {v['report']}")
         out += [f"  note {n}" for n in v["notes"]] + ([f"  question: {v['question']}"] if v["question"] else [])
+        if v.get("answer"):
+            out.append(f"  answer: {v['answer']}")
         if v.get("stop"):
             out += [f"  Stopped: {v['stop']}"] + [f"  not taken: {t} — {c}" for t, c in v["stopped_notes"]]
     for r in st.get("rounds", []):
@@ -5987,6 +6260,7 @@ def request_merged(plan, st, link, merged):
 
 def clean_up(plan, st, root, fin):
     """Remove only resources owned by the finished run. Return a reason if cleanup must wait."""
+    from runweld_release import ReleaseError
     branch = st["branch"]
     task = task_for(plan, root)
     expected = task["tree"] if task else st.get("tree")
@@ -5996,7 +6270,12 @@ def clean_up(plan, st, root, fin):
             return f"worktree {expected} is no longer registered to {branch}; it stays"
         if wt == expected:
             if os.path.isdir(wt):
-                r = git("status", "--porcelain", "--untracked-files=normal", "--ignored=matching", check=False, cwd=wt)
+                if task:
+                    try:
+                        clean_setup_outputs(task, wt)
+                    except (OSError, ReleaseError) as error:
+                        return f"worktree {wt} stays: {error}"
+                r = git("status", "--porcelain", "--untracked-files=all", "--ignored", check=False, cwd=wt)
                 if r.returncode or r.stdout.strip():
                     return f"worktree {wt} stays with unsaved or ignored paths: " + (r.stderr.strip() or ", ".join(l[3:] for l in r.stdout.splitlines()))
             r = git("worktree", "remove", wt, check=False, cwd=root)
@@ -6025,6 +6304,18 @@ def clean_up(plan, st, root, fin):
     print(f"finish: branch {branch} stays")
 
 
+def clean_setup_outputs(task, tree):
+    _, outputs = setup_ownership(task)
+    if not outputs:
+        return
+    ignored = setup_paths(tree, ignored=True)
+    if ignored is None:
+        raise OSError("cannot verify which setup paths are still ignored")
+    for name in ignored.intersection(outputs):
+        if outputs[name] == setup_identity(tree, name):
+            (Path(tree) / name).unlink(missing_ok=True)
+
+
 def cmd_finish(plan, merged):
     plan = plan_paths(plan)[0]
     root = plan_root(plan)
@@ -6051,6 +6342,7 @@ def cmd_finish(plan, merged):
             if not request_merged(plan, st, status, merged):
                 return 0
             how = f"merge request {status}"
+            integration = {"request": status}
         elif fin["how"] == "merge-request":
             tip = git("rev-parse", st["branch"], check=False, cwd=root).stdout.strip()
             if (st.get("pushed") or {}).get("tip") == tip:
@@ -6073,8 +6365,11 @@ def cmd_finish(plan, merged):
             with (common / "runweld-integration.lock").open("a") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 require_acceptance(plan, st)
-                how = f"{fin['how']} into {fin['target']} at {local_merge(st, root, fin)[:7]}"
+                commit = local_merge(st, root, fin)
+                how = f"{fin['how']} into {fin['target']} at {commit[:7]}"
+            integration = {"commit": commit}
         set_plan(plan, st, status="merged", note=how)
+        st["integration"] = {"how": fin["how"], "target": fin["target"], "landed": st["lands"][-1]["tip"], **integration}
         st["cleanup_pending"] = "finish cleanup is pending"
         save(plan, st, *read_plan(plan_paths(plan)[0]))
         print(f"finish: {plan_slug(st)} merged ({how})" + ("" if link else "; nothing was pushed"))
@@ -6099,6 +6394,30 @@ def finish_cleanup(plan, st, root, fin):
     else:
         st.pop("cleanup_pending", None)
     return 0
+
+
+def finish_and_report(plan, merged, as_json):
+    plan = plan_paths(plan)[0]
+    root = plan_root(plan)
+    os.chdir(root)
+    with contextlib.redirect_stdout(io.StringIO()) if as_json else contextlib.nullcontext() as output:
+        result = cmd_finish(plan, merged)
+    facts = cmd_status(plan, False, root, as_data=True)
+    integration = facts["integration"]
+    if integration and integration.get("commit"):
+        ref = f"refs/heads/{integration['target']}"
+        integration["target_head"] = git("rev-parse", "--verify", "-q", ref, check=False, cwd=root).stdout.strip() or None
+        integration["verified"] = git("merge-base", "--is-ancestor", integration["commit"], ref, check=False, cwd=root).returncode == 0
+    actions = facts["workflow"]["actions"]
+    if as_json:
+        print(json.dumps({"status": facts["status"], "integration": integration, "cleanup_pending": facts["cleanup_pending"],
+                          "actions": actions, "messages": output.getvalue().splitlines()}, ensure_ascii=False))
+    else:
+        if integration and "verified" in integration:
+            result_text = "contains" if integration["verified"] else "does not contain"
+            print(f"finish: {integration['target']} {result_text} integration commit {integration['commit']}")
+        show_next(actions)
+    return result or (1 if integration and integration.get("verified") is False else 0)
 
 
 def show_land(st):
@@ -6158,6 +6477,13 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
         reference = top.add_parser("reference", help="print a text resource from the selected release")
         reference.add_argument("resource", help="the release-relative path from an instruction")
         reference.add_argument("--plan", help="use a task's pinned release")
+        handoff = top.add_parser("handoff", help="print handoff instructions or validate a live Herdr destination")
+        handoff_actions = handoff.add_subparsers(dest="command", required=True)
+        herdr = handoff_actions.add_parser("herdr", help="check the live workspace and pane before dispatch")
+        herdr.add_argument("plan", help="the assignment's plan path")
+        herdr.add_argument("--workspace", required=True, help="live Herdr workspace ID")
+        herdr.add_argument("--pane", required=True, help="live Herdr pane ID")
+        herdr.add_argument("--agent", help="name of the live agent for an existing assignment")
         next_parser = top.add_parser("next", help="find available actions from this project or task")
         next_parser.add_argument("--json", action="store_true", help="print the same facts and actions as JSON")
         next_parser.add_argument("--provider", help="the current provider for executable brief commands")
@@ -6445,6 +6771,7 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("finish", help="end the run as the run file's [finish] says: merge locally, or push the branch and open the merge request by the remote's forge; later, check the request and set merged")
     s.add_argument("--merged", action="store_true", help="the request is merged (GitLab or an unknown host, where code cannot ask)")
+    s.add_argument("--json", action="store_true", help="show the integration result, pending cleanup and next actions as JSON")
     s.add_argument("plan", help="the plan file, passed or a merge request's link")
     rp = top.add_parser("run", help="the run file beside the plan: its path need not exist yet")
     rsub = rp.add_subparsers(dest="command", required=True)
@@ -6575,6 +6902,18 @@ def main(*, current_task=None, next_release=None):
     bundle = standalone_bundle()
     p, a = parse_cli(sys.argv[1:] or (["--help"] if bundle else []), standalone=bundle is not None,
                      version=bundle.name if bundle else None)
+
+    def transition(result, *, stream=None):
+        if bundle is not None and not result:
+            try:
+                facts = cmd_status(a.plan, False, os.getcwd(), as_data=True)
+            except (Refuse, ReleaseError) as error:
+                print(f"Recorded the transition, but could not read the next action: {error}", file=sys.stderr)
+                return result
+            with contextlib.redirect_stdout(stream) if stream else contextlib.nullcontext():
+                show_next(facts["workflow"]["actions"])
+        return result
+
     try:
         plan_arg = getattr(a, "plan", None)
         if bundle is not None:
@@ -6606,6 +6945,8 @@ def main(*, current_task=None, next_release=None):
                 return cmd_path(a.area)
             if a.group == "reference":
                 return print_reference(bundle, a.resource)
+            if a.group == "handoff":
+                return herdr_handoff(selected_plan, a)
             if a.group == "help":
                 if a.topic == "agents":
                     agent_help(bundle)
@@ -6633,7 +6974,7 @@ def main(*, current_task=None, next_release=None):
         if plan_arg and a.group not in ("run", "spec", "executor") and not os.path.isfile(plan_arg):
             read_plan(plan_paths(plan_arg)[0])
         if a.group == "accept":
-            return cmd_accept(a.plan, a)
+            return transition(cmd_accept(a.plan, a))
         if a.group == "run":
             return cmd_run(a.command, a.plan, getattr(a, "json", False))
         if a.group == "executor":
@@ -6648,42 +6989,44 @@ def main(*, current_task=None, next_release=None):
             if a.command == "review":
                 return cmd_plan_review(a.plan, a.json)
             if a.command == "approve":
-                return cmd_plan_approval(a.plan, a)
+                return transition(cmd_plan_approval(a.plan, a))
             return cmd_plan(a.command, a.plan, a.value, a.note)
         if a.group == "build":
             return cmd_build_start(a.plan, a.base, a.worktree, a.branch, a.note, a.provider, a.json)
         if a.group == "phase":
-            return {"start": lambda: cmd_phase_start(a.plan, a.n, a.note), "report": lambda: cmd_phase_report(a.plan, a.n, a),
-                    "done": lambda: cmd_phase_done(a.plan, a.n, a.note)}[a.command]()
+            return transition({"start": lambda: cmd_phase_start(a.plan, a.n, a.note), "report": lambda: cmd_phase_report(a.plan, a.n, a),
+                               "done": lambda: cmd_phase_done(a.plan, a.n, a.note)}[a.command]())
         if a.group == "owner":
             return cmd_owner(a.plan, a.path)
         if a.group == "grant":
             return cmd_grant(a.plan, a.n, a.path, a.note)
         if a.group == "gate" or (a.group in ("fix", "round") and a.command == "done"):
             with check_lease(a.plan) as lease:
-                if a.group == "gate":
-                    return cmd_gate_start(a.plan, a.note, lease, a.check_id)
-                return (fix_done if a.group == "fix" else round_done)(a.plan, lease, a.check_id)
+                result = (cmd_gate_start(a.plan, a.note, lease, a.check_id) if a.group == "gate"
+                          else (fix_done if a.group == "fix" else round_done)(a.plan, lease, a.check_id))
+            return transition(result)
         if a.group == "finding":
             return cmd_finding(a.plan, a)
         if a.group == "review":
-            return cmd_review(a.plan, a)
+            return transition(cmd_review(a.plan, a))
         if a.group == "result":
-            return cmd_result(a.plan, a)
+            return transition(cmd_result(a.plan, a))
         if a.group == "fix":
-            return cmd_fix(a.plan, a)
+            return transition(cmd_fix(a.plan, a))
         if a.group == "verdict":
-            return cmd_verdict(a.plan, a)
+            return transition(cmd_verdict(a.plan, a))
         if a.group == "note":
-            return cmd_note(a.plan, a)
+            return transition(cmd_note(a.plan, a))
         if a.group == "round":
-            return cmd_round(a.plan, a)
+            return transition(cmd_round(a.plan, a))
         if a.group == "land":
-            return cmd_land(a.plan, a.command, getattr(a, "note", None))
+            result = cmd_land(a.plan, a.command, getattr(a, "note", None))
+            return result if a.command == "draft" else transition(result)
         if a.group == "finish":
-            return cmd_finish(a.plan, a.merged)
+            return finish_and_report(a.plan, a.merged, a.json) if bundle is not None or a.json else cmd_finish(a.plan, a.merged)
         if a.group == "page":
-            return cmd_page(a.plan, a)
+            result = cmd_page(a.plan, a)
+            return result if a.show else transition(result, stream=sys.stderr)
         if a.group == "decision":
             return cmd_decision(a.plan, a)
         if a.group == "brief":

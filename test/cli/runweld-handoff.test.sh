@@ -204,25 +204,41 @@ none
             return json.loads(run("runweld", "status", "--json", "--provider", provider, plan))["workflow"]
 
         def actions():
-            return status()["actions"]
+            return json.loads(run("runweld", "next", "--json", cwd=tree))["actions"]
 
         def advertised(*command, role=None):
             step, = (x for x in actions() if x["kind"] == "run"
                      and x["argv"][4:4 + len(command)] == list(command) and x.get("role") == role)
             assert step["argv"][2:4] == ["--release", release]
             assert str(plan) in step["argv"]
-            return run(*step["argv"]).strip()
+            return run(*step["argv"], cwd=step["cwd"]).strip()
 
-        def brief(role, tier):
-            body = Path(advertised("brief", role, role=role)).read_text()
+        def brief(role, tier, command=None):
+            path = Path(advertised("brief", command or role, role=role))
+            body = path.read_text()
             fields = dict(line.split(": ", 1) for line in body.splitlines() if ": " in line)
             model = ("codex" if provider == "GPT" else "claude") + "-" + tier
             assert fields["Executor model"] == model and fields["Executor tier"] == tier
             assert fields["Executor provider"] == provider and fields["Run release"] == release
             for key in ("Protocol", "Role source"):
-                path = Path(fields[key])
-                assert path.is_relative_to(bundle) and path.read_text().strip()
+                source_path = Path(fields[key])
+                assert source_path.is_relative_to(bundle) and source_path.read_text().strip()
             assert fields["Tree"] == str(tree)
+            # distribution#system-cli: an unseen coordinator can act from the installed next output.
+            report = json.loads(run("runweld", "next", "--json", cwd=tree))
+            assert report["task"]["goal"] == "Print a provider-specific greeting."
+            assert report["task"]["approvals"]["plan"]["by"] == "Fixture Human"
+            assignment = next(x["assignment"] for x in report["actions"] if x["kind"] == "work" and x.get("role") == role)
+            assert assignment["cwd"] == str(tree) and assignment["reports"], assignment
+            assert assignment["brief"]["path"] == str(path) and assignment["brief"]["dispatch"] == "unverified"
+            assert not any(x["kind"] == "run" and x.get("role") == role for x in report["actions"])
+            for entry in assignment["reports"]:
+                assert entry["argv"][2:4] == ["--release", release]
+            instruction, = assignment["instructions"]
+            assert Path(fields["Role source"]).read_text().split("---", 2)[-1].strip().splitlines()[0] in run(*instruction, cwd=tree)
+            default = run("runweld", "next", cwd=tree)
+            assert "Fixture Human" in default and fields["Role source"] in default and "Return:" in default
+            assert any(step["kind"] == "wait" and step.get("condition") == "after-dispatch" for step in report["actions"])
             return body, fields
 
         run("runweld", "spec", "check", plan)
@@ -236,13 +252,35 @@ none
         args = proposal["approval_command"]["argv"]
         run(*args, "--by", "Fixture Human", "--words", "Fixture plan and run approved")
         start = next(action for action in actions() if action.get("input") == "start-authorization")
-        run(*start["command"]["argv"], cwd=start["command"]["cwd"])  # Separate fixture start instruction.
-        advertised("phase", "start")
+        selection = ("--provider", provider) if "provider" in start["command"]["options"] else ()
+        run(*start["command"]["argv"], *selection, cwd=start["command"]["cwd"])  # Separate fixture start instruction.
+        assert "Next:" in advertised("phase", "start")
+        if provider == "GPT":
+            # distribution#system-cli: Herdr targets must be live and in the assigned checkout.
+            fixture = home / ".local/bin/herdr"
+            fixture.write_text('#!/bin/sh\n[ "$*" = "api snapshot" ] && cat "$HERDR_FIXTURE"\n')
+            fixture.chmod(0o755)
+            snapshot = home / "herdr-snapshot.json"
+            payload = {"workspaces": [{"workspace_id": "w1"}, {"workspace_id": "w2"}],
+                       "panes": [{"pane_id": "w1:p1", "workspace_id": "w1", "cwd": str(tree),
+                                  "agent": None}], "agents": []}
+            snapshot.write_text(json.dumps({"result": {"snapshot": payload}}))
+            env["HERDR_ENV"] = "1"
+            env["HERDR_FIXTURE"] = str(snapshot)
+            target = ("runweld", "handoff", "herdr", plan, "--pane", "w1:p1")
+            assert "handoff: Herdr" in run(*target, "--workspace", "w1")
+            assert "herdr-target" in run(*target, "--workspace", "w2", ok=False)
+            payload["panes"].clear()
+            snapshot.write_text(json.dumps({"result": {"snapshot": payload}}))
+            assert "herdr-target" in run(*target, "--workspace", "w1", ok=False)
+            env.pop("HERDR_FIXTURE")
+            fixture.unlink()
         implementer, fields = brief("implementer", "secondary")
         assert "runweld tdd" in fields["Skills to read first"]
         red = run("grep", "-x", f"hello {provider}", "hello.txt", cwd=tree, ok=False)
         assert not red
-        (tree / "hello.txt").write_text(f"hello {provider}\n")
+        greeting = f"hello {provider}\n"
+        (tree / "hello.txt").write_text(greeting + ("extra line\n" if provider == "GPT" else ""))
         assert run("grep", "-x", f"hello {provider}", "hello.txt", cwd=tree).strip() == f"hello {provider}"
         run("git", "diff", "--check", cwd=tree)
         run("git", "commit", "-qam", "write the greeting", cwd=tree)
@@ -260,17 +298,48 @@ none
         reviewer, _ = brief("reviewer", "primary")
         verify, _ = brief("verify", "secondary")
         assert str(bundle / "workflow/browser-test/tab.mjs") in verify
+        if provider == "GPT":
+            assignment = next(x["assignment"] for x in actions() if x["kind"] == "work" and x["role"] == "reviewer")
+            finding = next(entry for entry in assignment["reports"] if entry["argv"][4] == "finding")
+            run(*finding["argv"], "--kind", "defect", "--where", "hello.txt:2", "--source", "Done 1",
+                "--text", "Greeting contains an extra line", cwd=finding["cwd"])
         run(*command_from(reviewer, "- Complete the review: "))
         assert not any(x.get("role") == "judge" and x["kind"] == "run" for x in actions())
-        case = run("cat", "hello.txt", cwd=tree).strip()
+        case = run("head", "-n", "1", "hello.txt", cwd=tree).strip()
         assert case == f"hello {provider}"
         result = command_from(verify, "- Each case: ", " --outcome ")
         result[result.index("<n>")] = "1"
         run(*result, "--outcome", "passed", "--capture", case)
+        if provider == "GPT":
+            assert "Greeting contains an extra line" in run("runweld", "next", cwd=tree)
+            assert "Next:" in advertised("fix", "start")
+            fix, _ = brief("implementer", "secondary", "fix")
+            (tree / "hello.txt").write_text(greeting)
+            run("git", "commit", "-qam", "remove the extra line", cwd=tree)
+            fixed = run("git", "rev-parse", "HEAD", cwd=tree).strip()
+            run(*command_from(fix, "- Your report: ", " --became "), "--became", "Only the greeting remains", "--commit", fixed)
+            assert "Next:" in advertised("fix", "done")
+            recheck, _ = brief("reviewer", "secondary")
+            run(*command_from(recheck, "- Complete the review: "))
+            if any(step.get("role") == "verify" for step in actions()):
+                verify, _ = brief("verify", "secondary")
+                result = command_from(verify, "- Each case: ", " --outcome ")
+                result[result.index("<n>")] = "1"
+                run(*result, "--outcome", "passed", "--capture", greeting.strip())
         _, judge = brief("judge", "primary")
         assert Path(judge["Judge rules"]).is_relative_to(bundle)
-        run(*shlex.split(judge["CLI"]), "verdict", "pass", plan, "--report", "Review and CLI evidence agree",
-            "--predicted", "pass", "--engine", judge["Executor model"])
+        prediction = ("--predicted", "pass", "--engine", judge["Executor model"])
+        if provider == "GPT":
+            run(*shlex.split(judge["CLI"]), "verdict", "question", plan, "--report", "Need the human’s decision",
+                "--question", "Keep this wording?", *prediction)
+            question = next(step for step in actions() if step.get("input") == "judge-answer")
+            wait = next(step for step in actions() if step.get("waiting_for") == "judge-answer")
+            assert question["kind"] == "ask" and question["owner"] == "Human" and wait["kind"] == "wait"
+            assert "Keep this wording?" in run("runweld", "next", cwd=tree)
+            relay = wait["command"]
+            assert "The human's answer: Keep it." in Path(run(*relay["argv"], "--note", "Keep it.", cwd=relay["cwd"]).strip()).read_text()
+            prediction = ()
+        assert "Next:" in run(*shlex.split(judge["CLI"]), "verdict", "pass", plan, "--report", "Review and CLI evidence agree", *prediction)
         shape = Path(advertised("land", "draft").removeprefix("land draft: "))
         shape.write_text(shape.read_text().replace('message = ""', 'message = "feat: greet this provider"')
                          .replace('walkthrough = ""', 'walkthrough = "Open hello.txt and see its greeting."'))

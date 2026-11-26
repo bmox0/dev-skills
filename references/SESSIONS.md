@@ -1,11 +1,11 @@
 # Executors and build handoff
 
-`AGENTS.md` supplies shared rules. Provider/model identifiers are open. Always run prescribed CLI checks.
+`AGENTS.md` supplies shared rules and prescribed checks.
 
 ## Select executors
 
-`CLI` is `runweld`. `CLI executor show --provider NAME` reads literal model
-and effort values from `.runweld/config.toml`. Add `PLAN` for the frozen snapshot. Request missing profiles.
+`CLI` is `runweld`. `CLI executor show --provider NAME` reads literal profiles
+from `.runweld/config.toml`. Add `PLAN` for the frozen snapshot.
 
 Planning, coordination, first review (including small gates) and judges use
 primary. Helpers, prototypes, implementation, fixes, verify/E2E, rechecks and
@@ -15,24 +15,24 @@ dispatch; never inherit, substitute or translate a preset.
 
 ## Bind workers
 
-Generate `CLI brief <role> --provider <provider> <plan> …`. Follow
-`adapters/<host>/workers.md` when present. Bind assignment/report tools.
-Run the brief’s instruction command, for example `runweld reviewer --plan PLAN`.
-Check for conflicting higher-priority host instructions before accepting the assignment. Coordinators never implement or reuse implementers as
-independent reviewers or judges.
+Use the brief command from `CLI next --plan <plan>`.
+Follow `adapters/<host>/workers.md` when present.
+Run the brief’s pinned instruction command for the role (for example
+`runweld reviewer --plan PLAN` on the selected release).
+Check higher-priority host instructions. Coordinators never implement or reuse
+implementers as independent reviewers or judges.
 
 Give each clean context its authoritative role source, absolute brief/protocol
 paths, assignment/territory or range, approved executor, cwd, return channel and
-report commands. Initialization evidence records loaded sources,
-requested/effective settings when exposed, cwd/branch and boundaries. Report
-missing tools or conflicts before acting. Workers never dispatch. Independent
-ready phases may run concurrently within available slots.
+report commands. Initialization evidence records loaded sources, settings
+requested/effective, cwd/branch and boundaries. Report conflicts before acting.
+Workers never dispatch. Independent ready phases may run concurrently.
 
 Use native messages and continuation when available. Otherwise return actionable
 questions, errors or results via the host's result channel or agreed
 report artifact. The coordinator collects them and answers within existing
 authority. Questions leave work pending. Workers retain report commands.
-Coordinators record decisions/transitions without duplicate reports.
+Record transitions without duplicate reports.
 
 ## Start and recover once
 
@@ -40,17 +40,15 @@ Planning presents the complete plan and run together with `CLI plan review`
 and records one human approval. A separate start instruction chooses **herdr**, a **native independent
 session**, or **manual handoff** and authorizes `CLI build start <plan>`.
 Use `--provider NAME` for multiple providers. Repeat to see the existing assignment.
-Record absolute plan/run/build-skill paths, tree, session identifiers and
-contact/channel beside the plan. Keep the human's opening language in the
-handoff and use it on resume. The approval record retains the acceptor's name
-and any explicit delegation.
+Record plan/run/build-skill paths, tree, session IDs, contact/channel and
+the human's language beside the plan. Approval records acceptance authority.
 Tracked documents and examples follow comparable project documents' language.
 The coordinator owns phase/build/gate transitions; workers retain prescribed
 reporting, verdict and land commands. A controller only relays unless granted
 acceptance authority; it cannot approve its own result.
 
-On resume run `CLI status --current` to find plans and `CLI status <plan>`
-for the owner and next action. Inspect the existing writer, reports and Git
+On resume run `CLI next` to find the task, or `CLI next --plan <plan>` to
+select it explicitly. Inspect the existing writer, reports and Git
 facts before resending. Timeout, idle, delivery and prompts imply no completion
 or approval.
 Retain role, brief, assignment, executor, tree, contact, reporting and pending
@@ -70,8 +68,9 @@ Only for herdr, read its installed skill and `herdr --skill`.
 herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$PWD" --label "Build" --no-focus
 ```
 
-Record returned tab/pane IDs and agent name. Launch with the explicit primary
-pair and absolute brief. After settled waits inspect `herdr agent get` and
+Before dispatch, check the returned IDs from Herdr with the pinned
+`CLI handoff herdr <plan> --workspace ID --pane ID`. Use `--agent NAME` for
+continuation. Launch with the assigned pair and brief. After waits inspect `herdr agent get` and
 `herdr agent read`; idle alone establishes no gate. Other topologies retain
 the same contract through native identifiers/channels.
 
@@ -84,4 +83,5 @@ Wait while the contact opens the result. Relay notes, rounds and approval
 unchanged to the same inspected writer. Retain incoming words while it works.
 Notes alone start no round. Only the named approver or designated acceptor accepts: `CLI accept <plan> --by <name>
 --words "<unchanged approval>"` binds current judge/land/page. Finish as configured
-when instructed, reusing authorization. Watch through rounds and finish.
+when instructed, reusing authorization. Run finish and read its final result
+from the surviving project checkout. Watch through rounds and any pending cleanup.

@@ -54,7 +54,7 @@ start after the last phase. Relay any refusal to the implementer.
 When phases are done, `CLI gate start <plan>` commits the rules, prints the
 level and runs full checks. Run `gate start`, `fix done` and `round done` in the
 background or with a long timeout.
-After interruption, follow `CLI status <plan>` to wait, investigate ownership
+After interruption, follow `CLI next --plan <plan>` to wait, investigate ownership
 or run the printed retry. It reruns the suite or reuses matching results.
 Fix plan refusals in `## Spec`. For a stale base, run `CLI plan base <plan>
 $(git merge-base <default> HEAD)`, then `gate start` again.

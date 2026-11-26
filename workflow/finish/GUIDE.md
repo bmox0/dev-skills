@@ -5,31 +5,28 @@ description: Merge a plan's branch — a merge request, or local with --no-ff or
 
 # Finish
 
-The build writer runs finish after current authorized acceptance
-([SESSIONS.md](../../references/SESSIONS.md)). If missing, record
-`CLI accept <plan> --by <name> --words "<unchanged approval>"`.
-Use the approved ending when instructed; do not ask again.
-Use the run's CLI from its brief.
+The coordinator uses the pinned CLI after current authorized acceptance
+([SESSIONS.md](../../references/SESSIONS.md)). Use the approved ending.
 
 ## 1. Merge it
 
-`CLI finish <plan>`. It ends the run as the run file says, and refuses unless
-the current judge, land, page and authorized acceptance match and the plan
-is `passed` or a merge-request link. Read the result:
+`CLI finish <plan>` in the project checkout. It requires current judge, land,
+page and acceptance, with `passed` status or a request link.
 
-- A local merge sets Status to `merged`; the epic's row follows.
-- A merge request is opened and its link becomes Status. On an unknown host, open it and record the link with `CLI plan status <plan>
-  "<link>"`. The human merges it in the request's view; the button is the
-  approval.
+- A local merge sets Status and the epic's row to `merged`.
+- A merge request link becomes Status. On an unknown host, open it and record
+  its link with `CLI plan status <plan> LINK`. The human merges it there.
 - With the plan at a merge-request link, `CLI finish <plan>` asks the forge; where
   code cannot ask, once the human has seen it merged, `CLI finish --merged <plan>`.
 - A refusal names its fix. `merge-refused` is a conflict or a moved target:
-  `CLI round start --conflict "<what>" <plan>`, the round in
-  `runweld build`, then the gate page and `finish` again on the human's word.
+  `CLI round start --conflict "<what>" <plan>`, then a new gate, acceptance and finish.
 
 ## 2. After
 
-Code removes the owned worktree and its data directory, follows the run's
-backup policy and keeps the branch and history. If unsaved files prevent
-cleanup, resolve the named paths and rerun `CLI finish <plan>` for cleanup only.
+Verify the reported target and commit. Code removes the owned worktree and
+its data directory, follows the run's backup policy and keeps the branch and
+history. Only unchanged, recorded setup outputs are automatically removed
+from the task tree. If other ignored or unsaved files prevent cleanup, move
+the named paths to safety and rerun `CLI finish <plan>` for cleanup only.
+`CLI finish <plan> --json` and `CLI next --plan <plan>` expose pending cleanup.
 Then offer a retro (`runweld retro`); the human decides.

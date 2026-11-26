@@ -38,12 +38,14 @@ with tempfile.TemporaryDirectory() as folder:
 
     run(os.environ["INSTALLER"], "--prefix", home, cwd=home)
     run("git", "init", "-qb", "main")
-    (project / ".gitignore").write_text("*.scratch\n")
+    (project / ".gitignore").write_text("*.scratch\n.setup-cache/\n")
     (project / "tracked").write_text("base\n")
     run("git", "add", ".")
     run("git", "commit", "-qm", "base")
-    setup = ('if [ "${RUNWELD_TASK_PATH##*/}" = one ] && [ ! -f "$RUNWELD_DATA_DIR/attempt" ]; then '
-             'touch "$RUNWELD_DATA_DIR/attempt"; exit 31; fi; '
+    setup = ('mkdir -p .setup-cache; '
+             'if [ "${RUNWELD_TASK_PATH##*/}" = one ] && [ ! -f "$RUNWELD_DATA_DIR/attempt" ]; then '
+             'touch "$RUNWELD_DATA_DIR/attempt" .setup-cache/partial; exit 31; fi; '
+             'touch .setup-cache/complete .setup-cache/changed; '
              'printf "%s\\n" "$RUNWELD_SOURCE_CHECKOUT" "$RUNWELD_TASK_PATH" "$RUNWELD_PORT" "$RUNWELD_DATA_DIR" > "$RUNWELD_DATA_DIR/setup"')
     full = 'test -f "$RUNWELD_DATA_DIR/setup"'
     run(runweld, "init", "--non-interactive", "--provider", "Test", "--primary-model", "primary",
@@ -213,17 +215,30 @@ Waits for: nothing
     assert not (project / "docs/spec/example.md").exists()
     capture = Path(a["artifacts"]) / "capture.txt"
     capture.write_text("private evidence")
-    scratch = Path(a["tree"]) / "unsaved.scratch"
+    # finish#by-run-file: remove owned output, never discard unknown or changed ignored files.
+    scratch = Path(a["tree"]) / ".setup-cache/unknown"
+    changed = scratch.with_name("changed")
+    changed.write_text("locally changed")
     scratch.write_text("retain me")
     out = run(runweld, "finish", a_plan, cwd=Path(a["tree"]))
-    assert "integration is already recorded" in out and "unsaved.scratch" in out, out
+    assert "integration is already recorded" in out and ".setup-cache/unknown" in out, out
     assert scratch.read_text() == "retain me" and a_data.exists()
+    assert changed.read_text() == "locally changed"
+    assert not scratch.with_name("partial").exists() and not scratch.with_name("complete").exists()
     assert (project / "tracked").read_text() == "one\n"
     assert (project / "docs/spec/example.md").exists()
     view = json.loads(run(runweld, "status", a_plan, "--json"))
     assert view["status"] == "merged" and "cleanup" in view["workflow"]["actions"][0]["action"]
+    pending = json.loads(run(runweld, "next", "one", "--json"))
+    assert ".setup-cache/unknown" in pending["task"]["cleanup_pending"]
+    retry, = pending["actions"]
+    assert retry["cwd"] == str(project)
+    target = run("git", "rev-parse", "refs/heads/main")
     scratch.unlink()
-    run(runweld, "finish", relative, cwd=Path(a["tree"]))
+    changed.unlink()
+    done = json.loads(run(*retry["argv"], "--json", cwd=retry["cwd"]))
+    assert done["status"] == "merged" and done["cleanup_pending"] is None
+    assert done["integration"]["verified"] and done["integration"]["commit"] == target == run("git", "rev-parse", "refs/heads/main")
     assert not Path(a["tree"]).exists() and not a_data.exists()
     assert a_plan.exists()
     assert capture.read_text() == "private evidence"
