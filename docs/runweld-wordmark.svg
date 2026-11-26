@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 86" width="320" height="86" role="img" aria-labelledby="title">
+  <title id="title">Runweld</title>
+  <style>
+    svg { color: #34304e; }
+    @media (prefers-color-scheme: dark) { svg { color: #f7e5c6; } }
+  </style>
+  <g fill="currentColor" transform="translate(2 6) scale(.52)">
+    <path d="M8 14C35 24 62 39 82 61c8 8 12 15 15 20 8-7 17-7 24 2l13 3-14 5c-7 0-11 2-17 9-11 13-26 15-43 10l-36 16 22-23-36 8 41-25C38 66 21 39 8 14Zm103 69a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z" fill-rule="evenodd"/>
+    <path d="M60 22c19 14 34 31 39 53l-2 1c-5-9-12-18-20-26-4-10-10-19-17-28Z"/>
+    <path d="m123 91 5-2 4 11 5-2 2 5-15 6-2-5 5-2Z"/>
+  </g>
+  <text x="87" y="63" fill="currentColor" font-family="Georgia, 'Times New Roman', serif" font-size="60" font-style="italic" letter-spacing="-2">Runweld</text>
+</svg>

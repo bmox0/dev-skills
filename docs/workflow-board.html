@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runweld · How it works</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #fffefa; color-scheme: light; }
+  main { width: min(100%, 1260px); margin: auto; }
+  svg { display: block; width: 100%; height: auto; }
+  text { fill: #342e3a; font-family: "Chalkboard SE", "Comic Sans MS", system-ui, sans-serif; }
+  .brand { font: italic bold 48px Georgia, serif; letter-spacing: -2.6px; }
+  .heading { font-size: 36px; }
+  .label { font-size: 20px; }
+  .section { font-size: 24px; fill: #53475e; }
+  .body, .legend, .note, .small { font-family: "Helvetica Neue", Arial, sans-serif; }
+  .body, .legend { font-size: 15px; }
+  .body { fill: #494451; }
+  .note { font-size: 14px; fill: #574363; }
+  .small { font-size: 13px; fill: #504b56; }
+  .box { stroke: #4e4751; stroke-width: 1.65; stroke-linejoin: round; }
+  .agent { fill: #e6f1ec; }
+  .human { fill: #ffe7ac; }
+  .cli { fill: #ece8f3; }
+  .wire, .rule, .underline { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .wire { stroke: #554e57; stroke-width: 1.7; }
+  .optional { stroke-dasharray: 5 5; }
+  .underline { stroke: #918498; stroke-width: 1.4; }
+  .rule { stroke: #c9c3c8; stroke-width: 1.1; }
+  @media screen and (min-width: 880px) and (min-height: 650px) { main { max-width: 106.97vh; } }
+  @media print { @page { size: portrait; margin: 0; } main { max-width: 100%; } svg { max-height: 100vh; } }
+</style>
+</head>
+<body><main>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1319 1233" role="img" aria-labelledby="title description">
+<title id="title">Runweld workflow, from task to merge</title>
+<desc id="description">Read down the center. The Runweld CLI accompanies the whole task, from creating its worktree through recording approvals, phase reports, checks, verdicts, acceptance and finish. You and the planner agree on the intended outcome, what is in scope and what to leave out. The planner writes the full plan for the agents. You approve the run config, then a plan summary of up to 350 words. When you ask to build, implementers run ready phases in parallel. The CLI validates their reports, then full checks, review, verification and a judge inform your acceptance. The judge can order a fix round or request missing evidence. Both paths return to the judge before landing.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M2 1.5 L8.5 5 L2 8.5" fill="none" stroke="#554e57" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<g transform="translate(47 21) scale(.43)" fill="#443753"><path d="M8 14C35 24 62 39 82 61c8 8 12 15 15 20 8-7 17-7 24 2l13 3-14 5c-7 0-11 2-17 9-11 13-26 15-43 10l-36 16 22-23-36 8 41-25C38 66 21 39 8 14Zm103 69a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z" fill-rule="evenodd"/><path d="M60 22c19 14 34 31 39 53l-2 1c-5-9-12-18-20-26-4-10-10-19-17-28Z"/><path d="m123 91 5-2 4 11 5-2 2 5-15 6-2-5 5-2Z"/></g>
+<text x="122" y="60" class="brand" text-anchor="start">Runweld</text>
+<text x="381" y="60" class="heading" text-anchor="start">How it works</text>
+<path class="underline" d="M352 31 l-1 35"/>
+<rect x="813" y="43" width="13" height="13" rx="3" class="box human"/>
+<text x="834" y="55" class="legend" text-anchor="start">You</text>
+<rect x="901" y="43" width="13" height="13" rx="3" class="box agent"/>
+<text x="922" y="55" class="legend" text-anchor="start">Agent</text>
+<rect x="1008" y="43" width="13" height="13" rx="3" class="box cli"/>
+<text x="1029" y="55" class="legend" text-anchor="start">CLI</text>
+<path class="rule" d="M47 82 Q650 80 1290 83"/>
+<g class="task-record" aria-label="Runweld CLI throughout the task">
+<rect x="1082" y="98" width="215" height="1117" rx="13" fill="#f5f2f8"/>
+<text x="1100" y="126" class="label">Runweld CLI</text>
+<path d="M1102 145 Q1100 645 1102 1172" fill="none" stroke="#a596b0" stroke-width="2"/>
+<circle cx="1102" cy="158" r="4.3" fill="#806990"/>
+<text x="1115" y="162" class="body" font-weight="600">Start the task</text>
+<text x="1115" y="180" class="small">Create branch and worktree</text>
+<circle cx="1102" cy="216" r="4.3" fill="#806990"/>
+<text x="1115" y="220" class="body" font-weight="600">Read project rules</text>
+<text x="1115" y="238" class="small">Look up specs by area or ID</text>
+<circle cx="1102" cy="383" r="4.3" fill="#806990"/>
+<text x="1115" y="387" class="body" font-weight="600">Validate the plan</text>
+<text x="1115" y="405" class="small">Compile phase dependencies</text>
+<circle cx="1102" cy="466" r="4.3" fill="#806990"/>
+<text x="1115" y="470" class="body" font-weight="600">Record approvals</text>
+<text x="1115" y="488" class="small">Run config and plan summary</text>
+<circle cx="1102" cy="559" r="4.3" fill="#806990"/>
+<text x="1115" y="563" class="body" font-weight="600">Brief agents</text>
+<text x="1115" y="581" class="small">Identify ready phases</text>
+<circle cx="1102" cy="749" r="4.3" fill="#806990"/>
+<text x="1115" y="753" class="body" font-weight="600">Close phases</text>
+<text x="1115" y="771" class="small">Verify reports against Git</text>
+<circle cx="1102" cy="839" r="4.3" fill="#806990"/>
+<text x="1115" y="843" class="body" font-weight="600">Run project checks</text>
+<text x="1115" y="861" class="small">Record check outcomes</text>
+<circle cx="1102" cy="1015" r="4.3" fill="#806990"/>
+<text x="1115" y="1019" class="body" font-weight="600">Track evidence</text>
+<text x="1115" y="1037" class="small">Findings and E2E results</text>
+<circle cx="1102" cy="1093" r="4.3" fill="#806990"/>
+<text x="1115" y="1097" class="body" font-weight="600">Record the verdict</text>
+<text x="1115" y="1115" class="small">Pass, round or evidence owed</text>
+<circle cx="1102" cy="1172" r="4.3" fill="#806990"/>
+<text x="1115" y="1176" class="body" font-weight="600">Accept and finish</text>
+<text x="1115" y="1194" class="small">Check the accepted revision</text>
+</g>
+<text x="48" y="120" class="section" text-anchor="start">Planning</text>
+<path class="underline" d="M48 128 q52 -1 98 -2"/>
+<rect x="435" y="99" width="260" height="41" rx="20.5" class="box human"/>
+<text x="565.0" y="126.5" class="label" text-anchor="middle">You bring a task</text>
+<path class="wire" d="M565 142 Q564 154 565 164" marker-end="url(#arrow)"/>
+<text x="582" y="157" class="small" text-anchor="start">runweld task start</text>
+<path class="wire" d="M431 193 C408 193 393 193 367 193" marker-end="url(#arrow)"/>
+<path class="wire" d="M698 193 C725 192 739 193 764 193" marker-end="url(#arrow)"/>
+<path class="wire" d="M565 225 L565 262" marker-end="url(#arrow)"/>
+<path class="wire" d="M222 225 L222 283 Q222 293 234 293 L404 293" marker-end="url(#arrow)"/>
+<path class="wire" d="M909 225 L909 283 Q909 293 896 293 L726 293" marker-end="url(#arrow)"/>
+<g aria-label="Planning session">
+<path d="M441 166 Q559.7 164.4 689 166.6 Q699 166.4 698 175 L697.5 215 Q698.4 224.4 689 224 Q565.0 225.2 441 223.7 Q431.6 224 432 215 L432.6 175 Q432 167 441 166 Z" class="box agent"/>
+<text x="565.0" y="194.0" class="label" text-anchor="middle">Planning session</text>
+<text x="565.0" y="214.0" class="body" text-anchor="middle">Plan in the task worktree</text>
+</g>
+<g aria-label="Code researcher">
+<path d="M83 166 Q213.7 164.4 356 166.6 Q366 166.4 365 175 L364.5 215 Q365.4 224.4 356 224 Q219.5 225.2 83 223.7 Q73.6 224 74 215 L74.6 175 Q74 167 83 166 Z" class="box agent"/>
+<text x="219.5" y="194.0" class="label" text-anchor="middle">Code researcher</text>
+<text x="219.5" y="214.0" class="body" text-anchor="middle">Trace behavior and interfaces</text>
+</g>
+<g aria-label="Spec scout">
+<path d="M775 166 Q904.2 164.4 1045 166.6 Q1055 166.4 1054 175 L1053.5 215 Q1054.4 224.4 1045 224 Q910.0 225.2 775 223.7 Q765.6 224 766 215 L766.6 175 Q766 167 775 166 Z" class="box agent"/>
+<text x="910.0" y="194.0" class="label" text-anchor="middle">Spec scout</text>
+<text x="910.0" y="214.0" class="body" text-anchor="middle">Read specs, docs, context and ADRs</text>
+</g>
+<g aria-label="You and the planner align">
+<path d="M415 265 Q558.6 263.4 715 265.6 Q725 265.4 724 274 L723.5 313 Q724.4 322.4 715 322 Q565.0 323.2 415 321.7 Q405.6 322 406 313 L406.6 274 Q406 266 415 265 Z" class="box human"/>
+<text x="565.0" y="292.5" class="label" text-anchor="middle">You and the planner align</text>
+<text x="565.0" y="312.5" class="body" text-anchor="middle">Agree on scope and what success looks like</text>
+</g>
+<path class="wire" d="M565 324 L565 352" marker-end="url(#arrow)"/>
+<path class="wire optional" d="M724 308 C790 309 803 323 829 341" marker-end="url(#arrow)"/>
+<path class="wire optional" d="M828 370 C797 377 765 383 724 383" marker-end="url(#arrow)"/>
+<g aria-label="Optional prototype">
+<path d="M840 335 Q938.0 333.4 1045 335.6 Q1055 335.4 1054 344 L1053.5 377 Q1054.4 386.4 1045 386 Q942.5 387.2 840 385.7 Q830.6 386 831 377 L831.6 344 Q831 336 840 335 Z" class="box agent"/>
+<text x="942.5" y="359.5" class="label" text-anchor="middle">Optional prototype</text>
+<text x="942.5" y="379.5" class="body" text-anchor="middle">Try a design or behavior</text>
+</g>
+<g aria-label="Planner writes the plan">
+<path d="M415 355 Q558.6 353.4 715 355.6 Q725 355.4 724 364 L723.5 404 Q724.4 413.4 715 413 Q565.0 414.2 415 412.7 Q405.6 413 406 404 L406.6 364 Q406 356 415 355 Z" class="box agent"/>
+<text x="565.0" y="383.0" class="label" text-anchor="middle">Planner writes the plan</text>
+<text x="565.0" y="403.0" class="body" text-anchor="middle">Phase graph, checks and Done cases</text>
+</g>
+<path class="wire" d="M565 415 L565 435" marker-end="url(#arrow)"/>
+<g aria-label="You approve the run config, then the plan summary">
+<path d="M415 438 Q558.6 436.4 715 438.6 Q725 438.4 724 447 L723.5 483 Q724.4 492.4 715 492 Q565.0 493.2 415 491.7 Q405.6 492 406 483 L406.6 447 Q406 439 415 438 Z" class="box human"/>
+<text x="565.0" y="464.0" class="label" text-anchor="middle">You approve the run config</text>
+<text x="565.0" y="484.0" class="body" text-anchor="middle">Then the plan summary (up to 350 words)</text>
+</g>
+<path class="wire" d="M565 494 L565 529" marker-end="url(#arrow)"/>
+<text x="582" y="517" class="note" text-anchor="start">You ask to build</text>
+<text x="48" y="555" class="section" text-anchor="start">Build</text>
+<path class="underline" d="M48 563 q52 -1 98 -2"/>
+<g aria-label="Build coordinator">
+<path d="M415 532 Q558.6 530.4 715 532.6 Q725 532.4 724 541 L723.5 581 Q724.4 590.4 715 590 Q565.0 591.2 415 589.7 Q405.6 590 406 581 L406.6 541 Q406 533 415 532 Z" class="box agent"/>
+<text x="565.0" y="560.0" class="label" text-anchor="middle">Build coordinator</text>
+<text x="565.0" y="580.0" class="body" text-anchor="middle">Dispatch a brief per ready phase</text>
+</g>
+<path class="wire" d="M565 592 L565 601"/>
+<path class="wire" d="M565 601 Q475 601 344 601 Q332 601 332 613 L332 624" marker-end="url(#arrow)"/>
+<path class="wire" d="M565 601 Q666 602 784 601 Q796 601 796 613 L796 624" marker-end="url(#arrow)"/>
+<g aria-label="Phase 1 · Implementer">
+<path d="M187 627 Q325.8 625.4 477 627.6 Q487 627.4 486 636 L485.5 675 Q486.4 684.4 477 684 Q332.0 685.2 187 683.7 Q177.6 684 178 675 L178.6 636 Q178 628 187 627 Z" class="box agent"/>
+<text x="332.0" y="654.5" class="label" text-anchor="middle">Phase 1 · Implementer</text>
+<text x="332.0" y="674.5" class="body" text-anchor="middle">TDD, phase checks and commits</text>
+</g>
+<g aria-label="Phase 2 · Implementer">
+<path d="M651 627 Q789.8 625.4 941 627.6 Q951 627.4 950 636 L949.5 675 Q950.4 684.4 941 684 Q796.0 685.2 651 683.7 Q641.6 684 642 675 L642.6 636 Q642 628 651 627 Z" class="box agent"/>
+<text x="796.0" y="654.5" class="label" text-anchor="middle">Phase 2 · Implementer</text>
+<text x="796.0" y="674.5" class="body" text-anchor="middle">TDD, phase checks and commits</text>
+</g>
+<path class="wire" d="M332 687 L332 696 Q332 706 344 706 L565 706"/>
+<path class="wire" d="M796 687 L796 696 Q796 706 784 706 L565 706"/>
+<path class="wire" d="M565 706 L565 721" marker-end="url(#arrow)"/>
+<g aria-label="CLI validates each phase report">
+<path d="M392 724 Q557.7 722.4 738 724.6 Q748 724.4 747 733 L746.5 771 Q747.4 780.4 738 780 Q565.0 781.2 392 779.7 Q382.6 780 383 771 L383.6 733 Q383 725 392 724 Z" class="box cli"/>
+<text x="565.0" y="751.0" class="label" text-anchor="middle">CLI validates each phase report</text>
+<text x="565.0" y="771.0" class="body" text-anchor="middle">Check outcomes, commits and file ownership</text>
+</g>
+<path class="wire optional" d="M748 751 C1023 750 1028 712 1028 605 Q1028 561 983 561 L728 561" marker-end="url(#arrow)"/>
+<text x="862" y="732" class="small" text-anchor="middle">Unlock dependent phases</text>
+<path class="wire" d="M565 782 L565 810" marker-end="url(#arrow)"/>
+<text x="580" y="800" class="note" text-anchor="start">All phases closed</text>
+<text x="48" y="842" class="section" text-anchor="start">Verification</text>
+<path class="underline" d="M48 850 q52 -1 98 -2"/>
+<g aria-label="Full project checks">
+<path d="M415 813 Q558.6 811.4 715 813.6 Q725 813.4 724 822 L723.5 852 Q724.4 861.4 715 861 Q565.0 862.2 415 860.7 Q405.6 861 406 852 L406.6 822 Q406 814 415 813 Z" class="box cli"/>
+<text x="565.0" y="844.0" class="label" text-anchor="middle">Full project checks</text>
+</g>
+<path class="wire" d="M565 862 L565 874"/>
+<path class="wire" d="M565 874 L338 874 Q332 874 332 882 L332 893" marker-end="url(#arrow)"/>
+<path class="wire" d="M565 874 L788 874 Q796 874 796 882 L796 893" marker-end="url(#arrow)"/>
+<g aria-label="Independent code review">
+<path d="M187 896 Q325.8 894.4 477 896.6 Q487 896.4 486 905 L485.5 941 Q486.4 950.4 477 950 Q332.0 951.2 187 949.7 Q177.6 950 178 941 L178.6 905 Q178 897 187 896 Z" class="box agent"/>
+<text x="332.0" y="922.0" class="label" text-anchor="middle">Independent code review</text>
+<text x="332.0" y="942.0" class="body" text-anchor="middle">Check the diff against plan and spec</text>
+</g>
+<g aria-label="End-to-end verification">
+<path d="M651 896 Q789.8 894.4 941 896.6 Q951 896.4 950 905 L949.5 941 Q950.4 950.4 941 950 Q796.0 951.2 651 949.7 Q641.6 950 642 941 L642.6 905 Q642 897 651 896 Z" class="box agent"/>
+<text x="796.0" y="922.0" class="label" text-anchor="middle">End-to-end verification</text>
+<text x="796.0" y="942.0" class="body" text-anchor="middle">Normal gate · exercise Done cases</text>
+</g>
+<path class="wire" d="M332 952 Q332 971 345 971 L565 971"/>
+<path class="wire" d="M796 952 Q796 971 783 971 L565 971"/>
+<path class="wire" d="M565 971 L565 985" marker-end="url(#arrow)"/>
+<g aria-label="Gate evidence">
+<path d="M415 988 Q558.6 986.4 715 988.6 Q725 988.4 724 997 L723.5 1032 Q724.4 1041.4 715 1041 Q565.0 1042.2 415 1040.7 Q405.6 1041 406 1032 L406.6 997 Q406 989 415 988 Z" class="box cli"/>
+<text x="565.0" y="1013.5" class="label" text-anchor="middle">Gate evidence</text>
+<text x="565.0" y="1033.5" class="body" text-anchor="middle">Check results, findings and case outcomes</text>
+</g>
+<g aria-label="Fix and recheck">
+<path d="M836 980 Q936.4 978.4 1046 980.6 Q1056 980.4 1055 989 L1054.5 1027 Q1055.4 1036.4 1046 1036 Q941.0 1037.2 836 1035.7 Q826.6 1036 827 1027 L827.6 989 Q827 981 836 980 Z" class="box agent"/>
+<text x="941.0" y="1007.0" class="label" text-anchor="middle">Fix and recheck</text>
+<text x="941.0" y="1027.0" class="body" text-anchor="middle">Fix, then rerun checks</text>
+</g>
+<path class="wire optional" d="M726 1004 C767 995 790 994 824 994" marker-end="url(#arrow)"/>
+<path class="wire optional" d="M825 1023 C791 1031 760 1030 727 1028" marker-end="url(#arrow)"/>
+<path class="wire" d="M565 1043 L565 1061" marker-end="url(#arrow)"/>
+<g aria-label="Independent judge">
+<path d="M415 1064 Q558.6 1062.4 715 1064.6 Q725 1064.4 724 1073 L723.5 1108 Q724.4 1117.4 715 1117 Q565.0 1118.2 415 1116.7 Q405.6 1117 406 1108 L406.6 1073 Q406 1065 415 1064 Z" class="box agent"/>
+<text x="565.0" y="1089.5" class="label" text-anchor="middle">Independent judge</text>
+<text x="565.0" y="1109.5" class="body" text-anchor="middle">Assess evidence and record a verdict</text>
+</g>
+<path class="wire optional" d="M726 1091 Q817 1093 925 1091 Q941 1091 941 1076 L941 1039" marker-end="url(#arrow)"/>
+<text x="834" y="1081" class="note" text-anchor="middle">Order a fix round</text>
+<g aria-label="Collect missing evidence">
+<path class="box agent" d="M84 980 Q186 979 294 980 Q304 980 303 989 L303 1027 Q304 1036 294 1036 L84 1036 Q74 1037 75 1027 L75 989 Q74 981 84 980 Z"/>
+<text x="189" y="1007" class="label" text-anchor="middle">Collect missing evidence</text>
+<text x="189" y="1027" class="body" text-anchor="middle">Reviewer or E2E verifier</text>
+</g>
+<path class="wire optional" d="M404 1091 Q300 1092 205 1091 Q189 1091 189 1076 L189 1039" marker-end="url(#arrow)"/>
+<text x="295" y="1081" class="note" text-anchor="middle">Request evidence</text>
+<path class="wire optional" d="M305 1008 Q349 1007 403 1009" marker-end="url(#arrow)"/>
+<path class="wire" d="M565 1119 L565 1145" marker-end="url(#arrow)"/>
+<text x="581" y="1137" class="note" text-anchor="start">Pass and land</text>
+<g aria-label="You review the checked build">
+<path d="M382 1148 Q557.3 1146.4 748 1148.6 Q758 1148.4 757 1157 L756.5 1199 Q757.4 1208.4 748 1208 Q565.0 1209.2 382 1207.7 Q372.6 1208 373 1199 L373.6 1157 Q373 1149 382 1148 Z" class="box human"/>
+<text x="565.0" y="1177.0" class="label" text-anchor="middle">You review the checked build</text>
+<text x="565.0" y="1197.0" class="body" text-anchor="middle">Accept and ask to finish → merge or merge request</text>
+</g>
+</svg>
+</main></body>
+</html>

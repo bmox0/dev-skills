@@ -1,92 +1,64 @@
-# Runweld
+<h1 align="center">
+  <img src="docs/runweld-wordmark.svg" width="280" alt="Runweld">
+</h1>
 
-**A deterministic development pipeline for coding agents.**
+<p align="center"><strong>A deterministic workflow for coding agents, from task to merge.</strong></p>
 
-The local CLI, `runweld`, keeps the state of each task from planning through merge. Agents build against the plan you approved. The CLI records which commits the reviewer examined, which build the verifier tested and which version you accepted for merge.
+<p align="center">You describe the change. Runweld tracks who acts next, what they checked and which version you accept.</p>
 
-Choose a **primary** model for planning, coordination and independent judgment, and a **secondary** model for scoped work such as research, implementation and verification. If you close the chat during a build, a fresh session in the task worktree can read which phases finished, which commit was reviewed and whose decision is pending. Ask it to **“continue this task with Runweld.”**
+<p align="center">
+  <a href="https://github.com/bmox0/runweld/actions/workflows/ci.yml"><img src="https://github.com/bmox0/runweld/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI on main"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-5c527b" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-3776ab" alt="Python 3.11+">
+</p>
 
-[Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Features](#features) · [Workflow stages](#workflow-stages) · [Examples](#examples)
+<p align="center">
+  <a href="#quick-start"><strong>Quick start</strong></a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#workflow-stages">Workflow stages</a> ·
+  <a href="docs/cli.md">CLI reference</a> ·
+  <a href="#examples">Examples</a>
+</p>
 
-## Install
+## Quick start
 
-On macOS or Linux, you'll need Bash, Git, curl and Python 3.11+ on your PATH as `python3`. Install the `runweld` CLI once on your machine.
+### Install
+
+On macOS or Linux, install the CLI with Bash, Git, curl and Python 3.11+ (`python3`).
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
-runweld --version
 ```
 
-Keep the export in your shell profile if needed. From your project's Git checkout, use Node.js and `npx` to install the entry skill for your coding agent.
+In your project’s Git checkout (at least one commit), install the agent skill with Node.js and initialize Runweld.
 
 ```sh
 npx skills add https://github.com/bmox0/runweld/tree/main/runweld
-```
-
-## Quick start
-
-**1. Set up a project.** Run the initializer in a Git repository with at least one commit.
-
-```sh
 runweld init
 ```
 
-Select your provider and model pair, optionally set their reasoning effort, and enter the project’s check commands and merge policy. Commit `.ds/config.toml`, `.ds/ds.lock`, the generated changes to `AGENTS.md` and `.gitignore`, and the project skill and its lockfile. New task worktrees will have the same setup.
+Choose your models, project checks and merge policy. Commit the generated project configuration and skill files. [Project setup](skills/run-file/references/project-config.md)
 
-**2. Describe a change.** Open a fresh agent session in the project and describe the task.
+### Start a task
 
-> Use Runweld to start a task called export-csv. Add a Download CSV button to the reports page. Export the rows that match the current filters. Disable the button when there are no rows.
+Open a fresh coding-agent session in the project and ask:
 
-The agent starts the task on branch `ds/export-csv` and works with you on the plan. If filters include a date range, for example, agree on a test that would catch rows outside it. Approve the run settings and plan summary, then tell the agent to build.
+> Use Runweld to add search to our reports page. Users should be able to find a report by title and see a clear message when nothing matches.
 
-**3. Try the result.** The review guide tells you how to open the build and what to check. For this export, download a filtered report and try a date range with no rows. You can request another round, or accept the result and tell the agent to finish. Depending on the project settings, finish merges locally or opens a merge request.
+Approve the run settings and plan summary, then ask the agent to build. To pick up the task in a new session, open its worktree and ask **“Continue this task with Runweld.”**
 
 ## How it works
 
-### Bring your own coding agent
+You describe a task in your coding agent. Runweld gives it a worktree. While the planner discusses open questions with you, the code researcher traces current behavior and the spec scout checks applicable rules against the request, the code and existing architecture decisions. A question can proceed as soon as the facts it depends on are known.
 
-Install one entry skill and say **“Use Runweld”** in the agent you already use. The skill runs `runweld help agents` to read the installed workflow. Your agent client runs shell commands and dispatches workers with the model and effort named in their briefs. You can use a native agent session, a separate herdr tab or a manual handoff. Each uses the same CLI, project checks and task state. [Session handoff](references/SESSIONS.md)
+![Runweld workflow from task intake to acceptance, with parallel build phases and CLI responsibilities at each stage.](docs/workflow-board.png)
 
-The planning session and build coordinator use **primary** for decisions that affect the whole change. **Secondary** workers get a bounded assignment, such as tracing a code path, implementing one phase or rerunning a failed case. A fresh primary model handles the first review and every judge verdict. Project profiles live in `.ds/config.toml`. Inspect one with `runweld executor show --provider NAME`.
+[Workflow board source (HTML)](docs/workflow-board.html)
 
-```mermaid
-flowchart TD
-    task(["Task"]) -->|"New task worktree"| planner["Planning session"]:::primary
-    planner -->|"Trace code"| code["Code researcher"]:::secondary
-    planner -->|"Read rules"| scout["Spec scout"]:::secondary
-    planner -->|"Approved build"| coord["Build coordinator"]:::primary
-    coord -->|"Ready phases"| implement["Implementers"]:::secondary
-    coord -->|"Diff and spec"| review["Code reviewer"]:::primary
-    coord -->|"Done cases"| verify["E2E verifier"]:::secondary
-    coord -->|"Gate evidence"| judge["Judge"]:::primary
-    planner -.->|"Record approvals"| cli["runweld CLI"]:::cli
-    coord -.->|"Advance run"| cli
-    cli -->|"Save transition"| records[("Task state")]:::cli
-    records -.->|"Next action and owner"| coord
-    classDef secondary fill:#d6f3ee,stroke:#428478,color:#113c36
-    classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
-    classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
-```
+The planner assigns each phase its files, checks and dependencies. The two phases shown can start together when both are ready. Each implementer tests and commits within its own files. As each phase closes, the CLI identifies any phases it unlocks. After the last phase, the coordinator moves on to project checks and independent review.
 
-### What survives a handoff
-
-`runweld task start` records the branch, worktree and workflow release. When the planner compiles the plan, `runweld` writes a JSON state file beside it under `.ds/workflow/plans/`. Approvals, phase reports, commits, check outcomes, review findings, verdicts and acceptance accumulate against that task. The CLI uses those records to render the review page and issue the next worker’s brief.
-
-If a session closes during a full test run, the next coordinator can ask `runweld` about that run. While its test processes are alive, `runweld` tells the coordinator to wait. Once they stop, it can retry the interrupted check or reuse a completed result from the same cycle for the same commit and check commands. If it cannot determine whether the original processes are still running, it asks for that fact before starting another run.
-
-Run `runweld status --current` in the worktree to see the next action and its owner. For automation, add `--json`. The result distinguishes a command to run, work to assign, a decision to request and a reason to wait. [CLI actions](docs/cli.md#workflow-actions)
-
-## Features
-
-| Feature | What you get |
-| --- | --- |
-| **Isolated tasks** | Each task has a branch, worktree and artifact directory. A project can also allocate a port and data directory per task. |
-| **Versioned product rules** | Each plan identifies the rules it changes. The resulting `docs/spec/` files travel with the code, ready for the next task’s spec scout. |
-| **Parallel builds** | The planner assigns files and dependencies to each phase. If two phases claim overlapping paths, `runweld` requires a dependency between them. Independent phases can start together. |
-| **Verification follows the diff** | A small gate includes full project checks and code review. If the diff reaches beyond the paths assigned or granted to the phases, `runweld` raises the gate to normal. The coordinator then dispatches a verifier for the applicable end-to-end cases. Generated changes under `docs/spec/` are exempt. |
-| **Reviewable commits** | Before reorganizing the working commits, `runweld land` creates a backup branch. It compares the resulting Git tree with the checked tree. If a commit hook changes a file, the judge can restore the backup or keep the difference with a reason that appears on the review page. |
-| **Pinned workflow releases** | The project lock selects the engine and instructions for new tasks. An existing run keeps its release when a teammate updates the project. |
+**Across sessions**, the CLI records approvals, phase commits, check results and verdicts. A fresh coordinator can see which commit the reviewer examined, what evidence is missing and whose decision comes next. Your final acceptance applies to the exact revision you reviewed. [Roles and handoffs](#roles-and-handoffs)
 
 ## Workflow stages
 
@@ -101,7 +73,7 @@ flowchart TD
     task(["Task"]) --> plan["Planner"]:::primary
     plan -->|"Trace behavior"| code["Code researcher"]:::secondary
     plan -->|"Find rules"| scout["Spec scout"]:::secondary
-    rules[("Specs and ADRs")]:::cli -.-> scout
+    rules[("Project docs and specs<br/>Glossary and ADRs")]:::cli -.-> scout
     code -->|"Code paths"| grill["Planning discussion"]:::primary
     scout -->|"Rules and conflicts"| grill
     grill -->|"Product choices"| decision["Product decisions"]:::human
@@ -153,23 +125,24 @@ For example, the keyboard-shortcuts plan adds `settings#taken-blocks`. It gives 
 
 ```mermaid
 flowchart TD
-    coord["Build coordinator"]:::primary -->|"Phase 1"| store["1 · Binding store"]:::secondary
-    store --> red["Run failing test"]
-    red --> green["Make test pass"]
-    green -->|"Commit + checks"| ready{"runweld phase done"}:::cli
-    ready -->|"Report incomplete"| store
-    ready -->|"Store ready"| panel["2 · Settings panel"]:::secondary
-    ready -->|"Store ready"| live["3 · Live rebinding"]:::secondary
-    panel -->|"Commit and checks"| complete["Close phases"]:::cli
-    live -->|"Commit and checks"| complete
-    complete --> spec["Commit spec changes"]:::cli
-    spec --> gate(["Run full checks"]):::cli
+    coord["Build coordinator"]:::primary -->|Read task state| ready["Ready phases in the approved graph"]:::cli
+    ready -->|Phase brief| a["Phase 1 implementer"]:::secondary
+    ready -->|Phase brief| b["Phase 2 implementer"]:::secondary
+    a --> reportA["TDD, phase checks,<br/>commits and report"]
+    b --> reportB["TDD, phase checks,<br/>commits and report"]
+    reportA --> done{"runweld phase done"}:::cli
+    reportB --> done
+    done -->|Missing evidence| repair["Implementer completes its report"]:::secondary
+    repair --> done
+    done -->|Dependencies met| ready
+    done -->|All phases closed| spec["Apply spec changes"]:::cli
+    spec --> gate(["Run full project checks"]):::cli
     classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
     classDef secondary fill:#d6f3ee,stroke:#428478,color:#113c36
     classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
 ```
 
-The diagram follows the [keyboard-shortcuts plan](skills/plan/references/example.md). The coordinator starts a secondary implementer for each phase whose dependencies are met. They share the task worktree and write within their assigned files.
+The coordinator starts a secondary implementer for each phase whose dependencies are met. They share the task worktree and write within their assigned files.
 
 Each implementer follows **test-driven development (TDD)**. They write one test where the behavior is observable, run it to see the expected failure, make it pass, then run neighboring tests and the phase’s configured checks. A test covering a Done case cited by a spec rule carries that rule’s ID. [TDD cycle](skills/tdd/SKILL.md)
 
@@ -232,11 +205,55 @@ flowchart TD
     classDef human fill:#fff0cf,stroke:#a27625,color:#4d3613
 ```
 
-The build coordinator sends a guide in your conversation language with the exact worktree, URL or artifact to open. It lists each manual case as an action and expected result, plus any outstanding decision and what you would defer by accepting. In the CSV example, you can try an empty date range and decide whether a hang on exports over 10,000 rows needs a fix before merge. [Example review guide](skills/build/references/example.guide.md)
+The build coordinator sends a guide in your conversation language with the exact worktree, URL or artifact to open. It lists each manual case as an action and expected result, plus any outstanding decision and what you would defer by accepting. For a CSV export, you can try an empty date range and decide whether a hang on exports over 10,000 rows needs a fix before merge. [Example review guide](skills/build/references/example.guide.md)
 
 The page also lists decisions agents recorded during implementation, why they chose each option and what it would cost if they were wrong. You can request a round and receive a new guide after the fixes, rechecks and fresh verdict.
 
 Your acceptance applies to that page and its landed commit. On your instruction, `runweld finish` checks the branch tip, verdict, evidence and acceptance again before merging locally or opening a merge request. If someone adds a commit after you accept, the revised build goes through review and acceptance again.
+
+## Roles and handoffs
+
+Install one entry skill and say **“Use Runweld”** in the agent you already use. The skill runs `runweld help agents` to read the installed workflow. Your agent client runs shell commands and dispatches workers with the model and effort named in their briefs. You can use a native agent session, a separate herdr tab or a manual handoff. Each uses the same CLI, project checks and task state. [Session handoff](references/SESSIONS.md)
+
+The planning session and build coordinator use **primary** for decisions that affect the whole change. **Secondary** workers get a bounded assignment, such as tracing a code path, implementing one phase or rerunning a failed case. A fresh primary model handles the first review and every judge verdict. Project profiles live in `.ds/config.toml`. Inspect one with `runweld executor show --provider NAME`.
+
+```mermaid
+flowchart TD
+    task(["Task"]) -->|"New task worktree"| planner["Planning session"]:::primary
+    planner -->|"Trace code"| code["Code researcher"]:::secondary
+    planner -->|"Read rules"| scout["Spec scout"]:::secondary
+    planner -->|"Approved build"| coord["Build coordinator"]:::primary
+    coord -->|"Ready phases"| implement["Implementers"]:::secondary
+    coord -->|"Diff and spec"| review["Code reviewer"]:::primary
+    coord -->|"Done cases"| verify["E2E verifier"]:::secondary
+    coord -->|"Gate evidence"| judge["Judge"]:::primary
+    planner -.->|"Record approvals"| cli["runweld CLI"]:::cli
+    coord -.->|"Advance run"| cli
+    cli -->|"Save transition"| records[("Task state")]:::cli
+    records -.->|"Next action and owner"| coord
+    classDef secondary fill:#d6f3ee,stroke:#428478,color:#113c36
+    classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
+    classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
+```
+
+### What survives a handoff
+
+`runweld task start` records the branch, worktree and workflow release. When the planner compiles the plan, `runweld` writes a JSON state file beside it under `.ds/workflow/plans/`. Approvals, phase reports, commits, check outcomes, review findings, verdicts and acceptance accumulate against that task. The CLI uses those records to render the review page and issue the next worker’s brief.
+
+If a session closes during a full test run, the next coordinator can ask `runweld` about that run. While its test processes are alive, `runweld` tells the coordinator to wait. Once they stop, it can retry the interrupted check or reuse a completed result from the same cycle for the same commit and check commands. If it cannot determine whether the original processes are still running, it asks for that fact before starting another run.
+
+Run `runweld status --current` in the worktree to see the next action and its owner. For automation, add `--json`. The result distinguishes a command to run, work to assign, a decision to request and a reason to wait. [CLI actions](docs/cli.md#workflow-actions)
+
+## Features
+
+| Feature | What you get |
+| --- | --- |
+| **Isolated tasks** | Each task has a branch, worktree and artifact directory. A project can also allocate a port and data directory per task. |
+| **Versioned product rules** | Each plan identifies the rules it changes. The resulting `docs/spec/` files travel with the code, ready for the next task’s spec scout. |
+| **Parallel builds** | The planner assigns files and dependencies to each phase. If two phases claim overlapping paths, `runweld` requires a dependency between them. Independent phases can start together. |
+| **Verification follows the diff** | A small gate includes full project checks and code review. If the diff reaches beyond the paths assigned or granted to the phases, `runweld` raises the gate to normal. The coordinator then dispatches a verifier for the applicable end-to-end cases. Generated changes under `docs/spec/` are exempt. |
+| **Reviewable commits** | Before reorganizing the working commits, `runweld land` creates a backup branch. It compares the resulting Git tree with the checked tree. If a commit hook changes a file, the judge can restore the backup or keep the difference with a reason that appears on the review page. |
+| **Pinned workflow releases** | The project lock selects the engine and instructions for new tasks. An existing run keeps its release when a teammate updates the project. |
 
 ## Examples
 
