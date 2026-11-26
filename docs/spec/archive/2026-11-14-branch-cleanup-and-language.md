@@ -31,14 +31,14 @@ Two things the owner hit on the 5.0 runs. Merged plans leave every `backup/<bran
 ```text
 ## Done
 
-1. In a throwaway repo, a plan at `passed` on branch `feat/x` with `backup/feat/x-1` and `backup/feat/x-2`. Run `dev-skills:finish`, choose `--ff-only`, answer no to the backup question → the merge is in, `feat/x` and both backups remain. — you check
+1. In a throwaway repo, a plan at `passed` on branch `feat/x` with `backup/feat/x-1` and `backup/feat/x-2`. Run `runweld finish`, choose `--ff-only`, answer no to the backup question → the merge is in, `feat/x` and both backups remain. — you check
 2. The same setup, answer yes → `git branch --list 'backup/feat/x-*'` is empty, `feat/x` remains, and the retro is offered after. — you check
 3. In a project whose Environment block says `**Language.** English`, grill and plan a task while speaking Russian → the plan's Result, Approach, Done and `## Spec` are in English; the replies stay Russian. — you check
-4. In a project with no `Language` line and English files in `docs/spec/`, run `dev-skills:plan` while speaking Russian → the plan is in English and the user is offered the `**Language.**` line. — you check
-5. In a project with no `Language` line and nothing in `docs/`, run `dev-skills:plan` → it asks once which language, writes the plan in the answer and offers the line. — you check
-6. `dev-skills:spec` standalone in a project with `**Language.** English`, speaking Russian → the plan-shaped file and the rules written to `docs/spec/` are in English. — you check
+4. In a project with no `Language` line and English files in `docs/spec/`, run `runweld plan` while speaking Russian → the plan is in English and the user is offered the `**Language.**` line. — you check
+5. In a project with no `Language` line and nothing in `docs/`, run `runweld plan` → it asks once which language, writes the plan in the answer and offers the line. — you check
+6. `runweld spec` standalone in a project with `**Language.** English`, speaking Russian → the plan-shaped file and the rules written to `docs/spec/` are in English. — you check
 7. `scripts/check` and `scripts/test` → exit 0. The three manifests say `5.0.1`. `AGENTS.md` has `**Language.** English`. `environment-contract.md` shows the `Language` line in its block.
-8. `dev-skills:spec` standalone, asked to record a rule → it asks only what must stay true here and why; the area, the rule's ID, `+`, `~` or `-`, and the wording are in the file without a question about them. — you check
+8. `runweld spec` standalone, asked to record a rule → it asks only what must stay true here and why; the area, the rule's ID, `+`, `~` or `-`, and the wording are in the file without a question about them. — you check
 
 ## Spec
 

@@ -17,8 +17,8 @@ cp -R "$repo_root/." "$preceding/"
 printf '\nRelease A fixture.\n' >> "$preceding/README.md"
 launcher="$sandbox/bin/runweld"
 "$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
-a=$(cat "$sandbox/lib/dev-skills/default")
-bundle="$sandbox/lib/dev-skills/releases/$a"
+a=$(cat "$sandbox/lib/runweld/default")
+bundle="$sandbox/lib/runweld/releases/$a"
 cd "$sandbox/project with spaces"
 git init -qb main
 git commit --allow-empty -qm base
@@ -102,14 +102,14 @@ check_status() {
 for id in "${previous[@]}"; do
   cp ".runweld/workflow/tasks/$id.json" "$sandbox/$id.json"
   for format in text json; do
-    record_status "$id" "$sandbox/$id.$format.native" "$format" python3 "$bundle/skills/build/pipeline.py"
+    record_status "$id" "$sandbox/$id.$format.native" "$format" python3 "$bundle/workflow/build/pipeline.py"
     [[ $(cat "$sandbox/$id.$format.native.code") == 0 ]]
   done
 done
 cp "$plan" "$sandbox/active.md"
 : > "$plan"
 for format in text json; do
-  record_status previous-active "$sandbox/broken.$format.native" "$format" python3 "$bundle/skills/build/pipeline.py"
+  record_status previous-active "$sandbox/broken.$format.native" "$format" python3 "$bundle/workflow/build/pipeline.py"
   [[ $(cat "$sandbox/broken.$format.native.code") == 1 ]]
   assert_contains "$(cat "$sandbox/broken.$format.native.out")" 'no-plan:' 'distribution#project-lock: the native status refusal uses stdout'
 done
@@ -118,15 +118,15 @@ cp "$sandbox/active.md" "$plan"
 "$repo_root/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 launcher="$sandbox/bin/runweld"
 cli update --project >/dev/null
-b=$(cat "$sandbox/lib/dev-skills/default")
+b=$(cat "$sandbox/lib/runweld/default")
 [[ "$a" != "$b" ]]
 cli task start current --finish-how ff-only --finish-target main >/dev/null
 cp .runweld/runweld.lock "$sandbox/lock"
 
 cli status --json > "$sandbox/inventory"
-bundle_b="$sandbox/lib/dev-skills/releases/$b"
+bundle_b="$sandbox/lib/runweld/releases/$b"
 for format in text json; do
-  record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/skills/build/pipeline.py"
+  record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/workflow/build/pipeline.py"
 done
 # An unrelated plan and task record must not be read, even by a retained engine.
 printf '%s\n' 'not json' > .runweld/workflow/tasks/unrelated.json
@@ -154,7 +154,7 @@ for id in rows:
         assert row['status'] == 'building'
         action = next(s for s in steps if s['kind'] == 'run' and s.get('role') == 'implementer')
         brief = subprocess.check_output(action['argv'], text=True, cwd=root).strip()
-        assert f'{root}/lib/dev-skills/releases/{a}/agents/implementer.md' in Path(brief).read_text()
+        assert f'{root}/lib/runweld/releases/{a}/agents/implementer.md' in Path(brief).read_text()
     elif id == 'previous-plan':
         assert row['status'] == 'draft' and row['nostate'] and row['ready'] == [] and row['state_repair'] is None
         action, = steps
@@ -197,7 +197,7 @@ for state in draft active unreadable repair; do
     repair) rm "${same_plan%.md}.json" ;;
   esac
   for format in text json; do
-    record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/skills/build/pipeline.py"
+    record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/workflow/build/pipeline.py"
     [[ $(cat "$sandbox/current.$format.native.code") == "$expected_code" ]]
     check_status current "$sandbox/current.$format.native" "$format"
   done
@@ -205,7 +205,7 @@ done
 current_record=.runweld/workflow/tasks/current.json
 cp "$current_record" "$sandbox/current-record.json"
 printf '%s\n' 'not json' > "$current_record"
-record_status current "$sandbox/current-corrupt.native" json python3 "$bundle_b/skills/build/pipeline.py"
+record_status current "$sandbox/current-corrupt.native" json python3 "$bundle_b/workflow/build/pipeline.py"
 [[ $(cat "$sandbox/current-corrupt.native.code") == 1 ]]
 assert_contains "$(cat "$sandbox/current-corrupt.native.err")" "$current_record" 'distribution#project-lock: corrupt task metadata identifies the record on stderr'
 check_status current "$sandbox/current-corrupt.native" json
@@ -237,11 +237,11 @@ cmp .runweld/runweld.lock "$sandbox/lock"
 "$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 cmp .runweld/runweld.lock "$sandbox/lock"
 cmp "$preceding/bin/runweld" "$sandbox/bin/runweld"
-assert_eq "$a" "$(cat "$sandbox/lib/dev-skills/default")"
+assert_eq "$a" "$(cat "$sandbox/lib/runweld/default")"
 "$repo_root/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 cmp .runweld/runweld.lock "$sandbox/lock"
 cmp "$repo_root/bin/runweld" "$sandbox/bin/runweld"
-assert_eq "$b" "$(cat "$sandbox/lib/dev-skills/default")"
+assert_eq "$b" "$(cat "$sandbox/lib/runweld/default")"
 for id in "${previous[@]}"; do
   check_status "$id" "$sandbox/$id.json.native" json
 done

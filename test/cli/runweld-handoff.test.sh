@@ -28,30 +28,21 @@ with tempfile.TemporaryDirectory() as folder:
         return result.stdout if ok else result.stdout + result.stderr
 
     run(source / "scripts/install-runweld")
-    release = (home / ".local/lib/dev-skills/default").read_text().strip()
+    release = (home / ".local/lib/runweld/default").read_text().strip()
     guide = run("runweld", "help", "agents")
-    bundle = home / ".local/lib/dev-skills/releases" / release
+    bundle = home / ".local/lib/runweld/releases" / release
 
-    def reference(name, help_text=guide):
-        path = Path(next((line.strip().partition(": ")[2] for line in help_text.splitlines()
-                          if line.strip().startswith(name + ": ")), ""))
-        assert path.is_file() and path.is_relative_to(bundle), (
-            f"distribution#system-cli: {name} is missing from installed agent help"
-        )
-        return path.read_text()
+    assert "runweld grill" in guide
+    for path in (bundle / "workflow").glob("*/GUIDE.md"):
+        body = run("runweld", path.parent.name)
+        assert path.read_text().split("---", 2)[-1].strip().splitlines()[0] in body
+    for role in ("judge", "reviewer", "implementer"):
+        assert (bundle / "agents" / (role + ".md")).read_text().split("---", 2)[-1].strip().splitlines()[0] in run("runweld", role)
+    assert (bundle / "workflow/grill/references/INTERVIEW.md").read_text().strip() in run("runweld", "grill")
+    assert "browser-test" in run("runweld", "build-verification")
 
-    for stage in ("grill", "prototype", "run-file", "plan", "build", "review", "verify",
-                  "judge", "land", "finish", "retro", "bug", "spec", "tdd"):
-        assert reference(stage).strip()
-    for name in ("Session and dispatch rules", "Workflow paths", "Human review", "implementer", "reviewer"):
-        assert reference(name).strip()
-
-    entry = source / "runweld"
-    assert [p.name for p in entry.iterdir()] == ["SKILL.md"]
-    assert (bundle / "runweld/SKILL.md").read_bytes() == (entry / "SKILL.md").read_bytes()
-    assert "runweld help agents" in (entry / "SKILL.md").read_text()
-    assert not (home / ".agents/skills").exists() and not (home / ".claude/skills").exists()
-
+    assert "one persistent tab" in run("runweld", "browser-test", "help")
+    assert not any((bundle / p).exists() for p in (".agents", ".claude-plugin", ".codex-plugin", ".qoder-plugin"))
     # A local Git remote exercises the piped installer without contacting GitHub.
     upstream = home / "upstream"
     shutil.copytree(bundle, upstream)
@@ -76,17 +67,17 @@ with tempfile.TemporaryDirectory() as folder:
     assert not (home / ".runweld").exists()
     assert "runweld init" in run(cli, "update", "--project", cwd=locked, ok=False)
     assert not (locked / ".runweld").exists()
-    assert (prefix / "lib/dev-skills/default").read_text().strip() == release
+    assert (prefix / "lib/runweld/default").read_text().strip() == release
     run(cli, "init", "--non-interactive", "--provider", "Test", "--primary-model", "p", "--secondary-model", "s", cwd=locked)
     lock = locked / ".runweld/runweld.lock"
     before = lock.read_bytes()
-    with (upstream / "skills/grill/references/INTERVIEW.md").open("a") as f:
+    with (upstream / "workflow/grill/references/INTERVIEW.md").open("a") as f:
         f.write("\nGlobal update fixture\n")
     run("git", "commit", "-qam", "second build", cwd=upstream)
     subprocess.run([cli, "update", "--cli"], cwd=locked, env=bootstrap_env, check=True, timeout=30)
-    latest = (prefix / "lib/dev-skills/default").read_text().strip()
+    latest = (prefix / "lib/runweld/default").read_text().strip()
     assert latest != release and lock.read_bytes() == before
-    assert (home / ".local/lib/dev-skills/default").read_text().strip() == release
+    assert (home / ".local/lib/runweld/default").read_text().strip() == release
     bare = subprocess.run([cli, "update"], cwd=locked, env=env, stdin=subprocess.DEVNULL, capture_output=True)
     assert bare.returncode and b"--cli or --project" in bare.stderr
     assert "--project" in run(cli, "update", "--cli", "--project", cwd=locked, ok=False)
@@ -106,13 +97,13 @@ with tempfile.TemporaryDirectory() as folder:
     updated = tomllib.loads(lock.read_text())
     original = tomllib.loads(before.decode())
     assert updated['release'] == latest
-    assert updated['skills']['grill'] != original['skills']['grill']
+    assert updated['guides']['grill'] != original['guides']['grill']
     grill, previous = updated['stages']['grill'], original['stages']['grill']
     assert grill['digest'] != previous['digest']
-    assert [path for path in grill['inputs'] if grill['inputs'][path] != previous['inputs'][path]] == ['skills/grill/references/INTERVIEW.md']
+    assert [path for path in grill['inputs'] if grill['inputs'][path] != previous['inputs'][path]] == ['workflow/grill/references/INTERVIEW.md']
     assert all(updated['stages'][key] == stage for key, stage in original['stages'].items() if key != 'grill')
     assert updated['roles'] == original['roles']
-    assert 'skills/browser-test/tab.mjs' in updated['stages']['build-verification']['when']['web-or-electron']['inputs']
+    assert 'workflow/browser-test/tab.mjs' in updated['stages']['build-verification']['when']['web-or-electron']['inputs']
     shared_path = 'references/SESSIONS.md'
     with (upstream / shared_path).open('a') as f:
         f.write('\nShared protocol fixture\n')
@@ -165,7 +156,7 @@ with tempfile.TemporaryDirectory() as folder:
         plan, tree = map(Path, (task["plan"], task["tree"]))
         assert task["tree"] in run("runweld", "task", "resume", slug, cwd=project)
         assert task["release"] == release
-        assert reference("plan", run("runweld", "help", "agents", "--plan", plan))
+        assert "# Plan" in run("runweld", "plan", "--plan", plan)
         if prototype:
             prototype = Path(task["artifacts"]) / "preview.txt"
             prototype.write_text(f"hello {provider}\n")
@@ -191,7 +182,7 @@ Update the message in hello.txt.
 
 ### 1. Write the greeting — `waiting`
 Territory: `hello.txt`
-Skills: `dev-skills:tdd`
+Skills: `runweld tdd`
 Spec: none
 Waits for: nothing
 
@@ -248,7 +239,7 @@ none
         run("runweld", "build", "start", plan)  # Separate fixture start instruction.
         advertised("phase", "start")
         implementer, fields = brief("implementer", "secondary")
-        assert str(bundle / "skills/tdd/SKILL.md") in fields["Skills to read first"]
+        assert "runweld tdd" in fields["Skills to read first"]
         red = run("grep", "-x", f"hello {provider}", "hello.txt", cwd=tree, ok=False)
         assert not red
         (tree / "hello.txt").write_text(f"hello {provider}\n")
@@ -268,7 +259,7 @@ none
         assert "normal" in advertised("gate", "start")
         reviewer, _ = brief("reviewer", "primary")
         verify, _ = brief("verify", "secondary")
-        assert str(bundle / "skills/browser-test/tab.mjs") in verify
+        assert str(bundle / "workflow/browser-test/tab.mjs") in verify
         run(*command_from(reviewer, "- Complete the review: "))
         assert not any(x.get("role") == "judge" and x["kind"] == "run" for x in actions())
         case = run("cat", "hello.txt", cwd=tree).strip()

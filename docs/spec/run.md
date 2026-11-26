@@ -47,7 +47,7 @@ Why: a secret given by pointer stays out of the state and the briefs
 
 Why: nothing pulls the user in mid-run
 
-- Run `dev-skills:verify` on a plan whose use case needs a login its run file lacks → that case is `not reached: needs <the login>`, and the dev server it starts uses the run's port
+- Run `runweld verify` on a plan whose use case needs a login its run file lacks → that case is `not reached: needs <the login>`, and the dev server it starts uses the run's port
 
 ### executor-presets — Project configuration supplies named primary and secondary presets and an approved run freezes its profiles
 

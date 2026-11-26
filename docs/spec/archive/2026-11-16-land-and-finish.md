@@ -50,7 +50,7 @@ Leftovers:
 ```text
 ## Done
 
-1. Run `scripts/check` and `scripts/test` → both exit 0; no line in `skills/`, `agents/` or `AGENTS.md` counts land stops, and the land and finish skills run no `reset`, `commit`, `merge`, `push`, `gh` or `branch -D` themselves.
+1. Run `scripts/check` and `scripts/test` → both exit 0; no line in `workflow/`, `agents/` or `AGENTS.md` counts land stops, and the land and finish skills run no `reset`, `commit`, `merge`, `push`, `gh` or `branch -D` themselves.
 2. In a throwaway repo, a plan whose judge passed, a file uncommitted: `land` → refused, naming it. Moved away: `land draft` → one commit holding every changed path; a shape missing or repeating a path → refused, naming it. A two-commit shape → `backup/<branch>-1` at the old HEAD, two commits with their messages, `git diff backup/<branch>-1 HEAD` empty; `status` names the tip, the old HEAD as its tree and the backup; the plan holds `### The commits · landed <tip> · backup/<branch>-1` with each message, walkthrough and fix.
 3. After a round commits a new file: `land draft` → the last shape with the new path apart, and `land` refuses until it is placed. Landed → `backup/<branch>-2`, and one commits section with `git range-diff <base> <last tip> <tip>` and the since text.
 4. A pre-commit hook reformats a file: `land` → the rewrite stays, the difference printed; `land revert` → the branch is the backup, a stop recorded. Again with `land accept --note "<…>"` → the page shows the note and says the tip is not the tree the checks passed. A hook that leaves a stash → `land` names it.
@@ -67,7 +67,7 @@ Leftovers:
 15. A plan with no run values: `gate start` → refused, nothing committed.
 16. Two `verdict round` with no round between → `round start` takes both verdicts' notes. `round report` without `--commit` → recorded; `brief reviewer` says the round made no commit. At the gate before a fix, `brief verify --cases 2` twice → two files, the first unchanged.
 17. Two `build start` at once, each with a port → different ports. `port` turned on for a `merged` plan, `approve` → nothing allocated. `pipeline.py`'s docstring → names every command `--help` lists.
-18. In a throwaway repo, run `dev-skills:build` from this checkout on a two-phase plan ending `ff-only`, through `dev-skills:finish` → the judge lands through `CLI land`, the page comes from `CLI page`, finish merges through `CLI finish` without asking how, and no one writes the page or runs land's or finish's git by hand — you check
+18. In a throwaway repo, run `runweld build` from this checkout on a two-phase plan ending `ff-only`, through `runweld finish` → the judge lands through `CLI land`, the page comes from `CLI page`, finish merges through `CLI finish` without asking how, and no one writes the page or runs land's or finish's git by hand — you check
 19. After a land, a file uncommitted: `land revert` → refused, naming it; the branch, the backup and the file unchanged.
 20. After a land and `page`, `land revert` until no land is left → the page record is gone; at `passed`, `finish` ending `ff-only` or `no-ff` → refused `no-land`, nothing merged, the target unmoved.
 21. A request opened on GitHub, Status the link: `finish` → asks `gh pr view`, no `page-differs`; on an unknown host, a recorded link and `finish --merged` → `merged`. A GitLab push that prints no link → it says the request was pushed; `finish` again → nothing pushed, it says to record the link with `plan status`.

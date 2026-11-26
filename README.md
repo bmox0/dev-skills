@@ -33,18 +33,18 @@ export PATH="$HOME/.local/bin:$PATH"
 
 For updates, use `runweld update --cli` to install the latest CLI from `main`. Use `runweld update --project` in a project to select the installed build for new tasks. In a terminal, `runweld update` asks which one you want. [CLI updates](docs/cli.md#update-the-cli)
 
-In your project’s Git checkout (at least one commit), install the agent skill with Node.js and initialize Runweld.
-
-```sh
-npx skills add https://github.com/bmox0/runweld/tree/main/runweld
-runweld init
-```
-
-Choose your models, project checks and merge policy. Commit the generated project configuration and skill files. [Project setup](skills/run-file/references/project-config.md)
+In your project’s Git checkout, run `runweld init`. Choose your models and project checks. Commit the generated configuration. [Project setup](workflow/run-file/references/project-config.md)
 
 ### Start a task
 
-Open a fresh coding-agent session in the project and ask:
+Start in the repository:
+
+```sh
+runweld task start report-search
+runweld grill --plan .runweld/workflow/plans/report-search.md
+```
+
+In the task worktree, give the coding agent your goal:
 
 > Use Runweld to add search to our reports page. Users should be able to find a report by title and see a clear message when nothing matches.
 
@@ -90,7 +90,7 @@ flowchart TD
 
 When a task needs a Grill, the **code researcher** traces the behavior through the repository and brings back file paths, existing interfaces and where the change would fit. The **spec scout** reads the relevant rules in `docs/spec/`, brings back the reason for each, and flags conflicts with the request, the code or an architecture decision record (ADR). For the CSV example, the researcher might find where the page applies its date filter. The scout checks whether the project already defines which rows an export includes. You decide what should happen if the two disagree.
 
-As terms settle, the planner records them in the project glossary, `CONTEXT.md`. When an architectural choice involves a trade-off that would be costly to reverse and hard to understand later, the planner offers to record an ADR. If a design question remains, you can ask a secondary worker for a throwaway prototype before planning. [Grill](skills/grill/SKILL.md) · [Glossary and ADRs](skills/domain-modeling/SKILL.md)
+As terms settle, the planner records them in the project glossary, `CONTEXT.md`. When an architectural choice involves a trade-off that would be costly to reverse and hard to understand later, the planner offers to record an ADR. If a design question remains, you can ask a secondary worker for a throwaway prototype before planning. [Grill](workflow/grill/GUIDE.md) · [Glossary and ADRs](workflow/domain-modeling/GUIDE.md)
 
 ### Plan
 
@@ -115,11 +115,11 @@ flowchart TD
     classDef human fill:#fff0cf,stroke:#a27625,color:#4d3613
 ```
 
-1. **Set the terms of the run.** The planner starts from the project defaults in the task’s `.run.toml`. You settle the model settings, phase and full-project checks, fixtures or accounts needed for verification, and how the branch will be integrated. [Example run file](skills/run-file/references/example.run.toml)
+1. **Set the terms of the run.** The planner starts from the project defaults in the task’s `.run.toml`. You settle the model settings, phase and full-project checks, fixtures or accounts needed for verification, and how the branch will be integrated. [Example run file](workflow/run-file/references/example.run.toml)
 2. **Write the plan and its spec changes.** Each phase names the files it may change, the existing spec areas it must respect, the checks to run and which phases it depends on. A secondary researcher identifies the relevant code and project instructions. In the plan’s `## Spec`, the planner records lasting rules to add (`+`), change (`~`) or remove (`-`), or writes `none`. The numbered **Done** cases describe an action and the result someone can observe.
-3. **Validate, approve and hand off.** The planner runs `runweld spec check` against the base revision. You approve the run settings, then a linked summary of at most 350 words. Its approval covers the plan, spec changes and summary text for that run. If the planner edits an acceptance criterion afterward, `runweld` requires renewed summary approval. Your separate instruction to build starts the handoff. [Example approval summary](skills/plan/references/resume.example.md)
+3. **Validate, approve and hand off.** The planner runs `runweld spec check` against the base revision. You approve the run settings, then a linked summary of at most 350 words. Its approval covers the plan, spec changes and summary text for that run. If the planner edits an acceptance criterion afterward, `runweld` requires renewed summary approval. Your separate instruction to build starts the handoff. [Example approval summary](workflow/plan/references/resume.example.md)
 
-For example, the keyboard-shortcuts plan adds `settings#taken-blocks`. It gives the reason a duplicate binding must be rejected and links the rule to Done case 2. That case tells the verifier to record an occupied shortcut, check that the UI names the conflicting action and confirm that Save is disabled. [Worked plan and spec](skills/plan/references/example.md)
+For example, the keyboard-shortcuts plan adds `settings#taken-blocks`. It gives the reason a duplicate binding must be rejected and links the rule to Done case 2. That case tells the verifier to record an occupied shortcut, check that the UI names the conflicting action and confirm that Save is disabled. [Worked plan and spec](workflow/plan/references/example.md)
 
 ### Build
 
@@ -144,7 +144,7 @@ flowchart TD
 
 The coordinator starts a secondary implementer for each phase whose dependencies are met. They share the task worktree and write within their assigned files.
 
-Each implementer follows **test-driven development (TDD)**. They write one test where the behavior is observable, run it to see the expected failure, make it pass, then run neighboring tests and the phase’s configured checks. A test covering a Done case cited by a spec rule carries that rule’s ID. [TDD cycle](skills/tdd/SKILL.md)
+Each implementer follows **test-driven development (TDD)**. They write one test where the behavior is observable, run it to see the expected failure, make it pass, then run neighboring tests and the phase’s configured checks. A test covering a Done case cited by a spec rule carries that rule’s ID. [TDD cycle](workflow/tdd/GUIDE.md)
 
 Before closing a phase, `runweld phase done` checks the report against Git. The reported commits must be on the task branch after its base and touch only paths assigned or granted to the phase. Those paths must be clean, and the report must give an outcome for each configured check.
 
@@ -178,9 +178,9 @@ When the phases finish, `runweld` applies the plan’s spec changes to `docs/spe
 | **Code reviewer · primary** | Read the diff against the approved plan, project conventions and applicable spec rules. | Findings and an explicit completion record for the commit range, even when the reviewer finds nothing. After a fix, `runweld` uses the recorded coverage to determine which range needs review. |
 | **End-to-end verifier · secondary** | In parallel with review, drive the assigned Done cases against the running system through the browser, simulator, HTTP or CLI. | A result for each case at the tested commit, with a capture or command output. A case the environment prevents the worker from reaching records why. |
 
-At a small gate, full checks and the first code review still run. All Done cases go into your manual guide. Failed checks, defects and failed cases go to a fresh implementer on one fix list. The coordinator then runs the checks again and assigns targeted rechecks. [Verification levels and fixes](skills/build/references/gate.md)
+At a small gate, full checks and the first code review still run. All Done cases go into your manual guide. Failed checks, defects and failed cases go to a fresh implementer on one fix list. The coordinator then runs the checks again and assigns targeted rechecks. [Verification levels and fixes](workflow/build/references/gate.md)
 
-A **fresh primary judge** reads the plan, findings and evidence. It can send a missing result back to the reviewer or verifier, request a round of changes, or ask you to resolve a product question. If successive rounds keep producing as many new issues, or a previously fixed check fails again, `runweld` can stop further rounds. The review page shows why the rounds stopped and which findings remain open. When the branch is ready for human review, the judge prepares the commits and writes a walkthrough for each. [Judge](skills/build/references/judge.md)
+A **fresh primary judge** reads the plan, findings and evidence. It can send a missing result back to the reviewer or verifier, request a round of changes, or ask you to resolve a product question. If successive rounds keep producing as many new issues, or a previously fixed check fails again, `runweld` can stop further rounds. The review page shows why the rounds stopped and which findings remain open. When the branch is ready for human review, the judge prepares the commits and writes a walkthrough for each. [Judge](workflow/build/references/judge.md)
 
 ### Human review and Finish
 
@@ -205,7 +205,7 @@ flowchart TD
     classDef human fill:#fff0cf,stroke:#a27625,color:#4d3613
 ```
 
-The build coordinator sends a guide in your conversation language with the exact worktree, URL or artifact to open. It lists each manual case as an action and expected result, plus any outstanding decision and what you would defer by accepting. For a CSV export, you can try an empty date range and decide whether a hang on exports over 10,000 rows needs a fix before merge. [Example review guide](skills/build/references/example.guide.md)
+The build coordinator sends a guide in your conversation language with the exact worktree, URL or artifact to open. It lists each manual case as an action and expected result, plus any outstanding decision and what you would defer by accepting. For a CSV export, you can try an empty date range and decide whether a hang on exports over 10,000 rows needs a fix before merge. [Example review guide](workflow/build/references/example.guide.md)
 
 The page also lists decisions agents recorded during implementation, why they chose each option and what it would cost if they were wrong. You can request a round and receive a new guide after the fixes, rechecks and fresh verdict.
 
@@ -213,7 +213,7 @@ Your acceptance applies to that page and its landed commit. On your instruction,
 
 ## Roles and handoffs
 
-Install one entry skill and say **“Use Runweld”** in the agent you already use. The skill runs `runweld help agents` to read the installed workflow. Your agent client runs shell commands and dispatches workers with the model and effort named in their briefs. You can use a native agent session, a separate herdr tab or a manual handoff. Each uses the same CLI, project checks and task state. [Session handoff](references/SESSIONS.md)
+Run `runweld grill` for the interview instructions or `runweld plan` to prepare the plan. Each command prints its instructions directly. Your agent client runs shell commands and dispatches workers with the model and effort named in their briefs. You can use a native agent session, a separate herdr tab or a manual handoff. Each uses the same CLI, project checks and task state. [Session handoff](references/SESSIONS.md)
 
 The planning session and build coordinator use **primary** for decisions that affect the whole change. **Secondary** workers get a bounded assignment, such as tracing a code path, implementing one phase or rerunning a failed case. A fresh primary model handles the first review and every judge verdict. Project profiles live in `.runweld/config.toml`. Inspect one with `runweld executor show --provider NAME`.
 
@@ -279,7 +279,7 @@ runweld task resume export-csv    # Show this task's worktree and next step
 
 ### Read a plan or review guide
 
-- **Keyboard shortcuts.** Read the summary you would approve, then open the full plan to see why the Settings panel and live rebinding can be built in parallel. [Approval summary](skills/plan/references/resume.example.md) · [Full plan](skills/plan/references/example.md)
-- [CSV export review guide](skills/build/references/example.guide.md) — see what to download, what to expect for an empty date range and how an unresolved defect appears for your decision.
-- [Project configuration](skills/run-file/references/project-config.md) — initialize from a script and configure per-task setup.
+- **Keyboard shortcuts.** Read the summary you would approve, then open the full plan to see why the Settings panel and live rebinding can be built in parallel. [Approval summary](workflow/plan/references/resume.example.md) · [Full plan](workflow/plan/references/example.md)
+- [CSV export review guide](workflow/build/references/example.guide.md) — see what to download, what to expect for an empty date range and how an unresolved defect appears for your decision.
+- [Project configuration](workflow/run-file/references/project-config.md) — initialize from a script and configure per-task setup.
 - [CLI reference](docs/cli.md) — update or repair a release, or read the next actions as JSON.

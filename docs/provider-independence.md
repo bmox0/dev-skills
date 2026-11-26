@@ -211,8 +211,8 @@ and retains the current parser contract without another lookup mechanism.
 
 ## Dependency 3: shared roles versus native registration — under discussion
 
-The current build skill asks for named `dev-skills:implementer` and
-`dev-skills:judge` agents. A role's behavior can remain in the shared Markdown
+The build coordinator obtains role instructions from `runweld implementer` and
+`runweld judge`. A role's behavior can remain in the shared Markdown
 file even when a host does not register that native type.
 
 A secondary researcher verified a concrete existing example: Superpowers'

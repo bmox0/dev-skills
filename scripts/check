@@ -1,33 +1,9 @@
 #!/usr/bin/env python3
-"""Check shared resources; select optional native validators with --host NAME."""
-
+"""Validate the Runweld command documentation."""
 import argparse
-import subprocess
+import os
+from pathlib import Path
 import sys
 
-sys.dont_write_bytecode = True
-
-from adapter import ROOT, adapter_path
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", action="append", default=[], help="native adapter to validate (repeatable)")
-    args = parser.parse_args()
-    status = subprocess.run([sys.executable, str(ROOT / "scripts/check-links.py")]).returncode != 0
-    print("CORE: shared resource checks; native validators run only with --host", flush=True)
-    for name in args.host:
-        try:
-            path = adapter_path(name, "validate.py")
-            result = subprocess.run([sys.executable, str(path), str(ROOT)])
-            if result.returncode:
-                print(f"HOST {name}: validator failed (exit {result.returncode})", file=sys.stderr)
-                status = True
-        except (ValueError, OSError) as exc:
-            print(f"scripts/check: --host {name!r}: {exc}", file=sys.stderr)
-            status = True
-    return int(status)
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+argparse.ArgumentParser(description=__doc__).parse_args()
+os.execv(sys.executable, [sys.executable, "-B", str(Path(__file__).with_name("check-links.py"))])

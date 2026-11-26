@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PIPELINE="$here/../../skills/build/pipeline.py"
+export PIPELINE="$here/../../workflow/build/pipeline.py"
 python3 -B <<'PY'
 import json, os, pathlib, subprocess, tempfile
 from urllib.parse import quote

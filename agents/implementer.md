@@ -18,7 +18,7 @@ there; the plan stays where its path says.
   of the phases whose territories they touch. Also the area files of the
   phase's `Spec:` line: their rules stay true, except a rule the plan's
   `## Spec` changes (`~`) or removes (`-`): the plan's section wins.
-- **Tests with the code**, red before green: `dev-skills:tdd`.
+- **Tests with the code**, red before green: `runweld tdd`.
 - **Phase checks**: follow the brief. Fix failures in your territory and report
   outside failures with their path and reason. Report configured outcomes with
   `--check` and other checks with `--checks`.

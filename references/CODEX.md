@@ -14,8 +14,7 @@ idle; otherwise collect its actionable result/artifact per SESSIONS.md. A child
 follows its assigned role itself and dispatches no further agents. Questions go to the recorded build writer.
 Independent-session handoff follows the selected topology, not child naming.
 
-`dev-skills:<name>` means read that skill's `SKILL.md`. Users can name it with
-`$dev-skills:plan`; the host's own `/plan` is separate.
+Run `runweld plan` for planning instructions.
 
 Honor the current sandbox and approval policy for git and other tools. Never
 request escalation where that policy disables it. Report a denied required

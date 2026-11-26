@@ -26,5 +26,5 @@ Why: after a land every record named commits only the backup held, and the tip a
 
 Why: a land that stops on the same input stops again, and the count stays out of prose an agent reads
 
-- Run `scripts/check` and `scripts/test` → both exit 0; no line in `skills/`, `agents/` or `AGENTS.md` counts land stops, and the land and finish skills run no `reset`, `commit`, `merge`, `push`, `gh` or `branch -D` themselves.
+- Run `scripts/check` and `scripts/test` → both exit 0; no line in `workflow/`, `agents/` or `AGENTS.md` counts land stops, and the land and finish skills run no `reset`, `commit`, `merge`, `push`, `gh` or `branch -D` themselves.
 - Stop `land` on a dirty tree repeatedly → the stop past code's cap is a question: `status` shows land's message, and `brief judge` refuses without `--note` holding the answer.

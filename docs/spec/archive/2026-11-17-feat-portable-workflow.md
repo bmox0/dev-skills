@@ -1,6 +1,6 @@
 This is history; the rules that hold now are in `docs/spec/`.
 
-# Plan: Make dev-skills provider-neutral with explicit approvals
+# Plan: Make runweld provider-neutral with explicit approvals
 
 ## Result
 

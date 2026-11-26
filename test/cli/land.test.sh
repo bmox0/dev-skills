@@ -4,7 +4,7 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-pipeline="$repo_root/skills/build/pipeline.py"
+pipeline="$repo_root/workflow/build/pipeline.py"
 . "$repo_root/test/lib/harness.sh"
 
 fail() { echo "land.test.sh: $1" >&2; exit 1; }
@@ -17,8 +17,8 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q
-  mkdir -p .runweld/workflow/plans skills/tdd src
-  touch skills/tdd/SKILL.md
+  mkdir -p .runweld/workflow/plans workflow/tdd src
+  touch workflow/tdd/GUIDE.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
   git tag v0
@@ -47,7 +47,7 @@ A.
 
 Do one.
 Territory: `src/`
-Skills: `skills/tdd/SKILL.md`
+Skills: `workflow/tdd/GUIDE.md`
 Spec: none
 Waits for: nothing
 
@@ -67,7 +67,7 @@ Waits for: nothing
   Why: a test
   Done: 1
 P
-  cp "$repo_root/skills/run-file/references/example.run.toml" "${plan%.md}.run.toml"
+  cp "$repo_root/workflow/run-file/references/example.run.toml" "${plan%.md}.run.toml"
   python3 - "${plan%.md}.run.toml" <<'PY'
 import sys, re
 p = sys.argv[1]
@@ -406,8 +406,9 @@ assert_eq "$tip" "$(git rev-parse HEAD)" "failed revert leaves HEAD" || exit 1
 assert_eq "$pre" "$(git rev-parse backup/l-2)" "failed revert keeps its backup" || exit 1
 cmp -s "$git_bin/state" "${plan%.md}.json" || fail "failed revert keeps the land record"
 
-# the epic's Interfaces: `land` with no arguments is a usage error
+# Bare land prints the workflow instructions.
 out=$(cli land 2>&1); rc=$?
-assert_eq 2 "$rc" "land with no arguments exits 2" || exit 1
+assert_eq 0 "$rc" "bare land shows its guide" || exit 1
+assert_contains "$out" "# Land" "bare land contains the landing instructions" || exit 1
 case "$out" in *Traceback*) fail "no traceback: $out";; esac
 echo "land.test.sh: ok"

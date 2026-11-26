@@ -64,8 +64,8 @@ with tempfile.TemporaryDirectory() as folder:
         assert json.loads(run(runweld, "task", "resume", row["id"], "--json"))["tree"] == row["tree"]
     assert {r["plan"] for r in json.loads(run(runweld, "status", "--json"))} == {"one", "two"}
     assert run(runweld, "task", "path", "one", "browser-test") == str(Path(a["artifacts"]) / "browser-test")
-    release = (home / "lib/dev-skills/default").read_text().strip()
-    browser = home / "lib/dev-skills/releases" / release / "skills/browser-test/tab.mjs"
+    release = (home / "lib/runweld/default").read_text().strip()
+    browser = home / "lib/runweld/releases" / release / "workflow/browser-test/tab.mjs"
     for row in (a, b):
         assert f"Artifacts: {Path(row['artifacts']) / 'browser-test'}" in run("node", browser, "--help", cwd=Path(row["tree"]))
 

@@ -4,7 +4,7 @@ This is history; the rules that hold now are in `docs/spec/`.
 
 ## Result
 
-Install a workflow CLI once on a machine. A person can initialize a project directly in a terminal. An agent can use the same workflow with one independently installed entry skill. A colleague on Claude can clone a project initialized with Codex, reuse its configuration and run the same release through human acceptance. Starting two tasks from the same checkout gives each its own branch and worktree from the first conversation through finish.
+Install a workflow CLI once on a machine. A person can initialize a project directly in a terminal. An agent can use the same workflow with the installed CLI. A colleague on Claude can clone a project initialized with Codex, reuse its configuration and run the same release through human acceptance. Starting two tasks from the same checkout gives each its own branch and worktree from the first conversation through finish.
 
 ## Approach
 
@@ -33,7 +33,7 @@ Project-defined graphs, harness hooks on the new path, new agent orchestration, 
 5. Start a task → its private workflow files stay ignored while config, lock and specs are visible to Git.
 6. Follow `help agents` through planning, approved build, review, E2E, judge, land, human gate and authorized finish with plugins and hooks disabled → the appropriate role receives its instructions, human receives a concrete guide, and release rules reject a premature transition or attempted project graph override.
 7. Run an advertised JSON action from another directory with spaces in the checkout path → it targets the intended run and release. Existing CLI callers retain compatible output, status codes and approval checks.
-8. In a real Codex project and a colleague’s Claude clone, use the documented skill installation and ask the agent to use the standalone workflow → each agent discovers its next action using the single skill. Review the guide for the actual build — you check.
+8. In a real Codex project and a colleague’s Claude clone, invoke `runweld grill` → each agent receives the interview instructions from the CLI. Review the guide for the actual build — you check.
 
 9. Start two tasks concurrently from one checkout, including a small task → grill and planning use different branches and worktrees; project status lists both and each tab sees its own next action. Resume one task from a fresh tab → same tree and history. Both can plan before dependency installation. At the first step needing the environment, exercise optional setup with separate ports and data directories; fail it once and retry in the same tree. A project without a setup command also works.
 10. In both tasks edit code and the same spec file. Accept and finish the first → its code and spec reach the target, its clean worktree is removed and its history remains visible. Resume the second at its previous step. Exercise a conflicting integration and a cleanup with unsaved work → preserve the affected tree and files, report the next action, and complete cleanup safely after resolution. An open merge request retains its tree until integration is confirmed.
@@ -41,7 +41,7 @@ Project-defined graphs, harness hooks on the new path, new agent orchestration, 
 ## Spec
 
 + distribution#system-cli — A standalone installation provides the CLI and all release-owned workflow instructions to humans and agents
-  Why: a new harness needs only one lightweight entry skill to use the same process.
+  Why: a new harness needs only the CLI to use the same process.
   Done: 1, 6, 8
 + distribution#project-lock — The project locks the workflow release and the update command changes that selection for new work
   Why: collaborators must share reproducible rules and preserve ongoing work across updates.

@@ -1,7 +1,6 @@
 # Executors and build handoff
 
-`AGENTS.md` supplies shared rules. Provider/model identifiers are open. Hooks
-are optional advice and confer no approval. Always run prescribed CLI checks.
+`AGENTS.md` supplies shared rules. Provider/model identifiers are open. Always run prescribed CLI checks.
 
 ## Select executors
 
@@ -18,9 +17,8 @@ dispatch; never inherit, substitute or translate a preset.
 
 Generate `CLI brief <role> --provider <provider> <plan> …`. Follow
 `adapters/<host>/workers.md` when present. Bind assignment/report tools.
-Prefer native custom-role instructions. For generic workers, verify equivalent
-role priority and behavior and no conflicting higher-priority instructions, or
-report unavailable. Coordinators never implement or reuse implementers as
+Run the brief’s instruction command, for example `runweld reviewer --plan PLAN`.
+Check for conflicting higher-priority host instructions before accepting the assignment. Coordinators never implement or reuse implementers as
 independent reviewers or judges.
 
 Give each clean context its authoritative role source, absolute brief/protocol

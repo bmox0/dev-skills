@@ -1,21 +1,21 @@
 # Distribution
 
-One complete shared package exposed through native integration metadata.
+The CLI delivers the selected release’s workflow instructions.
 
-### shared-resources — Native installations expose the same complete skills, roles, references and CLI from the intended revision
+### shared-resources — CLI installations expose the same workflow guides, roles, references and CLI from the intended revision
 
 Why: instructions without their resources do not install the workflow
 
-- Load complete packages from relocated paths → common skills, role sources, references and CLI resolve to the intended revision; target-project profiles/artifacts stay outside package code.
-- After login, load the package in real Qoder and dispatch all three roles → capture loaded sources, role identity, requested/reported settings and result delivery; unavailable settings or authentication are not passed
+- Load complete packages from relocated paths → command instructions, role sources, references and CLI resolve to the intended revision; target-project profiles/artifacts stay outside package code.
+- In a Qoder session, invoke the CLI and dispatch all three roles → capture loaded sources, role identity, requested/reported settings and result delivery; unavailable settings or authentication are not passed
 
 ### system-cli — A standalone installation provides Runweld and all release-owned workflow instructions to humans and agents
 
-Why: a new harness needs only one lightweight entry skill to use the same process.
+Why: a new harness needs only the installed CLI to use the same process.
 
 - Install outside the project and run `runweld init` in a plain terminal → select one provider, enter its pair and checks, receive a usable config, lock, ignore rule and short AGENTS pointer. Repeat init or interrupt and retry → user-authored content and profiles survive.
-- Follow `runweld help agents` through planning, approved build, review, E2E, judge, land, human gate and authorized finish with plugins and hooks disabled → the appropriate role receives its instructions, human receives a concrete guide, and release rules reject a premature transition or attempted project graph override.
-- In a real Codex project and a colleague’s Claude clone, use the documented skill installation and ask “используй runweld” → each agent discovers its next action using the single skill. Review the guide for the actual build
+- Follow `runweld help agents` through planning, approved build, review, E2E, judge, land, human gate and authorized finish using only the installed CLI → the appropriate role receives its instructions, human receives a concrete guide, and release rules reject a premature transition or attempted project graph override.
+- In a real Codex project and a colleague’s Claude clone, run `runweld grill` → each agent receives the interview instructions directly from the CLI. Review the guide for the actual build
 - Attempt to install into a prefix with an unrelated executable named `runweld` → the installer refuses and leaves that executable untouched.
 
 ### project-lock — The project locks the workflow release and `runweld update --project` changes that selection for new work

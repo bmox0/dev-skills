@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory() as folder:
         return tomllib.loads(file.read_text())
 
     command(os.environ['INSTALLER'], '--prefix', prefix, cwd=home)
-    release = (prefix / 'lib/dev-skills/default').read_text().strip()
+    release = (prefix / 'lib/runweld/default').read_text().strip()
     git('init', '-q', '-b', 'main')
     agents = project / 'AGENTS.md'
     instructions = ('# Local rules\n\nKeep this text.\n\n## Environment\n\n'
@@ -76,8 +76,8 @@ with tempfile.TemporaryDirectory() as folder:
     pins = read(lock)
     assert pins['lock_version'] == 2 and pins['release'] == release
     assert set(pins['roles']) == {'implementer', 'reviewer', 'judge'}
-    assert {'plan', 'build', 'review'} <= pins['skills'].keys()
-    assert {'claude', 'codex', 'qoder'} <= pins['adapters'].keys()
+    assert {'plan', 'build', 'review'} <= pins['guides'].keys()
+    assert {'claude', 'codex', 'antigravity'} <= pins['adapters'].keys()
     assert pins['cli'].keys() == {'engine', 'launcher'}
     generated = lock.read_bytes()
     lock.write_bytes(generated.replace(pins['roles']['judge'].encode(), b'sha256:' + b'0' * 64))
@@ -85,7 +85,7 @@ with tempfile.TemporaryDirectory() as folder:
     runweld('update', '--project', release)
     assert lock.read_bytes() == generated
     block = ('<!-- runweld:begin -->\n'
-             'For Runweld, use the `runweld` skill or run `runweld help agents`.\n'
+             'Use `runweld grill` for the interview, `runweld plan` for planning, and `runweld status --current` to resume.\n'
              '<!-- runweld:end -->')
     assert agents.read_text() == f'{instructions}\n\n{block}\n'
     git('check-ignore', '.runweld/workflow/plans/example.md')

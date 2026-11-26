@@ -4,7 +4,7 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-pipeline="$repo_root/skills/build/pipeline.py"
+pipeline="$repo_root/workflow/build/pipeline.py"
 . "$repo_root/test/lib/harness.sh"
 
 fail() { echo "rounds.test.sh: $1" >&2; exit 1; }
@@ -17,8 +17,8 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q
-  mkdir -p .runweld/workflow/plans skills/tdd src
-  touch skills/tdd/SKILL.md
+  mkdir -p .runweld/workflow/plans workflow/tdd src
+  touch workflow/tdd/GUIDE.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
   git tag v0
@@ -47,7 +47,7 @@ A.
 
 Do one.
 Territory: `src/`
-Skills: `skills/tdd/SKILL.md`
+Skills: `workflow/tdd/GUIDE.md`
 Spec: none
 Waits for: nothing
 
@@ -69,7 +69,7 @@ Waits for: nothing
   Why: a test
   Done: 1
 P
-  cp "$repo_root/skills/run-file/references/example.run.toml" "${plan%.md}.run.toml"
+  cp "$repo_root/workflow/run-file/references/example.run.toml" "${plan%.md}.run.toml"
   python3 - "${plan%.md}.run.toml" <<'PY'
 import sys, re
 p = sys.argv[1]
@@ -111,7 +111,7 @@ cli finding "$plan" --kind defect --where src/a.txt:2 --source plan --text "a de
 cli result "$plan" --case 2 --outcome passed --capture shot2.png >/dev/null || fail "targeted verification"
 complete_review "$plan" || fail "complete review"
 b=$(cli brief judge "$plan") || fail "brief judge"
-for want in "$repo_root/skills/build/references/judge.md" "shot1.png" "shot2.png" "a convention" "Fix 1" "Open:" "$(git rev-parse --short "$f1")" "checks at"; do
+for want in "$repo_root/workflow/build/references/judge.md" "shot1.png" "shot2.png" "a convention" "Fix 1" "Open:" "$(git rev-parse --short "$f1")" "checks at"; do
   grep -q -- "$want" "$b" || fail "the gate's judge brief holds: $want"
 done
 gate_brief=$(cat "$b")

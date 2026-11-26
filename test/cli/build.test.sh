@@ -5,7 +5,7 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-pipeline="$repo_root/skills/build/pipeline.py"
+pipeline="$repo_root/workflow/build/pipeline.py"
 . "$repo_root/test/lib/harness.sh"
 
 fail() { echo "build.test.sh: $1" >&2; exit 1; }
@@ -16,8 +16,8 @@ repo=$(cd "$(mktemp_dir)" && pwd -P)
 cd "$repo" || exit 1
 git init -q
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-mkdir -p .runweld/workflow/plans .runweld/workflow/epics docs/spec skills/tdd src lib other
-touch skills/tdd/SKILL.md docs/spec/build.md
+mkdir -p .runweld/workflow/plans .runweld/workflow/epics docs/spec workflow/tdd src lib other
+touch workflow/tdd/GUIDE.md docs/spec/build.md
 printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n' > .runweld/workflow/epics/e.md
 git commit -q --allow-empty -m base
 git tag v0
@@ -50,7 +50,7 @@ A.
 
 Do one.
 Territory: \`src/\`
-Skills: \`skills/tdd/SKILL.md\`
+Skills: \`workflow/tdd/GUIDE.md\`
 Spec: none
 Waits for: nothing
 
@@ -58,7 +58,7 @@ Waits for: nothing
 
 Do two.
 Territory: \`lib/\`
-Skills: \`skills/tdd/SKILL.md\`
+Skills: \`workflow/tdd/GUIDE.md\`
 Spec: \`docs/spec/build.md\`
 Waits for: 1 — the src
 
@@ -81,7 +81,7 @@ Waits for: 2
 
 none
 P
-  cp "$repo_root/skills/run-file/references/example.run.toml" "${1%.md}.run.toml"
+  cp "$repo_root/workflow/run-file/references/example.run.toml" "${1%.md}.run.toml"
 }
 
 plan=$repo/.runweld/workflow/plans/2026-11-16-x.md
@@ -189,7 +189,7 @@ assert_eq 0 "$rc" "brief implementer: $out" || exit 1
 [ -f "$out" ] || fail "the brief is a file: $out"
 case "$out" in /*) ;; *) fail "the path is absolute: $out";; esac
 b=$(cat "$out")
-for w in "$plan" "$repo" "$pipeline" "$v0" "$(git rev-parse HEAD)" "lib/" "skills/tdd/SKILL.md" "src exists" "mind the lib" "Do two." "Branch: x"; do
+for w in "$plan" "$repo" "$pipeline" "$v0" "$(git rev-parse HEAD)" "lib/" "workflow/tdd/GUIDE.md" "src exists" "mind the lib" "Do two." "Branch: x"; do
   assert_contains "$b" "$w" "the brief holds $w" || exit 1
 done
 out=$(cli brief judge "$plan"); rc=$?

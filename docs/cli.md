@@ -2,8 +2,7 @@
 
 ## Install from a checkout
 
-Run `./scripts/install-runweld` from the Runweld checkout and give its
-`runweld/` directory to your agent’s skill manager. The default launcher
+Run `./scripts/install-runweld` from the Runweld checkout. The default launcher
 is `~/.local/bin/runweld`. Use `./scripts/install-runweld --prefix DIR` to choose
 another location.
 
@@ -22,13 +21,13 @@ curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bas
 Run `runweld update --project` in an initialized checkout to select the installed
 default for new tasks. Commit `.runweld/runweld.lock` to share the selection.
 The TOML lock uses `lock_version = 2`. It records the exact release ID and SHA-256 digests for
-the CLI, each skill, role and host adapter, and the remaining package resources.
+the CLI, each guide, role and adapter, and the remaining package resources.
 A component digest covers its packaged paths, contents and executable flags.
 Review these entries in the Git diff when updating. Components ship together
 under the release version. Each `[stages.NAME]` table records the stage digest,
 transitions, roles, conditional tools and SHA-256 of individual input files.
 A change to the shared session protocol affects every stage. A change to
-`skills/grill/references/INTERVIEW.md` affects the grill stage. The shared CLI
+`workflow/grill/references/INTERVIEW.md` affects the grill stage. The shared CLI
 engine has its own digest. Models and checks live in `.runweld/config.toml`.
 
 Use `runweld update --project RELEASE` to select a specific installed build ID.
@@ -55,6 +54,10 @@ To repair a missing or damaged release, reinstall the source revision that
 produced its exact ID. Reinstalling
 preserves the project lock. Use `runweld help agents --plan "$plan"` to verify
 that the original run can read its instructions again.
+
+## Run a guide
+
+Run `runweld grill` to print the interview and its rules, or `runweld plan` to print the planning instructions. The bare commands for build, review, land and finish also print instructions. Pass the operational arguments to carry out an action, such as `runweld finish PLAN`. Use `--plan PLAN` to read instructions from a task’s pinned release. Run `runweld browser-test` for browser guidance and `runweld browser-test up URL` to open the browser.
 
 ## Inspect a stage
 
@@ -108,39 +111,3 @@ Pass `--provider NAME` to status for executable brief commands using the
 approved executor snapshot. The ordinary `status` inventory keeps its existing
 shape. The merged workflow has an empty `actions` array. Guidance is a snapshot
 and the CLI still applies each command's own checks.
-
-## Native host integrations
-
-In Claude Code:
-
-```
-/plugin marketplace add bmox0/runweld
-/plugin install dev-skills@dev-skills
-```
-
-Then restart the session. Installing also brings the agents `implementer`, `reviewer` and `judge`.
-
-In Codex:
-
-```sh
-codex plugin marketplace add bmox0/runweld
-codex plugin add dev-skills@dev-skills
-```
-
-Start a new session and invoke a skill by name, such as `$dev-skills:grill`.
-To update, run `codex plugin marketplace upgrade dev-skills`, then
-`codex plugin add dev-skills@dev-skills` again.
-
-For Qoder CLI, install from a local checkout and start a new session.
-
-```sh
-qodercli plugin install /absolute/path/to/runweld
-```
-
-For a single Qoder session, load the checkout with
-`qodercli --plugin-dir /absolute/path/to/runweld --add-dir /absolute/path/to/runweld`.
-The second flag grants access to the workflow files outside the target project.
-
-The plugins use the shared role instructions in `agents/` and register advisory
-hooks for their host. In Codex, trust the hooks after installation and after
-each plugin update to receive workflow reminders. [Host adapters](../adapters/README.md)

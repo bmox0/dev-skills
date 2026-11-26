@@ -89,7 +89,7 @@ Why: a second try at the same finding repeats the first; the judge or the user d
 
 Why: a number in prose becomes a quota
 
-- Run `scripts/check` and `scripts/test` → both exit 0, and no line in `skills/`, `agents/` or `AGENTS.md` says how many fixes or judge rounds are allowed, or when rounds stop.
+- Run `scripts/check` and `scripts/test` → both exit 0, and no line in `workflow/`, `agents/` or `AGENTS.md` says how many fixes or judge rounds are allowed, or when rounds stop.
 - `fix start` takes the one list, and `brief fix` holds each item's `file:line` and text. After its commit and report, `fix done` → the full checks run at the new HEAD. Record Done 2 failed again, the first Defect as one the fix took, and a new Defect → the first two go to Open, and the next fix takes only the new one. At code's cap, `fix start` → refused. `status` shows each fix with its items and commits.
 - Order judge rounds in one gate → the one past code's cap is stopped: no round opens, and `status` shows the reason. In fresh gates, each sign stops a `verdict round` with its reason: rounds that leave no fewer new notes than they took, until code stops them; a check red, green after a fix, then red again; a cycle's fixes spent with a Defect standing. After a user's round at the human gate, the count starts afresh.
 

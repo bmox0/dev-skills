@@ -1,6 +1,6 @@
 # Vocabulary
 
-Words shared by dev-skills users.
+Words shared by runweld users.
 
 ## Model profiles
 
@@ -30,10 +30,10 @@ the grill and returns the rules the task touches, with reasons and contradiction
 ## The work
 
 **Run file.** `<slug>.run.toml`, written before the plan with
-`dev-skills:run-file`: what the run may do, its checks and how it ends, asked
+`runweld run-file`: what the run may do, its checks and how it ends, asked
 once. `approve` validates; `run approve` records consent and freezes presets.
 
-**CLI.** `skills/build/pipeline.py`: keeps each plan's state, renders the plan,
+**CLI.** `runweld`: keeps each plan's state, renders the plan,
 notes, judge file and gate page, runs the checks, holds the caps, lands and
 finishes as the run file says. Agents decide; it manages.
 

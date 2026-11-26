@@ -3,7 +3,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-pipeline="$repo_root/skills/build/pipeline.py"
+pipeline="$repo_root/workflow/build/pipeline.py"
 . "$repo_root/test/lib/harness.sh"
 . "$here/lifecycle.sh"
 cli() { python3 -B "$pipeline" "$@"; }
@@ -57,7 +57,7 @@ Waits for: nothing
 none
 PLAN
 sed 's|^full = .*$|full = ["echo started >> .runweld/workflow/suite-starts", "python3 .runweld/workflow/controlled-check.py"]|' \
-  "$repo_root/skills/run-file/references/example.run.toml" > "${plan%.md}.run.toml"
+  "$repo_root/workflow/run-file/references/example.run.toml" > "${plan%.md}.run.toml"
 approve_plan "$plan" >/dev/null
 cli build start "$plan" --base v0 >/dev/null
 cli phase start "$plan" 1 >/dev/null

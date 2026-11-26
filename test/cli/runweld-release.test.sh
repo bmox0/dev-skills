@@ -19,14 +19,14 @@ if ! install=$(cd "$sandbox" && "$repo_root/scripts/install-runweld" --prefix "$
   exit 1
 fi
 cli() { runweld "$@"; }
-a=$(cat "$prefix/lib/dev-skills/default")
+a=$(cat "$prefix/lib/runweld/default")
 assert_eq "${a%%@*}" "$(cd "$sandbox" && runweld --version)" 'distribution#system-cli: show the ordinary CLI version'
 version_details() { printf 'CLI version: %s\nBuild ID: %s\n' "${1%%@*}" "$1"; }
 assert_eq "$(version_details "$a")" "$(cd "$sandbox" && runweld --version --verbose)" 'distribution#system-cli: label the exact build separately'
-engine_a="$prefix/lib/dev-skills/releases/$a"
+engine_a="$prefix/lib/runweld/releases/$a"
 assert_contains "$(cd "$sandbox" && runweld --help)" 'usage: runweld' 'distribution#system-cli: runweld uses terminal-facing help'
-assert_contains "$(cd "$sandbox" && runweld help agents)" "$engine_a/references/SESSIONS.md" 'distribution#system-cli: help points to the installed protocol'
-assert_contains "$(node "$engine_a/skills/browser-test/tab.mjs" --help)" "one persistent tab" 'distribution#system-cli: the installed browser helper runs'
+assert_contains "$(cd "$sandbox" && runweld help agents)" "$a" 'distribution#system-cli: help points to the installed protocol'
+assert_contains "$(node "$engine_a/workflow/browser-test/tab.mjs" --help)" "one persistent tab" 'distribution#system-cli: the installed browser helper runs'
 [[ -r "$engine_a/agents/implementer.md" ]] || { echo 'distribution#system-cli: the release includes role instructions' >&2; exit 1; }
 
 mkdir -p "$project/.runweld"
@@ -66,7 +66,7 @@ Use the installed workflow.
 ### 1. Add a fixture — \`waiting\`
 
 Territory: \`src/\`
-Skills: \`skills/tdd/SKILL.md\`
+Skills: \`workflow/tdd/GUIDE.md\`
 Spec: none
 Waits for: nothing
 
@@ -139,31 +139,29 @@ PY
 source_b="$sandbox/source b"
 mkdir "$source_b"
 cp -R "$repo_root/." "$source_b/"
-python3 - "$source_b/.claude-plugin/plugin.json" "$source_b/skills/build/pipeline.py" <<'PY'
+python3 - "$source_b/VERSION" "$source_b/workflow/build/pipeline.py" <<'PY'
 import json, sys
 from pathlib import Path
 path = Path(sys.argv[1])
-manifest = json.loads(path.read_text())
-manifest['version'] = '9.99.0'
-path.write_text(json.dumps(manifest))
+path.write_text("9.99.0\n")
 engine = Path(sys.argv[2])
 old = 'show terminal help or the installed agent workflow'
 code = engine.read_text()
 assert old in code
 engine.write_text(code.replace(old, 'show terminal help from release B', 1)
-                  .replace('Continue in the task worktree with a grill or plan.', 'Continue using release B.'))
+                  .replace('In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning.', 'Continue using release B.'))
 PY
 cp "$source_b/references/workflow.toml" "$sandbox/workflow.toml"
-sed 's|skills/browser-test/tab.mjs|skills/browser-test/missing.mjs|' "$sandbox/workflow.toml" > "$source_b/references/workflow.toml"
+sed 's|workflow/browser-test/tab.mjs|workflow/browser-test/missing.mjs|' "$sandbox/workflow.toml" > "$source_b/references/workflow.toml"
 if out=$("$source_b/scripts/install-runweld" --prefix "$prefix" 2>&1); then
   echo 'installer accepted a missing conditional tool' >&2
   exit 1
 fi
-assert_contains "$out" 'missing stage inputs: skills/browser-test/missing.mjs' 'distribution#project-lock: invalid stage input identifies the missing file'
+assert_contains "$out" 'missing stage inputs: workflow/browser-test/missing.mjs' 'distribution#project-lock: invalid stage input identifies the missing file'
 cp "$sandbox/workflow.toml" "$source_b/references/workflow.toml"
 
 # distribution#system-cli: neither advertised guides nor the instructions they link to are optional.
-for missing in references/WORKFLOW-PATHS.md skills/plan/references/environment-contract.md; do
+for missing in references/WORKFLOW-PATHS.md workflow/plan/references/environment-contract.md; do
   mv "$source_b/$missing" "$sandbox/removed-resource"
   if out=$("$source_b/scripts/install-runweld" --prefix "$prefix" 2>&1); then
     echo "distribution#system-cli: installation accepted an incomplete candidate missing $missing" >&2
@@ -173,20 +171,27 @@ for missing in references/WORKFLOW-PATHS.md skills/plan/references/environment-c
   assert_eq "$(version_details "$a")" "$(cd "$sandbox" && runweld --version --verbose)" 'distribution#project-lock: a rejected candidate does not become the default'
   mv "$sandbox/removed-resource" "$source_b/$missing"
 done
+printf '\nInterview instructions from build B.\n' >> "$source_b/workflow/grill/references/INTERVIEW.md"
 "$source_b/scripts/install-runweld" --prefix "$prefix" >/dev/null
-b=$(cat "$prefix/lib/dev-skills/default")
-engine_b="$prefix/lib/dev-skills/releases/$b"
+b=$(cat "$prefix/lib/runweld/default")
+engine_b="$prefix/lib/runweld/releases/$b"
 [[ "$b" != "$a" ]] || { echo 'distribution#project-lock: A and B can be installed separately' >&2; exit 1; }
 project_versions() { printf 'CLI: %s\nProject: %s\n' "${1%%@*}" "${2%%@*}"; }
 assert_eq "$(project_versions "$b" "$a")" "$(cd "$repo_worktree" && runweld --version)" 'distribution#project-lock: show both the installed and pinned versions'
 assert_eq "$(project_versions "$b" "$a")
 CLI build ID: $b
 Project build ID: $a" "$(cd "$repo_worktree" && runweld --version --verbose)" 'distribution#project-lock: installing B does not change the lock in any worktree'
-assert_contains "$(cd "$repo_worktree" && runweld help agents)" "$engine_a/agents/implementer.md" 'distribution#project-lock: linked help uses A before update'
+assert_contains "$(cd "$repo_worktree" && runweld help agents)" "$a" 'distribution#project-lock: linked help uses A before update'
 assert_contains "$(cd "$repo_worktree" && runweld --help)" 'installed agent workflow' 'distribution#project-lock: terminal help uses the selected release parser'
 (cd "$repo_worktree" && runweld update --project) >/dev/null
 assert_eq "$(project_versions "$b" "$b")" "$(runweld --version)" 'distribution#project-lock: update changes the main checkout selection'
-assert_contains "$(runweld help agents)" "$engine_b/agents/implementer.md" 'distribution#project-lock: project help now uses B'
+assert_contains "$(runweld grill)" 'Interview instructions from build B.' 'project guide follows B'
+if [[ $(cd "$repo_worktree" && runweld grill) == *'Interview instructions from build B.'* ||
+      $(runweld grill --plan "$plan") == *'Interview instructions from build B.'* ]]; then
+  echo 'task guide must retain release A' >&2
+  exit 1
+fi
+assert_contains "$(runweld help agents)" "$b" 'distribution#project-lock: project help now uses B'
 assert_contains "$(runweld --help)" 'terminal help from release B' 'distribution#project-lock: terminal help uses B after update'
 assert_contains "$(runweld task resume previous-record --json)" "$a" 'distribution#project-lock: a pinned task still resumes on A'
 assert_eq "$project/.runweld/workflow/artifacts/previous-record/browser-test" "$(runweld task path previous-record browser-test)" 'distribution#project-lock: pinned task paths still resolve'
@@ -203,7 +208,7 @@ assert_contains "$(cd "$release_task_tree" && runweld task resume release-task -
 runweld status --current --json | python3 -c '
 import json, sys
 rows = {r["plan"]: r for r in json.load(sys.stdin)}
-assert rows["release-task"]["workflow"]["actions"][0]["action"] == "Continue in the task worktree with a grill or plan."
+assert rows["release-task"]["workflow"]["actions"][0]["action"] == "In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning."
 assert rows["previous-record"]["release"] == rows["release-task"]["release"]
 assert rows["run-b"]["workflow"]["actions"][0]["action"] == "Continue using release B."
 '
@@ -218,7 +223,7 @@ cp "$sandbox/task-a.toml" "$release_task_run"
 # Approved snapshots take priority over edited run files and the new project lock.
 sed -e "s/^version = .*/version = \"${b%%@*}\"/" -e "s/${a#*@}/${b#*@}/" "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
 assert_contains "$(cd "$sandbox" && runweld run show "$plan" --json)" "${a#*@}" 'distribution#project-lock: an approved run retains A'
-assert_contains "$(cd "$sandbox" && runweld help agents --plan "$plan")" "$engine_a/agents/implementer.md" 'distribution#project-lock: help can follow the run from another directory'
+assert_contains "$(cd "$sandbox" && runweld help agents --plan "$plan")" "$a" 'distribution#project-lock: help can follow the run from another directory'
 sed '/^\[workflow\]$/{N;N;d;}' "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
 if out=$(cd "$sandbox" && runweld run approve "$plan" --by user --words 'Accept edited checks' 2>&1); then
   echo 'run#changes-through-approve: approving other edits cannot unpin an active run' >&2
@@ -229,7 +234,7 @@ cp "$sandbox/run-a.toml" "${plan%.md}.run.toml"
 (cd "$sandbox" && runweld phase start "$plan" 1) >/dev/null
 brief=$(cd "$sandbox" && runweld brief implementer "$plan" 1 --provider Test)
 assert_contains "$(cat "$brief")" "$engine_a/agents/implementer.md" 'distribution#project-lock: run briefs still use A'
-assert_contains "$(cat "$brief")" "$engine_a/skills/tdd/SKILL.md" 'distribution#system-cli: a phase can depend on an installed skill'
+assert_contains "$(cat "$brief")" 'runweld tdd' 'distribution#system-cli: a phase can depend on an installed skill'
 (cd "$repo_worktree" && runweld status --current --json --provider Test) > "$sandbox/status.json"
 python3 - "$sandbox/status.json" "$sandbox" "$engine_a" <<'PY'
 import json, subprocess, sys
@@ -293,4 +298,4 @@ if ! out=$(cd "$sandbox" && "$repo_root/scripts/install-runweld" --prefix "$pref
   exit 1
 fi
 cmp .runweld/runweld.lock "$sandbox/lock-before"
-assert_contains "$(cd "$sandbox" && runweld help agents --plan "$plan")" "$engine_a/agents/implementer.md" 'distribution#project-lock: the repaired run can use A again'
+assert_contains "$(cd "$sandbox" && runweld help agents --plan "$plan")" "$a" 'distribution#project-lock: the repaired run can use A again'

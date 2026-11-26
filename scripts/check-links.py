@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Check the reference layer of the dev-skills tree.
+"""Check the reference layer of the runweld tree.
 
-Walks the standalone skill, skills/, agents/ and references/ plus the
+Walks workflow/, agents/ and references/ plus the
 repository root's own *.md files (root only, not recursive — this does not
 descend into .runweld/workflow/ or other root-level directories), reads every .md
 file, and checks three things line by line (skipping anything inside a fenced
 code block):
 
   R1 file links      - [text](target) resolves to a file that exists
-  R2 namespace        - dev-skills:<name> names a skill under skills/ or an
+  R2 namespace        - runweld <name> names a skill under workflow/ or an
                         agent under agents/
   R3 retired tokens     - retired skill, agent and hook names are
                         findings unless allowlisted
@@ -44,10 +44,10 @@ from collections import namedtuple
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-WALK_DIRS = ("skills", "agents", "references", "runweld")
+WALK_DIRS = ("workflow", "agents", "references")
 ALLOWLIST_PATH = Path(__file__).resolve().parent / "link-allow.txt"
 BUDGETS_PATH = Path(__file__).resolve().parent / "word-budgets.txt"
-SKILLS_DIR = REPO_ROOT / "skills"
+SKILLS_DIR = REPO_ROOT / "workflow"
 AGENTS_DIR = REPO_ROOT / "agents"
 
 RULES = ("R1", "R2", "R3", "ALLOWLIST", "BUDGET", "FRONT")
@@ -55,7 +55,7 @@ RULES = ("R1", "R2", "R3", "ALLOWLIST", "BUDGET", "FRONT")
 FENCE_RE = re.compile(r"^\s*`{3,}")
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
-NAMESPACE_RE = re.compile(r"\bdev-skills:([A-Za-z0-9][A-Za-z0-9-]*)")
+NAMESPACE_RE = re.compile(r"`runweld ([a-z][a-z0-9-]*)`")
 RETIRED_WORDS = (
     "diagnose",
     "brainstorming",
@@ -180,11 +180,13 @@ def check_r1(path, lineno, line, findings):
 def check_r2(path, lineno, line, findings):
     for m in NAMESPACE_RE.finditer(line):
         name = m.group(1)
-        skill_file = SKILLS_DIR / name / "SKILL.md"
+        skill_file = SKILLS_DIR / name / "GUIDE.md"
         agent_file = AGENTS_DIR / f"{name}.md"
+        if name in {"init", "workflow", "status", "update", "build-verification", "human-review"}:
+            continue
         if not skill_file.is_file() and not agent_file.is_file():
             findings["R2"].append(
-                f"{rel(path)}:{lineno}: R2 unknown skill 'dev-skills:{name}'"
+                f"{rel(path)}:{lineno}: R2 unknown skill 'runweld {name}'"
             )
 
 
@@ -272,10 +274,7 @@ def check_frontmatter(path, expected_name, findings):
 
 
 def check_frontmatters(findings):
-    standalone = REPO_ROOT / "runweld/SKILL.md"
-    if standalone.is_file():
-        check_frontmatter(standalone, standalone.parent.name, findings)
-    for path in sorted(SKILLS_DIR.glob("*/SKILL.md")):
+    for path in sorted(SKILLS_DIR.glob("*/GUIDE.md")):
         check_frontmatter(path, path.parent.name, findings)
     for path in sorted(AGENTS_DIR.glob("*.md")):
         check_frontmatter(path, path.stem, findings)

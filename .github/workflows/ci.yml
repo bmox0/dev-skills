@@ -79,7 +79,7 @@ jobs:
             case "${file##*/}" in
               runweld-*.test.sh | check-recovery.test.sh)
                 group=e2e ;;
-              build.test.sh | finish.test.sh | land.test.sh | page.test.sh | pipeline.test.sh | tab-shim.test.sh | usage.test.sh)
+              build.test.sh | finish.test.sh | land.test.sh | page.test.sh | pipeline.test.sh | usage.test.sh)
                 group=uix ;;
               *)
                 group=functional ;;

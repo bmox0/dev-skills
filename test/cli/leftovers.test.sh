@@ -4,7 +4,7 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-pipeline="$repo_root/skills/build/pipeline.py"
+pipeline="$repo_root/workflow/build/pipeline.py"
 . "$repo_root/test/lib/harness.sh"
 
 fail() { echo "leftovers.test.sh: $1" >&2; exit 1; }
@@ -17,8 +17,8 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q
-  mkdir -p .runweld/workflow/plans skills/tdd src
-  touch skills/tdd/SKILL.md
+  mkdir -p .runweld/workflow/plans workflow/tdd src
+  touch workflow/tdd/GUIDE.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
   git tag v0
@@ -47,7 +47,7 @@ A.
 
 Do one.
 Territory: `src/`
-Skills: `skills/tdd/SKILL.md`
+Skills: `workflow/tdd/GUIDE.md`
 Spec: none
 Waits for: nothing
 
@@ -68,7 +68,7 @@ Waits for: nothing
   Why: a test
   Done: 1
 P
-  cp "$repo_root/skills/run-file/references/example.run.toml" "${plan%.md}.run.toml"
+  cp "$repo_root/workflow/run-file/references/example.run.toml" "${plan%.md}.run.toml"
   python3 - "${plan%.md}.run.toml" "$1" "${2:-true}" <<'PY'
 import sys, re
 p, full, port = sys.argv[1:]
@@ -200,7 +200,7 @@ Waits for: nothing
   Why: a test
   Done: 1
 P
-  cp "$repo_root/skills/run-file/references/example.run.toml" .runweld/workflow/plans/2026-11-16-$x.run.toml
+  cp "$repo_root/workflow/run-file/references/example.run.toml" .runweld/workflow/plans/2026-11-16-$x.run.toml
   approve_plan .runweld/workflow/plans/2026-11-16-$x.md >/dev/null || fail "approve $x"
 done
 cli build start --base v0 --worktree "$repo/wa" .runweld/workflow/plans/2026-11-16-a.md >/dev/null &
@@ -230,8 +230,14 @@ text = "\n".join(usage)
 def help_of(*a):
     return subprocess.run([sys.executable, "-B", src, *a, "--help"], capture_output=True, text=True).stdout
 groups = re.search(r"\{([^}]*)\}", help_of())[1].split(",")
+from pathlib import Path
+sys.path.insert(0, str(Path(src).parent))
+from runweld_release import GUIDE_COMMANDS
+assert 'pipeline.py GUIDE [--plan PLAN]' in text and set(GUIDE_COMMANDS) <= set(groups)
 missing = []
 for g in groups:
+    if g in GUIDE_COMMANDS and not re.search(rf"pipeline\.py {g}\b", text):
+        continue
     if not re.search(rf"pipeline\.py {g}\b", text):
         missing.append(g)
         continue

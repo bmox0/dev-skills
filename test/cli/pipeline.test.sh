@@ -5,7 +5,7 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-pipeline="$repo_root/skills/build/pipeline.py"
+pipeline="$repo_root/workflow/build/pipeline.py"
 . "$repo_root/test/lib/harness.sh"
 
 fail() { echo "pipeline.test.sh: $1" >&2; exit 1; }
@@ -42,8 +42,8 @@ assert_contains "$(cli workflow)" "Grill (optional)" "build#workflow-progress: t
 assert_contains "$(cli workflow)" "Prototype (optional)" "build#workflow-progress: text entry names optional prototype" || exit 1
 [ ! -e .runweld/workflow ] || fail "build#workflow-progress: entry creates no workflow files"
 
-mkdir -p .runweld/workflow/plans .runweld/workflow/epics docs/spec skills/tdd
-touch skills/tdd/SKILL.md docs/spec/build.md
+mkdir -p .runweld/workflow/plans .runweld/workflow/epics docs/spec workflow/tdd
+touch workflow/tdd/GUIDE.md docs/spec/build.md
 printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n| 2 | Two | 1 | |\n' > .runweld/workflow/epics/e.md
 epic_before=$(sed -n 1,7p .runweld/workflow/epics/e.md)
 
@@ -74,7 +74,7 @@ A.
 
 Do.
 Territory: `src/`, `a.txt`
-Skills: `skills/tdd/SKILL.md`
+Skills: `workflow/tdd/GUIDE.md`
 Spec: none
 Waits for: nothing
 
@@ -82,7 +82,7 @@ Waits for: nothing
 
 Do.
 Territory: `src/b/`
-Skills: `skills/tdd/SKILL.md`, `skills/nope/SKILL.md`
+Skills: `workflow/tdd/GUIDE.md`, `workflow/nope/GUIDE.md`
 Spec: `docs/spec/build.md`
 Waits for: 9 — a thing
 
@@ -106,7 +106,7 @@ Waits for: 1
 none
 P
 
-example="$repo_root/skills/run-file/references/example.run.toml"
+example="$repo_root/workflow/run-file/references/example.run.toml"
 
 typed_action() {
   local action_plan="$1" stage="$2" kind="$3" owner="$4" phrase="$5" expected="${6:-}" mode="${7:-inspect}"
@@ -145,17 +145,17 @@ out=$(approve_plan "$plan"); rc=$?
 assert_eq 1 "$rc" "approve refuses a broken plan" || exit 1
 assert_eq 3 "$(printf '%s\n' "$out" | grep -c "^$plan:[0-9]*: ")" "one line per problem: $out" || exit 1
 assert_contains "$out" "phase 2 waits for phase 9" "names the missing phase" || exit 1
-assert_contains "$out" "skills/nope/SKILL.md does not exist" "names the missing skill" || exit 1
+assert_contains "$out" "workflow/nope/GUIDE.md does not exist" "names the missing skill" || exit 1
 assert_contains "$out" "phases 1 and 2 both change" "names the unordered overlap" || exit 1
 [ ! -e "${plan%.md}.json" ] || fail "no JSON after a refusal"
 
 edit "$plan" 'Waits for: 9 — a thing' 'Waits for: 1 — a thing'
-edit "$plan" ', `skills/nope/SKILL.md`' ''
+edit "$plan" ', `workflow/nope/GUIDE.md`' ''
 
 # run#required-to-approve: a draft with no run file is refused, naming the skill, with no JSON
 out=$(approve_plan "$plan"); rc=$?
 assert_eq 1 "$rc" "approve refuses a plan with no run file" || exit 1
-assert_contains "$out" "dev-skills:run-file" "the fix names the skill" || exit 1
+assert_contains "$out" "runweld run-file" "the fix names the skill" || exit 1
 [ ! -e "${plan%.md}.json" ] || fail "no JSON after a refusal"
 
 cp "$example" "${plan%.md}.run.toml"

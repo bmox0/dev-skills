@@ -5,7 +5,7 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-pipeline="$repo_root/skills/build/pipeline.py"
+pipeline="$repo_root/workflow/build/pipeline.py"
 . "$repo_root/test/lib/harness.sh"
 
 fail() { echo "finish.test.sh: $1" >&2; exit 1; }
@@ -45,8 +45,8 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q -b main
-  mkdir -p .runweld/workflow/plans .runweld/workflow/epics skills/tdd src
-  touch skills/tdd/SKILL.md
+  mkdir -p .runweld/workflow/plans .runweld/workflow/epics workflow/tdd src
+  touch workflow/tdd/GUIDE.md
   printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n' > .runweld/workflow/epics/e.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
@@ -77,7 +77,7 @@ A.
 
 Do one.
 Territory: `src/`
-Skills: `skills/tdd/SKILL.md`
+Skills: `workflow/tdd/GUIDE.md`
 Spec: none
 Waits for: nothing
 
@@ -98,7 +98,7 @@ Waits for: nothing
   Done: 1
 P
   rf=${plan%.md}.run.toml
-  cp "$repo_root/skills/run-file/references/example.run.toml" "$rf"
+  cp "$repo_root/workflow/run-file/references/example.run.toml" "$rf"
   python3 - "$rf" "$how" "$del" "$wt" "$full" "$tgt" <<'PY'
 import sys, re
 p, how, dele, wt, full, tgt = sys.argv[1:]

@@ -4,7 +4,7 @@ This is history; the rules that hold now are in `docs/spec/`.
 
 ## Result
 
-Orchestrators rewrite statuses by hand 2–13 times a run, forget the epic's row, and nobody checks a phase's commits. After this plan, `skills/build/pipeline.py` keeps the plan's state in `<slug>.json`. `approve` compiles the plan with a strict check. `build start` and `phase start/done` move the statuses and check each phase's commits. `status` says what is ready, `brief` writes what an agent needs, and `spec.py` becomes `pipeline.py spec`. `plan`, `build`, `spec`, `grill` and the implementer call the CLI.
+Orchestrators rewrite statuses by hand 2–13 times a run, forget the epic's row, and nobody checks a phase's commits. After this plan, `workflow/build/pipeline.py` keeps the plan's state in `<slug>.json`. `approve` compiles the plan with a strict check. `build start` and `phase start/done` move the statuses and check each phase's commits. `status` says what is ready, `brief` writes what an agent needs, and `spec.py` becomes `pipeline.py spec`. `plan`, `build`, `spec`, `grill` and the implementer call the CLI.
 
 ## Approach
 
@@ -38,7 +38,7 @@ The epic's Interfaces are the contract. The parser leaves `spec.py` first, so `a
 ```text
 ## Done
 
-1. Run `scripts/check` and `scripts/test` → both exit 0. `skills/spec/spec.py` is gone, and nothing outside `.runweld/workflow/` and `docs/spec/` names it. `git diff a0a41ac -- test/cli/spec.test.sh` touches only the entry and the program's name in one message.
+1. Run `scripts/check` and `scripts/test` → both exit 0. `workflow/spec/spec.py` is gone, and nothing outside `.runweld/workflow/` and `docs/spec/` names it. `git diff a0a41ac -- test/cli/spec.test.sh` touches only the entry and the program's name in one message.
 2. In a throwaway repo, run `spec list`, `show`, `check` and `write` through `pipeline.py`, and through `spec.py` from `a0a41ac` → both give the same output, exit codes and files.
 3. Approve a plan whose phase 3 waits for a phase 9, which has two unordered phases sharing a directory, and which names a missing Skills path → exit 1, with one `<plan>:<line>:` line per problem and no JSON. Fix the problems and approve again → the JSON exists, and the file differs from the draft only in Status and the rendered line. The output ends with the graph, the level and the word count.
 4. Under a throwaway epic, run `build start --base <tag>` → the branch starts at the tag, and Status reads `building` with the tag's SHA. The epic's row reads `building`, and `status` shows phase 1 as ready.
@@ -48,7 +48,7 @@ The epic's Interfaces are the contract. The parser leaves `spec.py` first, so `a
 8. Write two records at the same moment → both are in the JSON, and it parses. A recorded ruling → `status` lists its question, answer, why and cost.
 9. Run `brief implementer 2 --note "<text>"` → it prints a path. The file holds the absolute paths of the plan, the tree and the CLI. It also holds the branch, the base, HEAD, phase 2's territory and Skills, phase 1's report, and the note. `brief judge` → the file holds the absolute path of an existing `judge.md`.
 10. Take a plan at `building` with phase 1 `done` and no JSON, and run `phase start 2` → refused, with a fix naming `approve`. Run `approve` → phase 1 is still `done`, and phase 2 is ready.
-11. In a throwaway repo, run `dev-skills:plan`, then `dev-skills:build`, from this checkout on a two-phase plan → every status, the base and the epic's row change through the CLI, nobody edits the plan file by hand, and each report is a record — you check
+11. In a throwaway repo, run `runweld plan`, then `runweld build`, from this checkout on a two-phase plan → every status, the base and the epic's row change through the CLI, nobody edits the plan file by hand, and each report is a record — you check
 
 ## Spec
 

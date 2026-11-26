@@ -19,7 +19,7 @@ mkdir -p "$proj/sess-a/subagents" "$root/-Users-me-other"
 cat > "$proj/sess-a.jsonl" <<'JSONL'
 {"type":"ai-title","aiTitle":"Demo session"}
 {"type":"user","timestamp":"2026-09-25T10:00:00Z","message":{"role":"user","content":"hello"}}
-{"type":"assistant","timestamp":"2026-09-25T10:05:00Z","message":{"id":"m1","role":"assistant","usage":{"output_tokens":2600,"input_tokens":1000,"cache_read_input_tokens":400000,"cache_creation_input_tokens":100000},"content":[{"type":"tool_use","name":"Skill","input":{"skill":"dev-skills:grill"}}]}}
+{"type":"assistant","timestamp":"2026-09-25T10:05:00Z","message":{"id":"m1","role":"assistant","usage":{"output_tokens":2600,"input_tokens":1000,"cache_read_input_tokens":400000,"cache_creation_input_tokens":100000},"content":[{"type":"tool_use","name":"Skill","input":{"skill":"runweld grill"}}]}}
 {"type":"assistant","timestamp":"2026-09-25T10:05:00Z","message":{"id":"m1","role":"assistant","usage":{"output_tokens":2600,"input_tokens":1000,"cache_read_input_tokens":400000,"cache_creation_input_tokens":100000},"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"Explore"}}]}}
 {"type":"assistant","timestamp":"2026-09-25T10:06:00Z","message":{"id":"m2","role":"assistant","usage":{"output_tokens":900,"input_tokens":1000},"content":[{"type":"tool_use","name":"Task","input":{}},{"type":"tool_use","name":"Bash","input":"not a dict"}]}}
 {"type":"user","timestamp":"2026-09-25T10:07:00Z","message":{"role":"user","content":[{"type":"tool_result","content":"done"},{"type":"text","text":"tool text"}]}}
@@ -64,7 +64,7 @@ assert_eq 1 "$(field interrupts)" "TC-2: interrupts" || fail "TC-2"
 assert_eq "{'grill': 1}" "$(field cmds)" "TC-2: slash commands" || fail "TC-2"
 assert_eq 3 "$(field out_k)" "TC-2: output tokens once per message, floored to thousands" || fail "TC-2"
 assert_eq 0.5 "$(field in_M)" "TC-2: input tokens include the cache, once per message" || fail "TC-2"
-assert_eq "{'dev-skills:grill': 1}" "$(field skills)" "TC-2: skills" || fail "TC-2"
+assert_eq "{'runweld grill': 1}" "$(field skills)" "TC-2: skills" || fail "TC-2"
 assert_eq "{'Explore': 1, '?': 1}" "$(field agents)" "TC-2: Agent and Task dispatches" || fail "TC-2"
 assert_eq 1 "$(field nsubs)" "TC-2: subagents counted by transcript, not by meta file" || fail "TC-2"
 assert_eq 3 "$(field sub_out_k)" "TC-2: subagent output tokens once per message, at the streamed final count" || fail "TC-2"
@@ -72,7 +72,7 @@ assert_eq 0.6 "$(field sub_h)" "TC-2: subagent hours" || fail "TC-2"
 
 printf '%s' "$out" | python3 -c '
 import json, sys
-assert json.load(sys.stdin) == [{"project": "-Users-me-Documents-Projects-demo", "sid": "sess-a", "title": "Demo session", "start": "2026-09-25 10:00", "wall_h": 0.9, "active_h": 0.4, "nuser": 3, "interrupts": 1, "skills": {"dev-skills:grill": 1}, "cmds": {"grill": 1}, "agents": {"Explore": 1, "?": 1}, "out_k": 3, "in_M": 0.5, "nsubs": 1, "sub_out_k": 3, "sub_h": 0.6}]
+assert json.load(sys.stdin) == [{"project": "-Users-me-Documents-Projects-demo", "sid": "sess-a", "title": "Demo session", "start": "2026-09-25 10:00", "wall_h": 0.9, "active_h": 0.4, "nuser": 3, "interrupts": 1, "skills": {"runweld grill": 1}, "cmds": {"grill": 1}, "agents": {"Explore": 1, "?": 1}, "out_k": 3, "in_M": 0.5, "nsubs": 1, "sub_out_k": 3, "sub_h": 0.6}]
 ' || fail "usage#measurements-preserved: complete Claude record"
 
 claude_json=$out

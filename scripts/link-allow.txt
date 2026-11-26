@@ -5,13 +5,3 @@
 # reported. An entry that matches nothing today — the line moved, the token
 # isn't there, the file is gone — is itself reported, as ALLOWLIST, and
 # fails the check.
-
-# "diagnose" as an ordinary verb — "Use these to diagnose issues the user
-# may be having with the skill" — not a reference to the old Superpowers
-# `diagnose` skill.
-skills/writing-skills/SKILL.md:95:diagnose
-
-# "brainstorming" as a generic example class of skill — "a brainstorming
-# skill should predictably diverge" — illustrating Predictability, not
-# naming the old Superpowers `brainstorming` skill.
-skills/writing-skills/references/GLOSSARY.md:11:brainstorming

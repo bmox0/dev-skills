@@ -13,7 +13,7 @@ Install and invoke the pipeline as `runweld` while keeping existing task records
 
 1. Install outside the project and run `runweld init` in a plain terminal → select one provider, enter its pair and checks, receive a usable config, lock, ignore rule and short AGENTS pointer. Repeat init or interrupt and retry → user-authored content and profiles survive.
 2. Follow `runweld help agents` through planning, approved build, review, E2E, judge, land, human gate and authorized finish with plugins and hooks disabled → the appropriate role receives its instructions, human receives a concrete guide, and release rules reject a premature transition or attempted project graph override.
-3. In a real Codex project and a colleague’s Claude clone, use the documented skill installation and ask “используй runweld” → each agent discovers its next action using the single skill. Review the guide for the actual build
+3. In a real Codex project and a colleague’s Claude clone, invoke `runweld grill` → each agent receives the interview instructions from the CLI. Review the guide for the actual build
 4. Install Runweld with an unrelated executable in the selected prefix → Runweld provides the workflow and leaves the other executable untouched.
 5. Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
 6. Install releases A and B, start a run on A and call `runweld update` → the project lock moves to B, new work uses B, and the active run and its briefs still use A. An unavailable or damaged release gives an actionable error and leaves the prior lock or run intact.
@@ -25,7 +25,7 @@ Install and invoke the pipeline as `runweld` while keeping existing task records
 ## Spec
 
 ~ distribution#system-cli — A standalone installation provides Runweld and all release-owned workflow instructions to humans and agents
-  Why: a new harness needs only one lightweight entry skill to use the same process.
+  Why: a new harness needs only the CLI to use the same process.
   Done: 1, 2, 3, 4
 ~ distribution#project-lock — The project locks the workflow release and `runweld update` changes that selection for new work
   Why: collaborators must share reproducible rules and preserve ongoing work across updates.

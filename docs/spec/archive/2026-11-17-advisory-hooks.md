@@ -22,7 +22,7 @@ The hooks:
 
 The docs:
 
-- README's pipeline and roles, `references/VOCABULARY.md` and `docs/pipeline.html` describe 5.1: the run file before the plan (`dev-skills:run-file`, `<slug>.run.toml`); the CLI keeping the state and rendering the plan, notes, judge file and gate page; at the gate code runs the checks, records findings, results and verdicts, holds the caps, lands and finishes as the run file says; finish asks nothing. The vocabulary gains the run file and the CLI.
+- README's pipeline and roles, `references/VOCABULARY.md` and `docs/pipeline.html` describe 5.1: the run file before the plan (`runweld run-file`, `<slug>.run.toml`); the CLI keeping the state and rendering the plan, notes, judge file and gate page; at the gate code runs the checks, records findings, results and verdicts, holds the caps, lands and finishes as the run file says; finish asks nothing. The vocabulary gains the run file and the CLI.
 - README, the vocabulary and the drawing name no fix, round or stop count: caps live only in code (`build#caps-in-code`). TC-13's caps check widens to `README.md`, `references/` and `docs/`.
 - README's "ships no hooks" becomes what the hooks say, how each host approves them (enabling the plugin; trust in Codex) and that untrusted hooks lose only the advice. TC-13 stops forbidding `hooks/` and pins the advisory shape. The marketplace description names the CLI, the run file and the hooks in place of "one script for the spec, no hooks".
 
@@ -40,7 +40,7 @@ The release: 5.1.0 in the four version lines `a0a41ac` changed, as the last phas
 ```text
 ## Done
 
-1. Run `scripts/check` and `scripts/test` → both exit 0; `hooks/hooks.json` declares only SessionStart on `startup|resume|compact` and PostToolUse on the edit tools; no line in `skills/`, `agents/`, `references/`, `AGENTS.md`, `README.md` or `docs/` caps fixes or judge rounds; the plugin's version lines agree.
+1. Run `scripts/check` and `scripts/test` → both exit 0; `hooks/hooks.json` declares only SessionStart on `startup|resume|compact` and PostToolUse on the edit tools; no line in `workflow/`, `agents/`, `references/`, `AGENTS.md`, `README.md` or `docs/` caps fixes or judge rounds; the plugin's version lines agree.
 2. A throwaway repo with plans `building`, `approved` and `merged`: Claude Code's SessionStart input with source `compact`, `resume` or `startup`, and Codex's with `compact` → `additionalContext` holding `status` of the building plan alone. With no plan from `building` to `passed` → nothing, exit 0.
 3. The building plan: Claude Code's `Edit` input on its Status line → the advice names `pipeline.py plan status`; on a phase heading → `phase start / phase done`; on its Approach → `pipeline.py approve`. Codex's `apply_patch` input on its notes and judge files → a line each, naming `note add|edit|drop` and the first verdict. `Write` on its `<slug>.json` → the state changes only through `pipeline.py` commands.
 4. An edit of a draft plan with no state, of a run file, or of `src/a.py` → nothing, exit 0.

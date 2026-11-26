@@ -113,7 +113,7 @@ frontmatter() {
 
 portable=$(mktemp_dir)
 mkdir -p "$portable/scripts" "$portable/adapters" "$portable/bin"
-cp "$repo_root/scripts/check" "$repo_root/scripts/adapter.py" "$portable/scripts/"
+cp "$repo_root/scripts/check" "$portable/scripts/"
 printf 'print("CORE fixture passed")\n' > "$portable/scripts/check-links.py"
 ln -s "$(command -v python3)" "$portable/bin/python3"
 # Poison client names to catch accidental execution.
@@ -132,68 +132,11 @@ check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$repo_root/scripts/che
 [ "$?" -eq 0 ] || fail "validation#portable-default: real shared checks without clients: $check_out"
 [ ! -d "$portable/scripts/__pycache__" ] || fail "validation#portable-default: check leaves no bytecode artifacts"
 
-mkdir -p "$portable/adapters/fixture-host" "$portable/adapters/missing"
-cat > "$portable/adapters/fixture-host/validate.py" <<'PYVALIDATOR'
-import os, sys
-from pathlib import Path
-root = Path(sys.argv[1])
-with (root / "selected-calls").open("a") as out:
-    out.write("fixture-host\n")
-print("HOST fixture-host: fixture validator 1.2.3; loader/live not checked")
-sys.exit(int(os.environ.get("FIXTURE_RC", "0")))
-PYVALIDATOR
-check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host fixture-host --host fixture-host 2>&1)
-[ "$?" -eq 0 ] || fail "validation#selected-host-checks: discovered adapter: $check_out"
-assert_contains "$check_out" "fixture validator 1.2.3" "validation#coverage-is-named: selected evidence" || fail "$check_out"
-assert_eq 2 "$(wc -l < "$portable/selected-calls" | tr -d ' ')" "validation#selected-host-checks: repeated selection executes" || fail "$check_out"
-check_out=$(PATH="$portable/bin" FIXTURE_RC=7 "$portable/bin/python3" "$portable/scripts/check" --host fixture-host 2>&1)
-[ "$?" -ne 0 ] || fail "validation#selected-host-checks: failed validator must fail"
-for selector in unknown missing ../fixture-host /tmp/fixture-host 'fixture-host/name'; do
-  check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host "$selector" 2>&1)
-  [ "$?" -ne 0 ] || fail "validation#selected-host-checks: $selector must refuse"
-  assert_contains "$check_out" "$selector" "validation#selected-host-checks: error names selector" || fail "$check_out"
-done
-outside=$(mktemp_dir)
-cp "$portable/adapters/fixture-host/validate.py" "$outside/validate.py"
-ln -s "$outside" "$portable/adapters/escape"
-check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host escape 2>&1)
-[ "$?" -ne 0 ] || fail "validation#selected-host-checks: escaping symlink refuses"
-assert_contains "$check_out" "outside adapters/" "validation#selected-host-checks: containment error" || fail "$check_out"
-check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host 2>&1)
-[ "$?" -ne 0 ] || fail "validation#selected-host-checks: missing selector refuses"
-
-cp -R "$repo_root/adapters/claude" "$portable/adapters/"
-cat > "$portable/bin/claude" <<'PYCLAUDE'
-#!/usr/bin/env python3
-import os, sys
-from pathlib import Path
-root = Path.cwd()
-with (root / "claude-calls").open("a") as out:
-    out.write(" ".join(sys.argv[1:]) + "\n")
-if sys.argv[1:] == ["--version"]:
-    print("Claude fixture-2.3")
-    sys.exit(0)
-sys.exit(int(os.environ.get("CLAUDE_FIXTURE_RC", "0")))
-PYCLAUDE
-chmod +x "$portable/bin/claude"
-check_out=$(cd "$portable" && PATH="$portable/bin" "$portable/bin/python3" scripts/check --host claude 2>&1)
-[ "$?" -eq 0 ] || fail "validation#selected-host-checks: Claude validator: $check_out"
-assert_contains "$check_out" "Claude fixture-2.3" "validation#coverage-is-named: Claude version" || fail "$check_out"
-assert_eq "--version
-plugin validate . --strict
-plugin validate .claude-plugin/plugin.json --strict" "$(cat "$portable/claude-calls")" "validation#selected-host-checks: both manifests validated" || fail "$check_out"
-check_out=$(cd "$portable" && PATH="$portable/bin" CLAUDE_FIXTURE_RC=1 "$portable/bin/python3" scripts/check --host claude 2>&1)
-[ "$?" -ne 0 ] || fail "validation#selected-host-checks: failed Claude validation refuses"
-rm "$portable/bin/claude"
-check_out=$(PATH="$portable/bin" "$portable/bin/python3" "$portable/scripts/check" --host claude 2>&1)
-[ "$?" -ne 0 ] || fail "validation#selected-host-checks: missing selected Claude refuses"
-assert_contains "$check_out" "not on PATH" "validation#selected-host-checks: unavailable client named" || fail "$check_out"
-
-for f in "$repo_root"/skills/*/SKILL.md; do
+for f in "$repo_root"/workflow/*/GUIDE.md; do
   skill=$(basename "$(dirname "$f")")
   fm=$(frontmatter "$f")
   ! printf '%s' "$fm" | grep -qi 'disable-model-invocation' \
-    || fail "TC-9: skills/$skill/SKILL.md should carry no disable-model-invocation"
+    || fail "TC-9: workflow/$skill/GUIDE.md should carry no disable-model-invocation"
 done
 
 # --- TC-10: run#executor-presets and planning#summary-before-build ----------
@@ -203,13 +146,13 @@ from pathlib import Path
 import sys
 root = Path(sys.argv[1])
 for name in ('grill', 'plan', 'build', 'bug', 'prototype', 'review', 'verify', 'run-file', 'land'):
-    text = (root / 'skills' / name / 'SKILL.md').read_text()
+    text = (root / 'workflow' / name / 'GUIDE.md').read_text()
     assert 'CODEX.md' not in text, name
     assert 'AGENTS.md' in text, name
 sessions = (root / 'references/SESSIONS.md').read_text()
 for term in ('primary', 'secondary', '--provider', 'model', 'effort', 'manual', 'native', 'herdr', 'unchanged'):
     assert term in sessions, term
-plan = (root / 'skills/plan/SKILL.md').read_text()
+plan = (root / 'workflow/plan/GUIDE.md').read_text()
 for term in ('run approve', 'summary approve', 'resume.example.md', 'STOP'):
     assert term in plan, term
 assert plan.index('run approve') < plan.index('summary approve') < plan.index('STOP')
@@ -217,22 +160,16 @@ P
 
 # --- TC-11: no retired 'Checkpoint N' or '| Segment |' outside the vocabulary
 
-checkpoint_out=$(cd "$repo_root" && grep -rn 'Checkpoint [0-9]' skills/ 2>/dev/null)
+checkpoint_out=$(cd "$repo_root" && grep -rn 'Checkpoint [0-9]' workflow/ 2>/dev/null)
 [ -z "$checkpoint_out" ] || fail "TC-11: expected no match for 'Checkpoint N', found: $checkpoint_out"
 
-segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' skills/ 2>/dev/null)
+segment_col_out=$(cd "$repo_root" && grep -rn '| Segment |' workflow/ 2>/dev/null)
 [ -z "$segment_col_out" ] || fail "TC-11: expected no match for '| Segment |', found: $segment_col_out"
 
-# --- TC-13: advisory hooks only, no scripts/ under skills/, no tool limits, models, one version --
+# --- TC-13: no scripts/ under workflow/, no tool limits, models, one version --
 
-python3 - "$repo_root/adapters/claude/hooks.json" <<'P' || fail "TC-13: adapter hooks should declare only SessionStart and PostToolUse"
-import json, sys
-assert sorted(json.load(open(sys.argv[1]))["hooks"]) == ["PostToolUse", "SessionStart"]
-P
-! grep -rqiE 'PreToolUse|"decision"|"block"|sys\.exit\([1-9]' "$repo_root/hooks" \
-  || fail "TC-13: a hook only advises: no PreToolUse, decision, block or non-zero exit"
-skill_scripts=$(cd "$repo_root" && find skills -type d -name scripts 2>/dev/null)
-[ -z "$skill_scripts" ] || fail "TC-13: no scripts/ directory under skills/, found: $skill_scripts"
+skill_scripts=$(cd "$repo_root" && find workflow -type d -name scripts 2>/dev/null)
+[ -z "$skill_scripts" ] || fail "TC-13: no scripts/ directory under workflow/, found: $skill_scripts"
 for f in "$repo_root"/agents/*.md; do
   ! frontmatter "$f" | grep -q '^tools:' || fail "TC-13: $(basename "$f") should carry no tools: line"
 done
@@ -240,24 +177,18 @@ for f in "$repo_root"/agents/*.md; do
   ! frontmatter "$f" | grep -q '^model:' || fail "run#executor-presets: TC-13: role must use the selected preset"
   grep -q 'AGENTS.md' "$f" || fail "TC-13: role must read shared rules"
 done
-grep -q '^| small |.*first reviewer.*primary' "$repo_root/skills/build/references/gate.md" \
+grep -q '^| small |.*first reviewer.*primary' "$repo_root/workflow/build/references/gate.md" \
   || fail "TC-13: the first reviewer uses primary even at small gate"
-grep -q 'secondary' "$repo_root/skills/build/references/rounds.md" \
+grep -q 'secondary' "$repo_root/workflow/build/references/rounds.md" \
   || fail "TC-13: round rechecks use secondary"
 for cmd in 'CLI gate start' 'CLI brief judge' 'CLI round start' 'CLI note add'; do
-  grep -qF "$cmd" "$repo_root/skills/build/SKILL.md" || fail "TC-13: build should call \`$cmd\`"
+  grep -qF "$cmd" "$repo_root/workflow/build/GUIDE.md" || fail "TC-13: build should call \`$cmd\`"
 done
-grep -qF 'CLI verdict' "$repo_root/skills/build/references/judge.md" \
+grep -qF 'CLI verdict' "$repo_root/workflow/build/references/judge.md" \
   || fail "TC-13: the judge reference should record through \`CLI verdict\`"
-caps_out=$(cd "$repo_root" && grep -rniE --exclude-dir=archive 'two fixes at most|one round per gate|fix [12]\b' skills agents AGENTS.md README.md references docs 2>/dev/null)
+caps_out=$(cd "$repo_root" && grep -rniE --exclude-dir=archive 'two fixes at most|one round per gate|fix [12]\b' workflow agents AGENTS.md README.md references docs 2>/dev/null)
 [ -z "$caps_out" ] || fail "build#caps-in-code: TC-13: no cap in prose an agent reads, found: $caps_out"
-plugin_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.claude-plugin/plugin.json")
-market_versions=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["metadata"]["version"], d["plugins"][0]["version"])' "$repo_root/.claude-plugin/marketplace.json")
-assert_eq "$plugin_version $plugin_version" "$market_versions" "TC-13: both manifests carry one version" || fail "TC-13"
-codex_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.codex-plugin/plugin.json")
-assert_eq "$plugin_version" "$codex_version" "TC-13: the Codex manifest carries the same version" || fail "TC-13"
-qoder_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$repo_root/.qoder-plugin/plugin.json")
-assert_eq "$plugin_version" "$qoder_version" "distribution#shared-resources: the Qoder manifest carries the same version" || fail "TC-13"
+grep -Eq '^[0-9]+[.][0-9]+[.][0-9]+$' "$repo_root/VERSION" || fail "invalid Runweld version"
 
 # --- TC-12: every other test file is green on its own ------------------------
 
@@ -277,16 +208,16 @@ done < <(
 # --- TC-14: the plan's statuses hand off cleanly across the skills that use them
 #
 # The plan file is the registry: its Status line and each phase's status are
-# set and read by skills/plan, skills/build, skills/finish,
-# skills/epic and agents/implementer.md. This pins the hand-off both ways: no skill sets or
-# reads a status missing from skills/plan/SKILL.md's own Status list, no
+# set and read by workflow/plan, workflow/build, workflow/finish,
+# workflow/epic and agents/implementer.md. This pins the hand-off both ways: no skill sets or
+# reads a status missing from workflow/plan/GUIDE.md's own Status list, no
 # status in that list goes unset by every skill, and the phase status
-# skills/plan, skills/build and agents/implementer.md use for a phase agree.
+# workflow/plan, workflow/build and agents/implementer.md use for a phase agree.
 
-plan_skill="$repo_root/skills/plan/SKILL.md"
-build_skill="$repo_root/skills/build/SKILL.md"
-finish_skill="$repo_root/skills/finish/SKILL.md"
-epic_skill="$repo_root/skills/epic/SKILL.md"
+plan_skill="$repo_root/workflow/plan/GUIDE.md"
+build_skill="$repo_root/workflow/build/GUIDE.md"
+finish_skill="$repo_root/workflow/finish/GUIDE.md"
+epic_skill="$repo_root/workflow/epic/GUIDE.md"
 implementer_agent="$repo_root/agents/implementer.md"
 
 # the plan template's own Status list: draft, approved, building, ...
@@ -298,19 +229,19 @@ has_plan_status() {
 }
 
 # every status a skill sets or reads on the plan's Status line, as it is
-# phrased there, should be one skills/plan/SKILL.md names
+# phrased there, should be one workflow/plan/GUIDE.md names
 for v in draft approved building "at the human gate" passed merged "a merge-request link"; do
   has_plan_status "$v" \
-    || fail "TC-14: a skill sets/reads Status \`$v\`, missing from skills/plan/SKILL.md's Status list"
+    || fail "TC-14: a skill sets/reads Status \`$v\`, missing from workflow/plan/GUIDE.md's Status list"
 done
 
-# skills/epic's own worked example sets a Status too — it should stay within
+# workflow/epic's own worked example sets a Status too — it should stay within
 # that same list
 epic_statuses=$(awk -F'|' '/^\| [0-9]+ \|/ { v=$(NF-1); gsub(/^[ \t]+|[ \t]+$/, "", v); print v }' "$epic_skill")
 while IFS= read -r v; do
   [ -n "$v" ] || continue
   has_plan_status "$v" \
-    || fail "TC-14: skills/epic/SKILL.md's worked example sets Status \`$v\`, missing from skills/plan/SKILL.md's Status list"
+    || fail "TC-14: workflow/epic/GUIDE.md's worked example sets Status \`$v\`, missing from workflow/plan/GUIDE.md's Status list"
 done <<EOF
 $epic_statuses
 EOF
@@ -327,7 +258,7 @@ while IFS= read -r v; do
     "a merge-request link") grep -q 'a merge-request link' "$finish_skill" ;;
     merged)                 grep -q 'Status to `merged`' "$finish_skill" ;;
     *) false ;;
-  esac || fail "TC-14: skills/plan/SKILL.md's Status list names \`$v\`, but no skill sets it"
+  esac || fail "TC-14: workflow/plan/GUIDE.md's Status list names \`$v\`, but no skill sets it"
 done <<EOF
 $plan_statuses
 EOF
@@ -336,7 +267,7 @@ EOF
 phase_statuses=$(grep -m1 -- '<n>\. <task>' "$plan_skill" \
   | sed -E 's/.*— `<([^>]+)>`.*/\1/' | tr '|' '\n' | sed -E 's/^ +| +$//g')
 
-# skills/build sets it when a phase starts and finishes
+# workflow/build sets it when a phase starts and finishes
 while IFS= read -r v; do
   [ -n "$v" ] || continue
   case "$v" in
@@ -344,26 +275,26 @@ while IFS= read -r v; do
     done)          grep -q 'CLI phase done <plan>' "$build_skill" ;;
     waiting)       grep -q 'CLI status <plan>` names the phases that are ready' "$build_skill" ;;
     *) false ;;
-  esac || fail "TC-14: skills/plan/SKILL.md's phase status list names \`$v\`, but skills/build/SKILL.md never sets it"
+  esac || fail "TC-14: workflow/plan/GUIDE.md's phase status list names \`$v\`, but workflow/build/GUIDE.md never sets it"
 done <<EOF
 $phase_statuses
 EOF
 
 # agents/implementer.md never sets a phase status of its own that disagrees
-# with skills/plan/SKILL.md's phase list
+# with workflow/plan/GUIDE.md's phase list
 implementer_phase_statuses=$(grep -oiE 'mark it `[^`]+`' "$implementer_agent" | grep -oE '`[^`]+`' | tr -d '`')
 while IFS= read -r v; do
   [ -n "$v" ] || continue
   printf '%s\n' "$phase_statuses" | grep -qxF "$v" \
-    || fail "TC-14: agents/implementer.md sets a phase status \`$v\` that disagrees with skills/plan/SKILL.md's phase list"
+    || fail "TC-14: agents/implementer.md sets a phase status \`$v\` that disagrees with workflow/plan/GUIDE.md's phase list"
 done <<EOF
 $implementer_phase_statuses
 EOF
 
 # --- TC-15: land, finish and build call the CLI for git, the page and the ending
 
-land_skill="$repo_root/skills/land/SKILL.md"
-refs="$repo_root/skills/build/references"
+land_skill="$repo_root/workflow/land/GUIDE.md"
+refs="$repo_root/workflow/build/references"
 pin() { # file fixed-string
   grep -qF -- "$2" "$1" || fail "TC-15: ${1#$repo_root/} lost: $2"
 }
@@ -381,8 +312,8 @@ pin "$refs/gate.md" 'long, like `gate start`'
 pin "$refs/rounds.md" 'CLI round start --conflict'
 pin "$refs/rounds.md" 'CLI page'
 for f in land finish; do
-  ! grep -qE 'git (reset|commit|merge|push|branch -D)|gh pr' "$repo_root/skills/$f/SKILL.md" \
-    || fail "TC-15: skills/$f runs git itself"
+  ! grep -qE 'git (reset|commit|merge|push|branch -D)|gh pr' "$repo_root/workflow/$f/GUIDE.md" \
+    || fail "TC-15: workflow/$f runs git itself"
 done
 
 echo "ok"

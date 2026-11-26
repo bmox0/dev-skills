@@ -4,7 +4,7 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
-pipeline="$repo_root/skills/build/pipeline.py"
+pipeline="$repo_root/workflow/build/pipeline.py"
 . "$repo_root/test/lib/harness.sh"
 
 fail() { echo "page.test.sh: $1" >&2; exit 1; }
@@ -17,8 +17,8 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q -b main
-  mkdir -p .runweld/workflow/plans skills/tdd src
-  touch skills/tdd/SKILL.md
+  mkdir -p .runweld/workflow/plans workflow/tdd src
+  touch workflow/tdd/GUIDE.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
   git tag v0
@@ -47,7 +47,7 @@ A.
 
 Do one.
 Territory: `src/`
-Skills: `skills/tdd/SKILL.md`
+Skills: `workflow/tdd/GUIDE.md`
 Spec: none
 Waits for: nothing
 
@@ -74,7 +74,7 @@ P
   if [ "${3:-}" = zero ]; then
     sed -i.bak 's/^1\. a → b/0. Confirm → visible — you check\n1. a → b/' "$plan"
   fi
-  cp "$repo_root/skills/run-file/references/example.run.toml" "${plan%.md}.run.toml"
+  cp "$repo_root/workflow/run-file/references/example.run.toml" "${plan%.md}.run.toml"
   python3 - "${plan%.md}.run.toml" <<'PY'
 import sys, re
 p = sys.argv[1]
@@ -269,7 +269,7 @@ assert_contains "$out" "run-stale" "renewed consent is required" || exit 1
 newrepo
 land1
 input="${plan%.md}.guide.md"
-example="$repo_root/skills/build/references/example.guide.md"
+example="$repo_root/workflow/build/references/example.guide.md"
 output="$repo/.runweld/workflow/printed-guide"
 render() { cli page "$plan" --guide-file "$input" --message "feat: guide"; }
 st="${plan%.md}.json"

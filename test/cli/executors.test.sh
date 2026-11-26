@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PIPELINE="$here/../../skills/build/pipeline.py"
+export PIPELINE="$here/../../workflow/build/pipeline.py"
 python3 -B <<'PY'
 import json, os, pathlib, shlex, subprocess, tempfile, tomllib
 
@@ -183,7 +183,7 @@ none
         # build#worker-role-bound: every brief binds its authoritative role and protocol.
         package = pathlib.Path(os.environ['PIPELINE']).resolve().parents[2]
         role = 'implementer' if kind in ('implementer', 'fix', 'round') else kind
-        source = package / ('skills/verify/SKILL.md' if role == 'verify' else f'agents/{role}.md')
+        source = package / ('workflow/verify/GUIDE.md' if role == 'verify' else f'agents/{role}.md')
         assert f'Role: {role}' in text, text
         assert f'Role source: {source}' in text, text
         assert f'Protocol: {package / "references/SESSIONS.md"}' in text, text

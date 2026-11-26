@@ -4,7 +4,7 @@ set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
 spec=$(mktemp -d)/spec
-printf 'import os, sys\nos.execv(sys.executable, [sys.executable, "%s/skills/build/pipeline.py", "spec", *sys.argv[1:]])\n' "$repo_root" >"$spec"
+printf 'import os, sys\nos.execv(sys.executable, [sys.executable, "%s/workflow/build/pipeline.py", "spec", *sys.argv[1:]])\n' "$repo_root" >"$spec"
 
 . "$repo_root/test/lib/harness.sh"
 
@@ -518,7 +518,7 @@ python3 "$spec" check "$repo/$none" >/dev/null 2>&1; assert_exit 1 "outside a re
 
 # 17: the plan template's example carries a Spec section and passes check
 cd "$repo_root" || exit 1
-python3 "$spec" check --base HEAD skills/plan/references/example.md
+python3 "$spec" check --base HEAD workflow/plan/references/example.md
 assert_exit 0 "TC-17: the example plan passes check" || fail "TC-17"
 
 # 18: a base older than a commit that changed docs/spec/ is a stale base, named as such

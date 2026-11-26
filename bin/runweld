@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 sys.dont_write_bytecode = True
-store = Path(__file__).resolve().parents[1] / "lib" / "dev-skills"
+store = Path(__file__).resolve().parents[1] / "lib" / "runweld"
 sys.path.insert(0, str(store))
 
 

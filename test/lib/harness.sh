@@ -18,7 +18,7 @@
 # `d=$(mktemp_dir)`, and command substitution forks a subshell — an array
 # mutated there is gone the moment the subshell exits. A file append is a
 # real filesystem side effect and survives it.
-_harness_registry="$(mktemp "${TMPDIR:-/tmp}/dev-skills-test-registry.XXXXXX")"
+_harness_registry="$(mktemp "${TMPDIR:-/tmp}/runweld-test-registry.XXXXXX")"
 
 _harness_cleanup() {
   local d
@@ -61,7 +61,7 @@ assert_exit() {
 
 mktemp_dir() {
   local dir
-  dir=$(mktemp -d "${TMPDIR:-/tmp}/dev-skills-test.XXXXXX")
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/runweld-test.XXXXXX")
   echo "$dir" >> "$_harness_registry"
   echo "$dir"
 }
