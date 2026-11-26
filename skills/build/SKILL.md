@@ -27,7 +27,7 @@ Give each worker that tree and the absolute plan path. See
 
 On resume, use `CLI status --current` to find plans or `CLI status <plan>`
 to see its tree, owner and next action. Reuse the existing writer. Follow
-[typed actions](../../README.md#the-pipeline) with `--json --provider NAME`.
+[typed actions](../../docs/cli.md#workflow-actions) with `--json --provider NAME`.
 
 ## 2. The graph
 

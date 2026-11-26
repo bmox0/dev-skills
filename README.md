@@ -1,481 +1,268 @@
 # dev-skills
 
-Plan a change with your coding agent, build it in its own Git worktree, and review the result before it reaches your main branch. The `ds` CLI tracks each task and its next step. Your agent needs one [entry skill](ds-cli-skill/SKILL.md) to follow the same workflow.
+**dev-skills runs a deterministic development workflow from your preferred coding agent.** Its local CLI, `ds`, keeps the state of each task from planning through merge. Agents build against the plan you approved. The CLI records which commits the reviewer examined, which build the verifier tested and which version you accepted for merge.
 
-[Quick start](#quick-start) · [Your first task](#start-and-resume-a-task) · [How it works](#the-pipeline) · [Migrate an existing project](#migrate-from-the-legacy-plugin)
+Choose a **primary** model for planning, coordination and independent judgment, and a **secondary** model for scoped work such as research, implementation and verification. If you close the chat during a build, a fresh session in the task worktree can read which phases finished, which commit was reviewed and whose decision is pending. Ask it to **“continue this task with ds.”**
 
-## Quick start
+[Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Features](#features) · [Workflow stages](#workflow-stages) · [Examples](#examples)
 
-From a Git project with at least one commit, install the CLI, add the skill using your agent's skill manager, and initialize the project. If you already use the legacy plugin, follow the [migration guide](#migrate-from-the-legacy-plugin) before running `ds init`.
+## Install
+
+On macOS or Linux, you'll need Bash, Git, curl and Python 3.11+ on your PATH as `python3`. Install the `ds` CLI once on your machine.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bmox0/dev-skills/main/install.sh | bash
-npx skills add https://github.com/bmox0/dev-skills/tree/main/ds-cli-skill
-ds init
-```
-
-**Requirements** · Unix-like system, Bash, Git, curl and Python 3.11+ available as `python3`. The skill command uses `npx`. For terminal-only use, skip the second line.
-
-<details>
-<summary>Installation options and PATH setup</summary>
-
-The CLI installs under `~/.local`. If your shell cannot find `ds`, run the following and add the export to your shell startup file.
-
-```sh
 export PATH="$HOME/.local/bin:$PATH"
 ds --version
 ```
 
-The [Skills CLI](https://github.com/vercel-labs/skills) installs the skill into the project by default. Select your agent when prompted, or add `-g` for a personal installation. You can also give the [skill directory](https://github.com/bmox0/dev-skills/tree/main/ds-cli-skill) to your harness's own installer. For example, enter this in a Codex session:
+Keep the export in your shell profile if needed. From your project's Git checkout, use Node.js and `npx` to install the entry skill for your coding agent.
 
-```text
-$skill-installer Install https://github.com/bmox0/dev-skills/tree/main/ds-cli-skill
+```sh
+npx skills add https://github.com/bmox0/dev-skills/tree/main/ds-cli-skill
 ```
 
-For an unpublished checkout, run `./scripts/install-ds` in the dev-skills worktree and point your skill manager at its `ds-cli-skill/` directory.
+If the project already has runs from the native plugin, follow the [migration guide](docs/cli.md#migrate-from-the-legacy-plugin) before initialization.
 
-</details>
+## Quick start
 
-## Initialize your project
+**1. Set up a project.** Run the initializer in a Git repository with at least one commit.
 
-`ds init` asks for your provider, its primary and secondary models, the project checks, and the merge policy.
+```sh
+ds init
+```
 
-| Commit to Git | What it shares |
+Select your provider and model pair, optionally set their reasoning effort, and enter the project’s check commands and merge policy. Commit `.ds/config.toml`, `.ds/ds.lock`, the generated changes to `AGENTS.md` and `.gitignore`, and the project skill and its lockfile. New task worktrees will have the same setup.
+
+**2. Describe a change.** Open a fresh agent session in the project and describe the task.
+
+> Use ds to start a task called export-csv. Add a Download CSV button to the reports page. Export the rows that match the current filters. Disable the button when there are no rows.
+
+The agent starts the task on branch `ds/export-csv` and works with you on the plan. If filters include a date range, for example, agree on a test that would catch rows outside it. Approve the run settings and plan summary, then tell the agent to build.
+
+**3. Try the result.** The review guide tells you how to open the build and what to check. For this export, download a filtered report and try a date range with no rows. You can request another round, or accept the result and tell the agent to finish. Depending on the project settings, finish merges locally or opens a merge request.
+
+## How it works
+
+### Bring your own coding agent
+
+Install one entry skill and say **“Use ds”** in the agent you already use. The skill runs `ds help agents` to read the installed workflow. Your agent client runs shell commands and dispatches workers with the model and effort named in their briefs. You can use a native agent session, a separate herdr tab or a manual handoff. Each uses the same CLI, project checks and task state. [Session handoff](references/SESSIONS.md)
+
+The planning session and build coordinator use **primary** for decisions that affect the whole change. **Secondary** workers get a bounded assignment, such as tracing a code path, implementing one phase or rerunning a failed case. A fresh primary model handles the first review and every judge verdict. Project profiles live in `.ds/config.toml`. Inspect one with `ds executor show --provider NAME`.
+
+```mermaid
+flowchart TD
+    task(["Task"]) -->|"New task worktree"| planner["Planning session"]:::primary
+    planner -->|"Trace code"| code["Code researcher"]:::secondary
+    planner -->|"Read rules"| scout["Spec scout"]:::secondary
+    planner -->|"Approved build"| coord["Build coordinator"]:::primary
+    coord -->|"Ready phases"| implement["Implementers"]:::secondary
+    coord -->|"Diff and spec"| review["Code reviewer"]:::primary
+    coord -->|"Done cases"| verify["E2E verifier"]:::secondary
+    coord -->|"Gate evidence"| judge["Judge"]:::primary
+    planner -.->|"Record approvals"| cli["ds CLI"]:::cli
+    coord -.->|"Advance run"| cli
+    cli -->|"Save transition"| records[("Task state")]:::cli
+    records -.->|"Next action and owner"| coord
+    classDef secondary fill:#d6f3ee,stroke:#428478,color:#113c36
+    classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
+    classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
+```
+
+### What survives a handoff
+
+`ds task start` records the branch, worktree and workflow release. When the planner compiles the plan, `ds` writes a JSON state file beside it under `.ds/workflow/plans/`. Approvals, phase reports, commits, check outcomes, review findings, verdicts and acceptance accumulate against that task. The CLI uses those records to render the review page and issue the next worker’s brief.
+
+If a session closes during a full test run, the next coordinator can ask `ds` about that run. While its test processes are alive, `ds` tells the coordinator to wait. Once they stop, it can retry the interrupted check or reuse a completed result from the same cycle for the same commit and check commands. If it cannot determine whether the original processes are still running, it asks for that fact before starting another run.
+
+Run `ds status --current` in the worktree to see the next action and its owner. For automation, add `--json`. The result distinguishes a command to run, work to assign, a decision to request and a reason to wait. [CLI actions](docs/cli.md#workflow-actions)
+
+## Features
+
+| Feature | What you get |
 | --- | --- |
-| `.ds/config.toml` | Provider profiles, checks and project defaults |
-| `.ds/ds.lock` | The exact CLI release used for new tasks |
-| Changes to `AGENTS.md` and `.gitignore` | The agent's entry point and the ignore rule for local workflow history |
-| Project-scoped skill and its manager's lock, if present | The entry skill for clones and new task worktrees |
+| **Isolated tasks** | Each task has a branch, worktree and artifact directory. A project can also allocate a port and data directory per task. |
+| **Versioned product rules** | Each plan identifies the rules it changes. The resulting `docs/spec/` files travel with the code, ready for the next task’s spec scout. |
+| **Parallel builds** | The planner assigns files and dependencies to each phase. If two phases claim overlapping paths, `ds` requires a dependency between them. Independent phases can start together. |
+| **Verification follows the diff** | A small gate includes full project checks and code review. If the diff reaches beyond the paths assigned or granted to the phases, `ds` raises the gate to normal. The coordinator then dispatches a verifier for the applicable end-to-end cases. Generated changes under `docs/spec/` are exempt. |
+| **Reviewable commits** | Before reorganizing the working commits, `ds land` creates a backup branch. It compares the resulting Git tree with the checked tree. If a commit hook changes a file, the judge can restore the backup or keep the difference with a reason that appears on the review page. |
+| **Pinned workflow releases** | The project lock selects the engine and instructions for new tasks. An existing run keeps its release when a teammate updates the project. |
 
-Plans, run records and evidence stay local under `.ds/workflow/`. A teammate can install the matching release and rerun `ds init` to add their provider while keeping the shared settings. For scripted setup, see the [non-interactive example](skills/run-file/references/project-config.md).
+## Workflow stages
 
-## Start and resume a task
+Run `ds workflow` to see the stages. During a task, `ds status --current` shows the current stage, who owns the next action and what they can do.
 
-**From your agent**, open a fresh session in the project and ask:
+[Grill and prototype](#grill-and-prototype) · [Plan and approvals](#plan) · [Build by phase](#build) · [Verification and judge](#build-verification-and-judge) · [Human review and finish](#human-review-and-finish)
 
-> Use ds to start a task called fix-login.
+### Grill and Prototype
 
-**From your terminal**, run:
+```mermaid
+flowchart TD
+    task(["Task"]) --> plan["Planner"]:::primary
+    plan -->|"Trace behavior"| code["Code researcher"]:::secondary
+    plan -->|"Find rules"| scout["Spec scout"]:::secondary
+    rules[("Specs and ADRs")]:::cli -.-> scout
+    code -->|"Code paths"| grill["Planning discussion"]:::primary
+    scout -->|"Rules and conflicts"| grill
+    grill -->|"Product choices"| decision["Product decisions"]:::human
+    decision -->|"Settled term"| glossary["CONTEXT.md"]
+    decision -.->|"Design trade-off"| adr["Proposed ADR"]
+    decision -.->|"Try a design"| proto["Prototype worker"]:::secondary
+    proto -->|"Chosen variant"| draft(["Draft run and plan"])
+    decision -->|"Ready to plan"| draft
+    classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
+    classDef secondary fill:#d6f3ee,stroke:#428478,color:#113c36
+    classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
+    classDef human fill:#fff0cf,stroke:#a27625,color:#4d3613
+```
+
+When a task needs a Grill, the **code researcher** traces the behavior through the repository and brings back file paths, existing interfaces and where the change would fit. The **spec scout** reads the relevant rules in `docs/spec/`, brings back the reason for each, and flags conflicts with the request, the code or an architecture decision record (ADR). For the CSV example, the researcher might find where the page applies its date filter. The scout checks whether the project already defines which rows an export includes. You decide what should happen if the two disagree.
+
+As terms settle, the planner records them in the project glossary, `CONTEXT.md`. When an architectural choice involves a trade-off that would be costly to reverse and hard to understand later, the planner offers to record an ADR. If a design question remains, you can ask a secondary worker for a throwaway prototype before planning. [Grill](skills/grill/SKILL.md) · [Glossary and ADRs](skills/domain-modeling/SKILL.md)
+
+### Plan
+
+```mermaid
+flowchart TD
+    config[("Project defaults")]:::cli --> run["Task run file"]:::cli
+    decisions["Product decisions"] --> plan["Plan draft"]:::primary
+    run -->|"Checks and limits"| plan
+    plan --> cases["Done cases"]
+    plan --> delta["Spec changes"]
+    cases -->|"Case numbers"| check{"ds spec check"}:::cli
+    delta --> check
+    base[("Base spec")]:::cli --> check
+    check -->|"Invalid change"| plan
+    check -->|"Valid"| compile["Compile plan"]:::cli
+    compile --> approve["Approve run settings"]:::human
+    approve -->|"Frozen run"| summary["Approve summary"]:::human
+    summary -->|"Approval recorded"| wait(["Await build request"]):::cli
+    wait -->|"Explicit start"| coordinator["Build coordinator"]:::primary
+    classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
+    classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
+    classDef human fill:#fff0cf,stroke:#a27625,color:#4d3613
+```
+
+1. **Set the terms of the run.** The planner starts from the project defaults in the task’s `.run.toml`. You settle the model settings, phase and full-project checks, fixtures or accounts needed for verification, and how the branch will be integrated. [Example run file](skills/run-file/references/example.run.toml)
+2. **Write the plan and its spec changes.** Each phase names the files it may change, the existing spec areas it must respect, the checks to run and which phases it depends on. A secondary researcher identifies the relevant code and project instructions. In the plan’s `## Spec`, the planner records lasting rules to add (`+`), change (`~`) or remove (`-`), or writes `none`. The numbered **Done** cases describe an action and the result someone can observe.
+3. **Validate, approve and hand off.** The planner runs `ds spec check` against the base revision. You approve the run settings, then a linked summary of at most 350 words. Its approval covers the plan, spec changes and summary text for that run. If the planner edits an acceptance criterion afterward, `ds` requires renewed summary approval. Your separate instruction to build starts the handoff. [Example approval summary](skills/plan/references/resume.example.md)
+
+For example, the keyboard-shortcuts plan adds `settings#taken-blocks`. It gives the reason a duplicate binding must be rejected and links the rule to Done case 2. That case tells the verifier to record an occupied shortcut, check that the UI names the conflicting action and confirm that Save is disabled. [Worked plan and spec](skills/plan/references/example.md)
+
+### Build
+
+```mermaid
+flowchart TD
+    coord["Build coordinator"]:::primary -->|"Phase 1"| store["1 · Binding store"]:::secondary
+    store --> red["Run failing test"]
+    red --> green["Make test pass"]
+    green -->|"Commit + checks"| ready{"ds phase done"}:::cli
+    ready -->|"Report incomplete"| store
+    ready -->|"Store ready"| panel["2 · Settings panel"]:::secondary
+    ready -->|"Store ready"| live["3 · Live rebinding"]:::secondary
+    panel -->|"Commit and checks"| complete["Close phases"]:::cli
+    live -->|"Commit and checks"| complete
+    complete --> spec["Commit spec changes"]:::cli
+    spec --> gate(["Run full checks"]):::cli
+    classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
+    classDef secondary fill:#d6f3ee,stroke:#428478,color:#113c36
+    classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
+```
+
+The diagram follows the [keyboard-shortcuts plan](skills/plan/references/example.md). The coordinator starts a secondary implementer for each phase whose dependencies are met. They share the task worktree and write within their assigned files.
+
+Each implementer follows **test-driven development (TDD)**. They write one test where the behavior is observable, run it to see the expected failure, make it pass, then run neighboring tests and the phase’s configured checks. A test covering a Done case cited by a spec rule carries that rule’s ID. [TDD cycle](skills/tdd/SKILL.md)
+
+Before closing a phase, `ds phase done` checks the report against Git. The reported commits must be on the task branch after its base and touch only paths assigned or granted to the phase. Those paths must be clean, and the report must give an outcome for each configured check.
+
+### Build verification and Judge
+
+```mermaid
+flowchart TD
+    gate(["Full project checks"]):::cli --> review["Independent reviewer"]:::primary
+    gate -.->|"Small gate"| manual["Manual Done cases"]:::human
+    gate -->|"Normal gate"| verify["E2E verifier"]:::secondary
+    gate -->|"Check outcomes"| evidence["Gate record"]:::cli
+    review -->|"Findings + range"| evidence
+    verify -->|"Result + capture"| evidence
+    evidence -->|"Failures to fix"| fix["Fresh implementer"]:::secondary
+    fix -->|"Fix commits"| recheck["Checks and rechecks"]:::cli
+    recheck -->|"Updated evidence"| evidence
+    evidence -->|"Gate evidence"| judge["Fresh judge"]:::primary
+    judge -.->|"Evidence owed"| assigned["Reviewer or verifier"]
+    assigned -->|"Missing result"| evidence
+    judge -->|"Pass"| land(["Land checked tree"]):::cli
+    classDef human fill:#fff0cf,stroke:#a27625,color:#4d3613
+    classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
+    classDef secondary fill:#d6f3ee,stroke:#428478,color:#113c36
+    classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
+```
+
+When the phases finish, `ds` applies the plan’s spec changes to `docs/spec/` in the task branch, commits the updated rules and runs the full project checks. The coordinator then assigns two distinct jobs at a normal gate.
+
+| Subagent | Assignment | Evidence |
+| --- | --- | --- |
+| **Code reviewer · primary** | Read the diff against the approved plan, project conventions and applicable spec rules. | Findings and an explicit completion record for the commit range, even when the reviewer finds nothing. After a fix, `ds` uses the recorded coverage to determine which range needs review. |
+| **End-to-end verifier · secondary** | In parallel with review, drive the assigned Done cases against the running system through the browser, simulator, HTTP or CLI. | A result for each case at the tested commit, with a capture or command output. A case the environment prevents the worker from reaching records why. |
+
+At a small gate, full checks and the first code review still run. All Done cases go into your manual guide. Failed checks, defects and failed cases go to a fresh implementer on one fix list. The coordinator then runs the checks again and assigns targeted rechecks. [Verification levels and fixes](skills/build/references/gate.md)
+
+A **fresh primary judge** reads the plan, findings and evidence. It can send a missing result back to the reviewer or verifier, request a round of changes, or ask you to resolve a product question. If successive rounds keep producing as many new issues, or a previously fixed check fails again, `ds` can stop further rounds. The review page shows why the rounds stopped and which findings remain open. When the branch is ready for human review, the judge prepares the commits and writes a walkthrough for each. [Judge](skills/build/references/judge.md)
+
+### Human review and Finish
+
+```mermaid
+flowchart TD
+    judge["Fresh judge"]:::primary -->|"Pass"| land["ds land"]:::cli
+    land -->|"Commit walkthroughs"| guide["Prepare review guide"]:::primary
+    guide -->|"Build + manual cases"| human{"Human review"}:::human
+    human -->|"Request a round"| round["Round implementer"]:::secondary
+    judge -->|"Order a round"| round
+    round -->|"New commits"| check["Recheck round"]:::cli
+    check -->|"Current evidence"| judge
+    judge -->|"Product question"| answer["Product decision"]:::human
+    answer -->|"Answer"| judge
+    human -->|"Accept page"| accept["ds accept"]:::cli
+    accept -->|"Finish instruction"| finish{"Merge policy"}:::cli
+    finish -->|"ff-only or no-ff"| local(["Local merge"])
+    finish -->|"Merge request"| mr(["Open merge request"])
+    classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
+    classDef secondary fill:#d6f3ee,stroke:#428478,color:#113c36
+    classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
+    classDef human fill:#fff0cf,stroke:#a27625,color:#4d3613
+```
+
+The build coordinator sends a guide in your conversation language with the exact worktree, URL or artifact to open. It lists each manual case as an action and expected result, plus any outstanding decision and what you would defer by accepting. In the CSV example, you can try an empty date range and decide whether a hang on exports over 10,000 rows needs a fix before merge. [Example review guide](skills/build/references/example.guide.md)
+
+The page also lists decisions agents recorded during implementation, why they chose each option and what it would cost if they were wrong. You can request a round and receive a new guide after the fixes, rechecks and fresh verdict.
+
+Your acceptance applies to that page and its landed commit. On your instruction, `ds finish` checks the branch tip, verdict, evidence and acceptance again before merging locally or opening a merge request. If someone adds a commit after you accept, the revised build goes through review and acceptance again.
+
+## Examples
+
+### Start and resume a task from the terminal
+
+```console
+$ ds task start export-csv
+[…]
+Tree: /Users/alex/src/reports/.ds/workflow/trees/export-csv
+Plan: /Users/alex/src/reports/.ds/workflow/plans/export-csv.md
+Artifacts: /Users/alex/src/reports/.ds/workflow/artifacts/export-csv
+[…]
+Next:
+  User and planner — Continue in the task worktree with a grill or plan. [work]
+```
+
+Open your coding agent in the printed `Tree` and ask it to plan the export. From the project, use the task list or resume by name.
 
 ```sh
-ds task start fix-login
+ds status                    # List tasks in the project
+ds task resume export-csv    # Show this task's worktree and next step
 ```
 
-The command creates the branch and worktree and prints `Tree`, `Plan` and `Artifacts`. Open the printed worktree and run `ds status --current` to see who owns the next step. In a fresh agent session, **“Use ds”** loads the workflow guidance.
-
-| When you want to… | Run |
-| --- | --- |
-| See the project’s tasks | `ds status` |
-| Pick up an existing task | `ds task resume fix-login` |
-| Find the next step in this checkout | `ds status --current` |
-| Read a run’s pinned instructions | `ds help agents --plan "$plan"`, with `plan` set to the printed plan path |
-
-## The pipeline
-
-Run `ds workflow` to see the stages. Run `ds status PLAN` to see where a particular change stands.
-
-| Stage | What happens |
-| --- | --- |
-| Grill and prototype *(optional)* | Clarify the change and try a design before committing to a plan. |
-| Plan | Agree on the checks, task boundaries and finish policy. Approve the run and plan summary, then give the instruction to build. |
-| Build | Implementers work on the task branch and run the checks for each phase. |
-| Verify and judge | An independent reviewer examines the diff. Verification exercises the agreed use cases. The judge evaluates the evidence. |
-| Human review | You receive the acceptance guide, try the result and either approve it or request another round. |
-| Finish | On your instruction, the coordinator integrates the change using the agreed merge policy. |
-
-<details>
-<summary>All eight stages and approval rules</summary>
-
-1. **Grill (optional).** Use a grill when the change is unclear or a discussion
-   for simpler work. Workers bring facts from the code. You make the decisions.
-   A bug adds its reproduction and its cause. A second worker on secondary, the spec
-   scout, brings the rules in `docs/spec/` that the task touches; you are asked
-   about a rule only when the task leaves open whether it stays true, in product
-   words, and the plan's writer records it.
-2. **Prototype (optional).** After the discussion, you can choose an HTML file,
-   a prototype inside the app with real data, or code. A worker draws it.
-3. **Run file and plan.** First the run file (`<slug>.run.toml`,
-   [`run-file`](skills/run-file/SKILL.md)): what the run may do, its checks, its
-   isolation and how it ends, asked once so nothing pulls you in mid-run. Then
-   the plan, always a file, one screen: Result, Approach, Out of scope, Phases,
-   Checks, Done, `## Spec` (the rules added, changed, removed) and the prototype's
-   link, in the language named by the `Language` line of your `AGENTS.md`; `ds spec check` runs before you see it. Each phase names its territory, the
-   skills its code follows, the spec files it reads, and what it waits for; territories and waits form
-   the graph. `ds approve` compiles the plan into its state, a JSON
-   file beside it; from then on the CLI keeps the state and renders the plan,
-   its notes, the judge's file and the gate page from it. Status runs `draft` →
-   `approved` → `building` → `at the human gate` → `passed` → `merged`, via
-   `a merge-request link` when finish opens one. The plan session sets
-   `approved` only after explicit run approval and approval of a linked summary
-   of at most 350 words. `approve` only validates; `run approve --by --words`
-   freezes the proposed run, and `summary approve --file --by --words` binds
-   consent to the current run, plan and Spec. Planning then stops.
-4. **Build.** Summary approval starts nothing. A subsequent instruction chooses
-   herdr, a native independent session or manual handoff.
-   That session runs the graph and owns pipeline transitions. On ds it reuses
-   the task's branch and worktree from planning. Every phase whose
-   dependencies are met starts at once, as an implementer that writes only
-   inside its territory and runs the project's checks on it. Before the gate and
-   each re-check, the CLI writes and commits `docs/spec/` alone.
-5. **Build verification.** The coordinator opens the gate after the last phase.
-   At the level the plan names, small or normal, code runs
-   the full checks, then at once a fresh review against the project's rules (and the `Spec:` areas' rules) and
-   e2e over what you would not see by trying the app, at each width the plan
-   names. Code records the findings and results; defects and failures make one
-   list for one new implementer, then a targeted re-check. How many fixes and
-   rounds a gate allows is held in code, not here.
-6. **Judge.** A fresh primary judge decides every open entry and every Convention
-   (let through, one round with a cause, or a question to you), records its
-   verdict and its prediction of your verdict, and lands the branch: the working commits
-   become the ones a reviewer reads, one or a few by meaning, on the same tree;
-   a backup branch keeps the old ones.
-7. **Human review.** The build session sends the guide you see on the page.
-   The guide tells you where to open the landed result,
-   what to try and what you still need to decide. The page also has the judge's
-   report, E2E results with their commits and a walkthrough of each landed commit.
-   Your designated contact alerts you and opens the result. You try the running app
-   and read the commits in one sitting. Each note you make gets a cause from
-   seven and is matched against the judge's prediction; a note that changes
-   the approach is listed as a task, not built. A round runs on your word,
-   then the judge again (it lands) and back to the gate. The contact relays
-   your notes, round requests and approval unchanged to the same build session;
-   notes alone start no round. [Example guide](skills/build/references/example.guide.md).
-8. **Finish.** `accept --by --words` records the user’s or authorized acceptor’s
-   approval of the current page; finish runs when instructed. It asks
-   nothing: the run file says how it ends (a merge request, or local with
-   `--no-ff` or `--ff-only`) and whether the plan's backups go; the message
-   comes from the plan's Result. The branch stays.
-
-</details>
-
-<details>
-<summary>CLI output for agents and automation</summary>
-
-For automation, use `workflow --json` before there is a plan, or
-`status --json <plan>` and `status --current --json` during a run. Read
-`workflow.actions` on a status result, or `actions` on the entry view. Each
-action names its `owner`, has readable `action` text, and supplies a `kind`.
-
-- `run` carries an `argv` array. Run it directly as a process, with each array
-  item as a separate argument. The interpreter, script and plan paths are absolute.
-- `work` names a `role` and its `assignment`, such as a phase number, review
-  range or Done cases. Reuse an existing worker when it owns the assignment.
-  For a new worker, use the brief command with the matching assignment and
-  dispatch the returned brief through the chosen host.
-- `wait` identifies work or authorization to wait for. Read status again when
-  it arrives.
-- `ask` identifies a decision or missing input. Obtain it from the named owner
-  before proceeding.
-
-Pass `--provider NAME` to status for executable brief commands using the
-approved executor snapshot. The ordinary `status` inventory keeps its existing
-shape. The merged workflow has an empty `actions` array. Guidance is a snapshot
-and the CLI still applies each command's own checks.
-
-</details>
-
-## Migrate from the legacy plugin
-
-1. **Install the CLI and the entry skill** as above. Keep the old engine and
-   its files available to any workers still using previously issued commands.
-2. **Disable the old plugin for new sessions.** Use the command for your host
-   below. If you previously copied individual skills such as `build`, `plan`,
-   or `grill` into a personal or project skills directory, disable those
-   copies too, or move them outside the host's skill search paths. A plugin
-   toggle only controls the skills that the plugin supplies. In Codex you
-   can disable a standalone copy by its `SKILL.md` path.
-   [Disable local Codex skills](https://learn.chatgpt.com/docs/build-skills#enable-or-disable-local-codex-skills)
-3. **Adopt the existing history.** Run `ds init` in the main project checkout
-   while the old linked worktrees still exist, then run `ds status`. Check
-   that your old plans appear and an active plan shows the expected stage.
-   The main checkout's `.ai-workflow/` stays in place. Linked checkout history
-   moves under `.ds/workflow/legacy/`, with links at the old paths. Leave
-   those links in place. If init reports a collision, inspect the named path,
-   move the conflicting item aside, and retry.
-4. **Switch new work to the CLI.** Commit the shared project files listed
-   under [initialization](#initialize-your-project). Start a fresh session
-   and say **“Use ds”**. Once outstanding legacy workers have finished,
-   you can uninstall the old plugin.
-
-| Host | Disable the old plugin |
-|---|---|
-| Codex | Start the session with `codex -c 'plugins.dev-skills@dev-skills.enabled=false'`. |
-| Claude Code | Start the session with `claude --settings '{"enabledPlugins":{"dev-skills@dev-skills":false}}'`. |
-| Antigravity CLI | Run `agy plugin disable dev-skills`, then start a fresh session. Use `agy plugin enable dev-skills` to restore it. |
-
-**Active 7.0.0 runs.** If the approved summary was a relative symlink to a
-file outside a linked checkout, a previously issued `pipeline.py build start`
-can report `no-summary` after adoption. Run `ds build start` with the **same
-plan path and arguments**. The current CLI uses the existing approval.
-
-## Update or repair a release
-
-For a project with an existing lock, install the Git revision that produced
-its release ID. Set `revision` to that published tag or commit, then run:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/bmox0/dev-skills/main/install.sh | DS_REF="$revision" bash
-```
-
-To install into a separate prefix, pass `--prefix DIR` via
-`bash -s -- --prefix DIR`. The project lock stores the release ID. It does
-not fetch source code or select a Git revision for the installer.
-
-To use the newly installed release for new work, run `ds update` in
-the project and commit the updated `.ds/ds.lock`. This selects the most
-recently installed release for new tasks. Use `ds update RELEASE` to select
-an exact installed ID. Existing versioned runs keep their recorded release.
-
-To repair a missing or damaged release, reinstall the source revision that
-produced its exact ID. If you had to use an older installer, rerun your
-current installer afterward to restore the shared launcher. Reinstalling
-preserves the project lock. Use `ds help agents --plan "$plan"` to verify
-that the original run can read its instructions again.
-
-## Reference
-
-<details>
-<summary>Requests you can make to the agent</summary>
-
-These are workflow requests you can make to the agent. Use `ds --help` to
-list shell commands.
-
-| You type | It does |
-|---|---|
-| [`grill`](skills/grill/SKILL.md), or just talk | reach a shared understanding; then a prototype is offered, then the run file, then the plan |
-| [`bug`](skills/bug/SKILL.md) | a worker reproduces it and brings the cause; the red test becomes phase 1 |
-| [`prototype`](skills/prototype/SKILL.md) | a throwaway answer to a design question, drawn by a worker |
-| [`epic`](skills/epic/SKILL.md) | several plans in order, only when you say so |
-| [`run-file`](skills/run-file/SKILL.md) | what the run may do, its checks and how it ends, asked once before the plan |
-| [`plan`](skills/plan/SKILL.md) | the one-screen plan and its graph |
-| [`build <plan>`](skills/build/SKILL.md) | the branch, the implementers, the E2E gate, the judge, the human gate |
-| [`land`](skills/land/SKILL.md) | the commits a reviewer reads; the judge runs it |
-| [`finish`](skills/finish/SKILL.md) | on your word at the gate, merge it: a merge request, or local with `--no-ff` or `--ff-only` |
-
-The chosen handoff reuses the existing writer on resume. Questions and acceptance
-go to the user or designated orchestrator within granted authority; relayed
-words stay unchanged. The contract: [`references/SESSIONS.md`](references/SESSIONS.md).
-
-</details>
-
-<details>
-<summary>Roles, executors and advisory hooks</summary>
-
-- **You** decide, and say at the gate whether it passes. A prototype, an epic, how to
-  finish and a retro are your call.
-- **The orchestrator** plans using primary, handles routine questions from the
-  agreed plan, and relays your words within the authority you grant.
-- **The build session** coordinates using primary and owns pipeline transitions.
-  It reports to the designated contact. Coordinators never edit code.
-- **Implementers** use secondary in a clean context, handed their phase and
-  earlier reports. They record rulings with their cost if wrong.
-- **Workers** use secondary for research, prototypes and verify/E2E.
-- **The reviewer** uses primary for the first review, even at a small gate;
-  secondary for rechecks and round reviews.
-- **The judge** uses primary after every gate or round, decides what results
-  mean, records its prediction and runs `land`.
-
-`AGENTS.md` supplies project rules. The shared `.ds/config.toml` holds each
-provider's primary and secondary model and optional effort (legacy runs read
-the `AGENTS.md` Executors block). `ds executor show --provider NAME` reads
-current defaults. Add the plan for its approved snapshot. Dispatch applies
-the model and effort in the brief. A missing profile asks for configuration,
-never substitutes a provider. [Codex adapter](references/CODEX.md).
-
-The state lives in code. `skills/build/pipeline.py` (the CLI) keeps each plan's
-state and the run file's approved values, renders the plan and the gate page,
-runs the checks, holds the caps, and lands and finishes as the run file says;
-the skills and agents decide what to do with what it reports. The other tool is
-`skills/browser-test/tab.mjs`; the level-1 checks are the project's own tests,
-linters and typechecks.
-
-Native hooks only advise: none blocks a tool or interprets a shell command.
-Each host manifest selects its registration under `adapters/`; native payloads
-reach the normalized handler in `hooks/advise.py`. At startup, resume and
-compaction, `status --current` identifies plans by path and shows their next
-actions. The main checkout shows approved plans awaiting a separate start
-instruction and ongoing runs. A linked worktree shows its own run. After an edit
-of a compiled plan's rendered or state file, the hook names the `pipeline.py`
-command that makes the change. In Claude Code the hooks run once the plugin is enabled. In Codex you
-trust them, and again after every plugin update. Untrusted or off, they change
-no run: only the advice is lost. Qoder uses its own `QODER_PLUGIN_ROOT`
-registration. Host permissions and trust remain the user’s decision.
-
-</details>
-
-<details>
-<summary>Project instructions and environment settings</summary>
-
-The workflow uses the project's `AGENTS.md` and style skills for build
-and review. The plan names the skills each phase follows. `ds init` can
-suggest commands from the Environment block below. Check commands for new
-ds work then come from the shared config.
-
-```markdown
-## Environment
-
-**Tests.** `npm test`
-**Lint.** `npm run lint`
-**Dev server.** `npm run dev`, serves on `http://localhost:5173`
-**Runtime.** a browser
-**Access.** a test account without a one-time code, its password in `.env.local`
-```
-
-The full format is in
-[environment-contract.md](skills/plan/references/environment-contract.md).
-`AGENTS.md` serves both hosts: Codex reads it, and Claude Code reads it where
-the project has no `CLAUDE.md`, or one that imports it with `@AGENTS.md`.
-
-</details>
-
-<details>
-<summary>Install the legacy native plugin</summary>
-
-In Claude Code:
-
-```
-/plugin marketplace add bmox0/dev-skills
-/plugin install dev-skills@dev-skills
-```
-
-Then restart the session. Installing also brings the agents `implementer`, `reviewer` and `judge`.
-
-In Codex:
-
-```sh
-codex plugin marketplace add bmox0/dev-skills
-codex plugin add dev-skills@dev-skills
-```
-
-Then start a new session, and name a skill with `$`: `$dev-skills:grill`,
-`$dev-skills:build <plan>`, `$dev-skills:land`, `$dev-skills:finish`. Codex's own `/plan` is not
-this plugin's. To update, `codex plugin marketplace upgrade dev-skills`, then
-`codex plugin add dev-skills@dev-skills` again. In the default
-`workspace-write` sandbox `.git` is read-only, so the first `git add` and
-`git commit` of a build ask for approval; approve each kind once.
-
-In Qoder CLI, load the complete checkout for local testing:
-
-```sh
-qodercli --plugin-dir /absolute/path/to/dev-skills --add-dir /absolute/path/to/dev-skills
-```
-
-For a native installation, use `qodercli plugin install /absolute/path/to/dev-skills`
-and start a new session. The package’s `.qoder-plugin/plugin.json` names the same
-skills and three role sources. Use the native names `dev-skills:implementer`,
-`dev-skills:reviewer` and `dev-skills:judge`; pass the approved model and optional
-effort explicitly. `--add-dir` grants the selected session access to package
-resources outside the target cwd; loading metadata alone does not grant tool
-access. Honor any remaining native permission prompt. A loader inventory alone
-does not establish role execution.
-
-The repository is a marketplace holding exactly one plugin, itself:
-[`.claude-plugin/`](.claude-plugin/marketplace.json) for Claude Code,
-[`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) and
-[`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) for Codex;
-[`.qoder-plugin/plugin.json`](.qoder-plugin/plugin.json) is Qoder’s native manifest.
-Keep the complete repository layout when installing: skills read sibling roles,
-references and the CLI. Project `AGENTS.md`, worktrees and workflow artifacts
-stay in the target project. Native version and loaded revision must be checked
-separately. [Adapter contracts and host limits](adapters/README.md) describe coverage.
-
-</details>
-
-<details>
-<summary>Skill directory</summary>
-
-| Skill | For |
-|---|---|
-| [`browser-test`](skills/browser-test/SKILL.md) | the web e2e tool: the use cases as one Playwright scenario in a visible tab you can watch, single commands to dig in; a web app or an Electron build over CDP |
-| [`bug`](skills/bug/SKILL.md) | reproduce a bug and pin down its cause before the plan |
-| [`build`](skills/build/SKILL.md) | run a plan: the graph, the E2E gate, the judge, the human gate |
-| [`commit-work`](skills/commit-work/SKILL.md) | stage by path, split into logical commits, write the message |
-| [`domain-modeling`](skills/domain-modeling/SKILL.md) | the glossary in `CONTEXT.md`, and an ADR for a decision that needs one |
-| [`epic`](skills/epic/SKILL.md) | shared decisions and the ordered list of plans |
-| [`finish`](skills/finish/SKILL.md) | merge a passed plan, on the user's word |
-| [`grill`](skills/grill/SKILL.md) | talk an idea into a shared understanding |
-| [`handoff`](skills/handoff/SKILL.md) | pack this session for a fresh context |
-| [`land`](skills/land/SKILL.md) | rewrite a plan's branch into reviewable commits, run by the judge |
-| [`plan`](skills/plan/SKILL.md) | write the one-screen plan |
-| [`prototype`](skills/prototype/SKILL.md) | answer a design question with throwaway code |
-| [`retro`](skills/retro/SKILL.md) | propose environment changes after a plan, each with what it removes |
-| [`review`](skills/review/SKILL.md) | the code half of the E2E gate, or a review of any range |
-| [`run-file`](skills/run-file/SKILL.md) | what the run may do, its checks and how it ends, asked once before the plan |
-| [`spec`](skills/spec/SKILL.md) | the project's rules in `docs/spec/`: the pipeline's grill, plan and build call it; alone, write one task's rules built outside the pipeline, list and show them |
-| [`tdd`](skills/tdd/SKILL.md) | red before green, read by the implementer |
-| [`verify`](skills/verify/SKILL.md) | the e2e half of the E2E gate: drive the Done use cases |
-| [`writing-skills`](skills/writing-skills/SKILL.md) | design or audit a skill |
-
-[`references/VOCABULARY.md`](references/VOCABULARY.md) defines the words they
-share.
-
-</details>
-
-<details>
-<summary>Workflow principles</summary>
-
-- A stage stays only if it saves more time than it takes.
-- The skills do not restrict the models or make them work one step after
-  another without a reason.
-- Where the work could go two ways, the user chooses, not the agent. During
-  implementation the build session chooses from the agreed plan and the human gate shows
-  each choice; an irreversible one waits for the authorized contact.
-
-</details>
-
-## Checking this repository
-
-```sh
-scripts/check
-scripts/test
-```
-
-Run one fixture with `scripts/test <path>`. For pull request and push profiles, see the [CI workflow](.github/workflows/ci.yml).
-
-<details>
-<summary>Native checks, fixtures and usage reports</summary>
-
-`scripts/check` runs shared resource checks: links, `dev-skills:` names,
-retired names, frontmatter and [word budgets](scripts/word-budgets.txt).
-It requires Python 3.11+ and calls no AI client. Select native checks explicitly:
-
-```sh
-scripts/check --host claude --host codex --host qoder
-```
-
-Each selected adapter names the actual native version and evidence scope.
-Claude validates manifests; Codex installs into a temporary home and reads the
-model-visible skills; Qoder validates its manifest and inventories loaded
-skills, roles and hooks. None of those checks calls a model or certifies live
-role execution. Missing or failed selected checks fail. Nonselected hosts are
-outside that run’s coverage.
-
-`scripts/test` runs offline behavioural tests with Bash, Python 3.11+, Node,
-Git and standard shell tools; installed AI clients are unnecessary. Native
-adapter tests use executable fixtures. One file is `scripts/test <path>`.
-Relocation fixtures check complete resources, executable modes, target-project
-profiles and each declared advisory launcher; they are fixture coverage.
-
-`scripts/usage --source claude` or `scripts/usage --source codex` reports wall
-and active hours, human messages, tokens and descendants. The source is required;
-unknown sources fail. Readers own native transcript roots: `~/.claude/projects`
-and `$CODEX_HOME/sessions` (default `~/.codex/sessions`), respectively; `--root DIR`
-overrides them. `--json`, `--project` and `--since` select session output, project
-and start date. Codex uses the initial cwd, cumulative token snapshots without
-adding cached input again, and separate descendant totals. Forks exclude inherited
-history where an ordinal is available. Missing snapshots report zero observed
-usage; orphan children are omitted. Codex skill counts are not inferred, and
-encrypted messages or tool arguments are not recovered. No Qoder transcript
-reader is claimed. [Adapter interfaces](adapters/README.md) remain open to explicit
-additional validators and readers without a common host catalogue.
-
-Working on this repository with the installed plugin also active runs the
-pipeline twice; turn it off first: `claude --settings
-'{"enabledPlugins":{"dev-skills@dev-skills":false}}'`, or in Codex
-`codex -c 'plugins.dev-skills@dev-skills.enabled=false'`.
-
-</details>
-
-## Licence
-
-[MIT](LICENSE)
+### Read a plan or review guide
+
+- **Keyboard shortcuts.** Read the summary you would approve, then open the full plan to see why the Settings panel and live rebinding can be built in parallel. [Approval summary](skills/plan/references/resume.example.md) · [Full plan](skills/plan/references/example.md)
+- [CSV export review guide](skills/build/references/example.guide.md) — see what to download, what to expect for an empty date range and how an unresolved defect appears for your decision.
+- [Project configuration](skills/run-file/references/project-config.md) — initialize from a script and configure per-task setup.
+- [CLI reference](docs/cli.md) — update or repair a release, migrate existing runs or read the next actions as JSON.
