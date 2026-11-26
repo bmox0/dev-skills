@@ -3094,9 +3094,9 @@ def cli_argv(plan=None, *, release=None):
     return [sys.executable, os.path.realpath(__file__)]
 
 
-def plan_command(plan, command, *args, cwd=None, **options):
+def plan_command(plan, command, *args, cwd=None, release=None, **options):
     return {"cwd": cwd or plan_root(plan),
-            "argv": [*cli_argv(plan), *command.split(), plan_paths(plan)[0], *map(str, args)],
+            "argv": [*cli_argv(plan, release=release), *command.split(), plan_paths(plan)[0], *map(str, args)],
             **({"options": options} if options else {})}
 
 
@@ -3271,13 +3271,15 @@ def role_definition(role):
     return next(stage for stage in workflow_catalog()["stages"].values() if role in stage.get("roles", {}))
 
 
-def bind_assignment(plan, st, brief, work):
+def bind_assignment(plan, st, brief, work, *, legacy=None):
     role, assignment = work["role"], work["assignment"]
     md, state, _ = plan_paths(plan)
-    tree = tree_fact(plan, st)
+    tree = st["tree"] if legacy else tree_fact(plan, st)
+    bundle, source = legacy or (Path(PACKAGE), role_definition(role)["roles"][role])
+    release = bundle.name if legacy else None
 
     def report(label, command, *args, **options):
-        return {"label": label, **plan_command(plan, command, *args, cwd=tree, **options)}
+        return {"label": label, **plan_command(plan, command, *args, cwd=tree, release=release, **options)}
 
     if brief in ("implementer", "fix", "round"):
         args = (assignment["phase"],) if brief == "implementer" else ()
@@ -3306,13 +3308,13 @@ def bind_assignment(plan, st, brief, work):
                 record["options"]["decisions"] = "--decide ID ACTION REASON (for each open item or convention)"
                 if all(v["kind"] == "evidence-owed" for v in st.get("verdicts", [])):
                     record["options"].update(predicted="--predicted pass|round", engine="--engine NAME")
-    assignment.update(cwd=tree, role_source=os.path.join(PACKAGE, role_definition(role)["roles"][role]),
-                      protocol=os.path.join(PACKAGE, "references/SESSIONS.md"),
-                      instructions=[[*cli_argv(plan), role, "--plan", md]], reports=reports,
+    assignment.update(cwd=tree, role_source=str(bundle / source),
+                      protocol=str(bundle / "references/SESSIONS.md"),
+                      instructions=[[*cli_argv(plan, release=release), role, "--plan", md]], reports=reports,
                       return_channel={"contact": "dispatching build coordinator",
                                       "method": "native message or agreed result channel",
                                       "records": state})
-    if standalone_bundle() is not None:
+    if not legacy and standalone_bundle() is not None:
         assignment["herdr_check"] = plan_command(plan, "handoff herdr", workspace="--workspace ID", pane="--pane ID")
 
 
@@ -3426,11 +3428,15 @@ def add_brief_actions(actions, plan, st, provider, brief, work, *args):
             step = run_action(plan, "Coordinator", f"Generate the `brief {brief}` assignment for {work['owner']}.", f"brief {brief}", *args)
             work["assignment"]["brief"] = {k: step[k] for k in ("argv", "cwd")}
             actions.append({**step, "role": work["role"], "assignment": work["assignment"]})
-        actions.append(workflow_action("Coordinator", "wait", f"Only after confirming dispatch, wait for {work['owner']} to record the result before advancing.",
-                                       waiting_for=f"{brief}-report", assigned_to=work["owner"],
-                                       condition="after-dispatch", records=work["assignment"]["return_channel"]["records"]))
+        actions.append(assignment_wait(brief, work))
     elif needed not in actions:
         actions.append(needed)
+
+
+def assignment_wait(brief, work):
+    return workflow_action("Coordinator", "wait", f"Only after confirming dispatch, wait for {work['owner']} to record the result before advancing.",
+                           waiting_for=f"{brief}-report", assigned_to=work["owner"],
+                           condition="after-dispatch", records=work["assignment"]["return_channel"]["records"])
 
 
 def verification_workflow(plan, st, c, tree, provider):
@@ -3695,9 +3701,9 @@ def status_workflow(plan, head, stage, actions):
     return workflow_view(plan_paths(plan)[0], stage, actions, history)
 
 
-def pinned_workflow(bundle, plan, cwd, provider, command):
+def pinned_response(bundle, plan, cwd, provider, command, *, release=None):
     from runweld_release import PROGRAM, ReleaseError, verify_release
-    if bundle is None or not (release := plan_release(plan)) or release == bundle.name:
+    if bundle is None or not (release := release or plan_release(plan)) or release == bundle.name:
         return None
     engine = verify_release(bundle.parents[1], release) / PROGRAM
     if not command:
@@ -3708,7 +3714,12 @@ def pinned_workflow(bundle, plan, cwd, provider, command):
     result = subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
     if result.returncode:
         raise ReleaseError(result.stderr.strip() or result.stdout.strip() or f"{release} could not read {plan}")
-    return json.loads(result.stdout)["workflow"]
+    return json.loads(result.stdout)
+
+
+def pinned_workflow(bundle, plan, cwd, provider, command):
+    response = pinned_response(bundle, plan, cwd, provider, command)
+    return response["workflow"] if response else None
 
 
 def summary(plan, st, head, tail=None, *, workflow=False, provider=None):
@@ -3881,17 +3892,126 @@ def bind_legacy_planning_action(step, plan, tree, bundle):
     if step.get("role") != "planner" or "instructions" in assignment or kind not in ("grill", "plan", "task-start"):
         return
     if kind == "task-start":
-        step.update(kind="run", cwd=plan_root(plan), argv=[*cli_argv(plan), "task", "start", Path(plan).stem])
+        step.update(kind="run", cwd=plan_root(plan), argv=[*cli_argv(plan, release=bundle.name), "task", "start", Path(plan).stem])
         return
     guides = ("grill", "plan") if kind == "grill" else ("plan",)
-    assignment.update(cwd=tree, instructions=[[*cli_argv(plan), guide, "--plan", plan] for guide in guides],
+    assignment.update(cwd=tree, instructions=[[*cli_argv(plan, release=bundle.name), guide, "--plan", plan] for guide in guides],
                       role_source=str(bundle / "workflow" / kind / "GUIDE.md"),
                       protocol=str(bundle / "references/SESSIONS.md"),
                       reports=[{"label": "Validate the written draft without approving it",
-                                **plan_command(plan, "approve", cwd=tree)}],
+                                **plan_command(plan, "approve", cwd=tree, release=bundle.name)}],
                       return_channel={"contact": "human and planner",
                                       "method": "save the decisions in the draft",
                                       "records": plan})
+
+
+def legacy_brief(plan, status, brief, work):
+    assignment = work["assignment"]
+    scopes = {"implementer": ("phase",), "fix": ("cycle", "fix"), "round": ("round",),
+              "reviewer": ("id",), "verify": ("cycle",), "judge": ("cycle",)}
+    scope = "-".join(str(assignment[key]) for key in scopes[brief])
+    stem = f"{Path(plan).stem}.brief-{brief}-{scope}"
+    pattern = stem + ("*.md" if brief in ("reviewer", "verify") else ".md")
+    release = status.get("release") or "unversioned run"
+    label = f"{brief} phase {assignment['phase']}" if brief == "implementer" else brief
+    expected = [f"Plan: {plan}", f"Tree: {assignment['cwd']}", f"Branch: {status['branch']}",
+                f"Assignment: {label}", f"Run release: {release}", f"Role source: {assignment['role_source']}"]
+    if executor := work.get("executor"):
+        expected += [f"Executor {k}: {executor[k]}" for k in ("provider", "tier", "model", "effort") if k in executor]
+    if brief in ("reviewer", "verify", "judge"):
+        expected.append(f"HEAD: {head_sha(None, assignment['cwd'])}")
+    if brief == "judge" and assignment.get("verdict"):
+        answer = status["verdicts"][-1].get("answer")
+        expected.append(f"The user's answer: {answer}")
+    approved = max((record.get("at") or "" for record in status.get("approvals", {}).values()), default="")
+    # Legacy briefs lack an assignment digest. Match the saved scope and pinned context without inferring dispatch.
+    found = []
+    for path in Path(plan).parent.glob(pattern):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            mtime = path.stat().st_mtime
+            if datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") < approved:
+                continue
+            lines = read_required(path, "brief", "restore the prepared brief").splitlines()
+        except (OSError, Refuse):
+            continue
+        if not all(line in lines for line in expected):
+            continue
+        if brief == "reviewer":
+            binding = shlex.join([plan, "--assignment", assignment["id"], "--range", assignment["range"]])
+            if not any(line.startswith("- Complete the review: ") and line.endswith(binding) for line in lines):
+                continue
+        if brief == "verify":
+            body = "\n".join(lines).partition("## Cases to drive\n")[2].partition("\nHow to run the system:")[0]
+            if not all(re.search(rf"(?m)^{n}\. ", body) for n in assignment["cases"]):
+                continue
+        found.append((mtime, str(path)))
+    return max(found)[1] if found else None
+
+
+def bind_legacy_actions(status, workflow, plan, task, bundle, provider):
+    actions = workflow["actions"]
+    roles = {role: source for stage in workflow["stages"] for role, source in stage.get("roles", {}).items()}
+    briefs = {digest(step["assignment"]): step for step in actions
+              if step["kind"] == "run" and step.get("role") and step["argv"][4:5] == ["brief"]}
+    added, prepared = [], []
+
+    def command(name, *args, **options):
+        return plan_command(plan, name, *args, release=bundle.name, **options)
+
+    def consent_evidence(name):
+        for i, message in enumerate(status.get("drift", [])):
+            fact, _, fix = message.partition(" — fix: ")
+            if f"`{name}" in fix or f"`pipeline.py {name}" in fix:
+                status["drift"][i] = fact
+
+    for step in actions:
+        if not step.get("command"):
+            approval = step.get("input")
+            if approval == "run-approval":
+                consent_evidence("run approve")
+                step.update(action=f"Review {run_path(plan)} with the human and record their unchanged approval of this run.",
+                            command=command("run approve", by="--by NAME", words="--words TEXT"),
+                            alternatives=[command("run show")])
+            elif approval == "summary-approval":
+                consent_evidence("summary approve")
+                step.update(action="Present a summary linked to this plan and record the human's unchanged approval.",
+                            command=command("summary approve", file="--file PATH", by="--by NAME", words="--words TEXT",
+                                            acceptor="--acceptor NAME (for designated acceptance)",
+                                            authority="--authority TEXT (the human's grant for designated acceptance)"))
+            elif step.get("waiting_for") == "start-instruction":
+                step["command"] = command("build start", **({} if task else {"base": "--base REF"}))
+            elif approval == "provider":
+                step.update(action="Supply the current provider to get executable brief commands.",
+                            command=command("next --plan", provider="--provider NAME"))
+            elif step.get("waiting_for") == "judge-answer" or (approval == "evidence-exception" and "brief judge" in step["action"]):
+                note = "ANSWER" if step.get("waiting_for") == "judge-answer" else "REASON"
+                step["command"] = command("brief judge", *(("--provider", provider) if provider else ()),
+                                          note=f"--note {note}", **({} if provider else {"provider": "--provider NAME"}))
+        if step["kind"] != "work":
+            continue
+        bind_legacy_planning_action(step, plan, status["tree"] or plan_root(plan), bundle)
+        role, assignment = step.get("role"), step.get("assignment", {})
+        if role not in roles or "instructions" in assignment:
+            continue
+        kind = assignment["kind"]
+        if kind not in ("phase", "review", "verify", "fix", "round", "judge"):
+            continue
+        brief = {"phase": "implementer", "review": "reviewer"}.get(kind, kind)
+        generation = briefs.get(digest(assignment))
+        bind_assignment(plan, status, brief, step, legacy=(bundle, roles[role]))
+        if generation:
+            if path := legacy_brief(plan, status, brief, step):
+                assignment["brief"] = {"path": path, "dispatch": "unverified"}
+                step["action"] += " Recover the prepared brief. Inspect the host for a live assignment before dispatch or continuation."
+                prepared.append(generation)
+            else:
+                assignment["brief"] = {"argv": generation["argv"], "cwd": generation.get("cwd", plan_root(plan))}
+                generation["assignment"] = assignment
+            added.append(assignment_wait(brief, step))
+
+    return [step for step in actions if step not in prepared] + added
 
 
 def cmd_next(bundle, a, selected_plan, legacy_release):
@@ -3904,28 +4024,34 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
     if selected_plan:
         plan = plan_paths(selected_plan)[0]
         task = task_for(plan)
-        discovery = read_discovery(plan)["stages"] if task else {}
+        has_plan = os.path.lexists(plan)
         goal = task.get("goal") if task else None
-        if task and (not os.path.lexists(plan) or (not legacy_release and discovery_in_use(task, discovery) and not load_state(plan))):
-            status = task_stage(task)
-            command = ("status", plan) if os.path.lexists(plan) else ("task", "resume", task["id"])
+        if legacy_release:
+            command = ("task", "resume", task["id"]) if task and not has_plan else ("status", plan)
+            status = pinned_response(bundle, plan, cwd, a.provider, command, release=legacy_release)
+            if not has_plan:
+                status.update(status="planning", plan=task["id"], ready=[])
+            discovery = status.get("discovery", {})
         else:
-            status = cmd_status(plan, False, cwd, provider=a.provider, as_data=True)
+            discovery = read_discovery(plan)["stages"] if task else {}
+            if task and (not has_plan or (discovery_in_use(task, discovery) and not load_state(plan))):
+                status = task_stage(task)
+            else:
+                status = cmd_status(plan, False, cwd, provider=a.provider, as_data=True)
+        if has_plan:
             head, _ = read_plan(plan)
             goal = "\n".join(sections(head).get("Result", (0, []))[1]).strip() or goal
-            command = ("status", plan)
-        workflow = (pinned_workflow(bundle, plan, cwd, a.provider, command) if legacy_release else None) or status["workflow"]
-        del status["workflow"]
+        workflow = status.pop("workflow")
         stage = workflow["stage"]
-        actions = workflow["actions"]
+        actions = (bind_legacy_actions(status, workflow, plan, task, bundle.parent / legacy_release, a.provider)
+                   if legacy_release else workflow["actions"])
         for step in actions:
-            if legacy_release and task:
-                bind_legacy_planning_action(step, plan, task["tree"], bundle.parent / legacy_release)
             if step["kind"] == "run":
                 step.setdefault("cwd", view["project"])
         purpose = ("Prepare the task worktree if needed, reproduce the failure and save the cause and red evidence."
                    if stage == "reproduce" else workflow_catalog()["stages"][stage].get("purpose", stage))
-        view.update(task={**status, "id": status["plan"], "artifacts": task["artifacts"] if task else str(Path(plan).parent),
+        view.update(task={**status, "id": status["plan"], "path": plan, "release": legacy_release or status["release"],
+                          "artifacts": task["artifacts"] if task else str(Path(plan).parent),
                           "goal": goal, **({"discovery": discovery} if task else {})},
                     stage=stage, purpose=purpose, actions=actions, evidence=next_evidence(status))
     elif not project:

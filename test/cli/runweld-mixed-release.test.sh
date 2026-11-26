@@ -33,6 +33,31 @@ legacy = """        if task["id"] == "previous-draft":
             step = work_action("User and planner", "In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning.", "planner", "grill")
             return {**row, "workflow": workflow_view(plan, "grill", [step])}
 """
+code = code[:insert] + legacy + code[insert:]
+# Exercise the old wire format even when the historical Git object is unavailable.
+entry = '    if plan is None:\n'
+insert = code.index(entry, code.index("def cmd_status("))
+legacy = '''    if plan and as_json and (mode := os.getenv("RW_TEST_LEGACY_STATE")):
+        row = cmd_status(plan, False, cwd, provider=provider, as_data=True)
+        if mode in ("run", "summary", "start"):
+            row.update(status="approved" if mode == "start" else "draft", approvals={}, drift=["legacy diagnostic"])
+            if mode == "start":
+                action = workflow_action("Coordinator", "wait", "Wait for a separate start instruction.", waiting_for="start-instruction")
+            else:
+                action = workflow_action("User and planner", "ask", "Record approval with pipeline.py", input=f"{mode}-approval")
+                row["drift"][0] += f" — fix: record the user's words with `pipeline.py {mode} approve`"
+            row["workflow"].update(stage="plan", actions=[action])
+        else:
+            work = next(step for step in row["workflow"]["actions"] if step["kind"] == "work")
+            scope = {"kind": "phase", "phase": 1}
+            work.update(assignment=scope, action="Work from the phase brief and record the phase report.")
+            generate = run_action(plan, "Coordinator", "Generate the implementer brief.", "brief implementer", 1, "--provider", provider)
+            generate.pop("cwd")
+            generate.update(role="implementer", assignment=scope)
+            row["workflow"]["actions"] = [work, generate]
+        print(json.dumps(row))
+        return 0
+'''
 engine.write_text(code[:insert] + legacy + code[insert:])
 PY
 launcher="$sandbox/bin/runweld"
@@ -162,6 +187,51 @@ view = json.loads(Path(sys.argv[1]).read_text())
 assert view["task"]["id"] == "previous-active" and view["task"]["release"] == sys.argv[2]
 assert view["stage"] == "build" and view["task"]["goal"] == "Resume without changing releases."
 assert any(sys.argv[2] in a["argv"] for a in view["actions"] if a["kind"] == "run")
+PY
+python3 - "$launcher" "$a" "$plan" <<'PY'
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+cli, release, plan = sys.argv[1:]
+
+def next_legacy(mode, *options):
+    return subprocess.check_output([cli, "next", "previous-active", "--provider", "Test", *options],
+                                   env={**os.environ, "RW_TEST_LEGACY_STATE": mode}, text=True)
+
+for mode, command, inputs in (("run", ["run", "approve"], {"by", "words"}),
+                              ("summary", ["summary", "approve"], {"file", "by", "words"}),
+                              ("start", ["build", "start"], set())):
+    view = json.loads(next_legacy(mode, "--json"))
+    step, = view["actions"]
+    assert view["stage"] == "plan" and view["evidence"] == ["legacy diagnostic"]
+    assert step["kind"] == ("wait" if mode == "start" else "ask")
+    argv = step["command"]
+    assert argv["argv"][2:] == ["--release", release, *command, plan] and argv["cwd"] == view["project"]
+    assert inputs <= argv.get("options", {}).keys()
+    text = next_legacy(mode)
+    assert f"In {argv['cwd']}: {shlex.join(argv['argv'])}" in text and "pipeline.py" not in text
+
+view = json.loads(next_legacy("work", "--json"))
+work, generate, wait = view["actions"]
+assert wait["condition"] == "after-dispatch"
+assert generate["argv"][2:7] == ["--release", release, "brief", "implementer", plan]
+brief = Path(subprocess.check_output(generate["argv"], cwd=generate["cwd"], text=True).strip())
+assert brief.is_file()
+work, wait = json.loads(next_legacy("work", "--json"))["actions"]
+assignment = work["assignment"]
+assert assignment["brief"] == {"path": str(brief), "dispatch": "unverified"}
+assert assignment["territory"] == ["fixture.txt"] and assignment["cwd"] == view["task"]["tree"]
+assert assignment["role_source"].endswith(f"/{release}/agents/implementer.md")
+assert assignment["protocol"].endswith(f"/{release}/references/SESSIONS.md")
+instruction, = assignment["instructions"]
+assert "runweld implementer" in subprocess.check_output(instruction, cwd=assignment["cwd"], text=True)
+report, = assignment["reports"]
+assert report["argv"][2:] == ["--release", release, "phase", "report", plan, "1"]
+brief.unlink()
 PY
 assert_contains "$(cli next previous-draft)" "$a grill --plan" 'distribution#system-cli: next retains the pinned pre-draft instruction'
 cli next previous-draft --json > "$sandbox/draft-next.json"

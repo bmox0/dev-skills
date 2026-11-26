@@ -175,6 +175,8 @@ Waits for: nothing
 
 none
 ''')
+    runweld('grill', 'skip', first, '--reason', 'No open questions in the fixture')
+    runweld('prototype', 'skip', first, '--reason', 'Config validation needs no prototype')
     first_values = first.with_suffix('.run.toml')
     with first_values.open('a') as f:
         f.write('credential = "keychain:example/private"\n')
