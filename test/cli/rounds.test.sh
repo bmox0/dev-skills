@@ -98,8 +98,22 @@ vfirst=(--predicted pass --predict n1 feel-ui --engine claude)
 # build#judge-reads-the-round: evidence-owed leaves the full read for the first real verdict.
 newrepo
 cli verdict evidence-owed "$plan" --owed reviewer --report "Review again" >/dev/null || fail "request evidence"
+cli verdict evidence-owed "$plan" --owed verify --case 2 --report "Capture Done 2 again" >/dev/null || fail "request recapture"
+gate_state=$repo/gate-state.json
+cp "${plan%.md}.json" "$gate_state"
 for n in 1 2; do
   cli note add "$plan" --text "Feedback before verdict $n" --cause bug >/dev/null || fail "note $n"
+  if [ "$n" = 1 ]; then
+    out=$(cli round start "$plan"); rc=$?
+    assert_eq 1 "$rc" "a pre-verdict round cannot skip an unanswered gate review request" || exit 1
+    assert_contains "$out" 'Review again' 'the refusal names the original request' || exit 1
+    assert_contains "$out" 'review complete' 'the refusal tells the reviewer how to recover' || exit 1
+    complete_review "$plan" || fail "complete the requested gate review"
+    out=$(cli round start "$plan"); rc=$?
+    assert_eq 1 "$rc" "a pre-verdict round cannot skip an unanswered gate Verify request" || exit 1
+    assert_contains "$out" 'Done 2' 'the refusal names the missing original case' || exit 1
+    cli result "$plan" --case 2 --outcome passed --capture 'gate recapture 2' >/dev/null || fail "recapture the requested gate case"
+  fi
   cli round start "$plan" >/dev/null || fail "start round $n"
   c=$(commit "pre-verdict-$n")
   cli round report "$plan" --became x --commit "$c" >/dev/null || fail "report round $n"
@@ -109,13 +123,50 @@ for n in 1 2; do
   complete_review "$plan" || fail "review round $n"
 done
 b=$(cli brief judge "$plan") || fail "first judge after two rounds and an evidence request"
-for want in 'fixture output 2' 'Feedback before verdict 1' 'Feedback before verdict 2' 'pre-verdict-1' 'pre-verdict-2'; do
+for want in 'gate recapture 2' 'Feedback before verdict 1' 'Feedback before verdict 2' 'pre-verdict-1' 'pre-verdict-2'; do
   grep -qF "$want" "$b" || fail "first brief retains $want"
 done
 [ ! -e "${plan%.md}.judge.md" ] || fail "evidence owed and the brief do not create a judge file"
+round_state=$repo/pre-verdict-rounds.json
+cp "${plan%.md}.json" "$round_state"
+cli verdict pass "$plan" --report 'Round reviewed' "${vfirst[@]}" >/dev/null || fail "prior checked evidence stays valid after round commits"
+
+# Recreate a run already crossed by the older CLI, with its original gate receipts incomplete.
+rm "${plan%.md}.judge.md"
+python3 - "$gate_state" "$round_state" "${plan%.md}.json" <<'PY'
+import json, sys
+before, after = (json.load(open(path)) for path in sys.argv[1:3])
+after['cycles'][0] = before['cycles'][0]
+with open(sys.argv[3], 'w') as output:
+    json.dump(after, output)
+PY
+out=$(cli verdict pass "$plan" --report 'Round reviewed' "${vfirst[@]}"); rc=$?
+assert_eq 1 "$rc" "a persisted round cannot stand in for the requested baseline review" || exit 1
+assert_contains "$out" 'baseline' 'the refusal advertises recovery without changing the old gate' || exit 1
+out=$(cli brief judge "$plan"); rc=$?
+assert_eq 1 "$rc" "the judge brief also refuses incomplete baseline evidence" || exit 1
+json 'assert c["workflow"]["stage"] == "build-verification"; assert any(a.get("role") == "reviewer" and "baseline" in a["action"] for a in c["workflow"]["actions"])' || fail "status advertises the baseline review"
+b=$(cli brief reviewer "$plan") || fail "recover the baseline reviewer assignment"
+grep -qF "$(git rev-parse v0)..$(git rev-parse HEAD)" "$b" || fail "the recovery review covers the full current baseline"
+complete_review "$plan" || fail "complete the current baseline review"
+out=$(cli verdict pass "$plan" --report 'Round reviewed' "${vfirst[@]}"); rc=$?
+assert_eq 1 "$rc" "a round's current review cannot replace an outstanding historical capture" || exit 1
+assert_contains "$out" 'Done 2' 'the current baseline still needs the historical case' || exit 1
+b=$(cli brief verify "$plan") || fail "recover historical case 2 by running the current baseline"
+grep -q '^2\.' "$b" || fail "the Verify brief includes the owed baseline case"
+cli result "$plan" --case 2 --outcome passed --capture 'current baseline capture 2' >/dev/null || fail "capture the current baseline"
+b=$(cli brief judge "$plan") || fail "judge can read the recovered baseline"
+grep -qF 'current baseline capture 2' "$b" || fail "judge sees genuine current baseline capture"
+grep -qF 'Current baseline captures recover earlier verification for Done 2' "$b" || fail "judge knows where the verification was recovered"
+cli verdict pass "$plan" --report 'Baseline and round reviewed' "${vfirst[@]}" >/dev/null || fail "pass after baseline recovery"
 
 # build#judge-file-by-code, build#notes-in-their-words
 newrepo missing
+cli note add "$plan" --text 'Feedback before verification' --cause bug >/dev/null || fail "add feedback before verification"
+out=$(cli round start "$plan"); rc=$?
+assert_eq 1 "$rc" "a pre-verdict round also needs baseline cases without an explicit request" || exit 1
+assert_contains "$out" 'Done 1, 2' 'the refusal names the absent cases' || exit 1
+cli note drop "$plan" 1 >/dev/null || fail "drop unused feedback"
 out=$(cli brief judge "$plan"); rc=$?
 assert_eq 1 "$rc" "brief judge above small is refused while a case has no result" || exit 1
 assert_contains "$out" "result-missing" "the refusal's code" || exit 1
@@ -336,8 +387,9 @@ newrepo
 cli result "$plan" --case 1 --outcome passed --capture a.png >/dev/null
 json "assert c['cycles'][0]['results'][0]['commit'] == '$(git rev-parse HEAD)', c['cycles'][0]['results']" || fail "build#findings-recorded: a result carries its commit"
 cli finding "$plan" --kind observation --where src/a.txt:1 --source x --text "gate obs" >/dev/null
+complete_review "$plan" || fail "complete the gate review after its observation"
 cli note add "$plan" --text n --cause bug >/dev/null
-cli round start "$plan" >/dev/null
+cli round start "$plan" >/dev/null || fail "open the reviewed gate's round"
 cli finding "$plan" --kind observation --where src/a.txt:1 --source x --text "round obs" >/dev/null
 out=$(cli status "$plan")
 assert_contains "$out" "Cycle gate" "status labels the gate's lists" || exit 1

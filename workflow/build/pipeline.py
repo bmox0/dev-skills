@@ -3467,6 +3467,8 @@ def verification_workflow(plan, st, c, tree, provider):
     reviewed = review_is_current(c, target)
     label = cycle_label(c)
     verify_id, _ = verify_target(c, tree)
+    baseline, baseline_cases, baseline_owed = baseline_evidence(st, c, tree)
+    baseline_cases -= captured_cases(baseline_cases, latest_results(c), tree, head)
     after_checks = " Wait for current full checks first." if not checked else ""
 
     def evidence_work(role, work, *args):
@@ -3477,14 +3479,16 @@ def verification_workflow(plan, st, c, tree, provider):
 
     if not reviewed:
         issue = "stale" if c.get("reviews") else "unrecorded"
-        evidence_work("reviewer", work_action("Reviewer", f"Review completion is {issue}.{after_checks} Use `{workflow_brief(st, 'reviewer')}` and record `review complete`.",
+        need = f"Review the current baseline to recover missing evidence from {', '.join(baseline)}." if baseline else f"Review completion is {issue}."
+        evidence_work("reviewer", work_action("Reviewer", f"{need}{after_checks} Use `{workflow_brief(st, 'reviewer')}` and record `review complete`.",
                                             "reviewer", "review", cycle=label, id=target[0], range=target[1]))
-    pending = pending_results(st, c, tree)
+    pending = sorted(set(pending_results(st, c, tree)) | set(baseline_cases))
     if pending:
         cases = ", ".join(f"Done {n}" for n in pending)
-        evidence_work("verify", work_action("Verify", f"Current evidence is missing for {cases}.{after_checks} Drive the cases from `{workflow_brief(st, 'verify')}` and record the results.",
+        need = f"Drive {cases} on the current baseline to recover missing evidence." if baseline_cases else f"Current evidence is missing for {cases}."
+        evidence_work("verify", work_action("Verify", f"{need}{after_checks} Drive the cases from `{workflow_brief(st, 'verify')}` and record the results.",
                                           "verify", "verify", cycle=label, id=verify_id, head=head, cases=pending))
-    owed = outstanding_evidence(st, c, tree)
+    owed = outstanding_evidence(st, c, tree) + baseline_owed
     for request, cases in owed:
         role = request["owed"]
         if role == "verify" and not cases:
@@ -5053,9 +5057,9 @@ def fix_assignment(c, fix):
     return f"{cycle_label(c)}-fix-{fix['n']}"
 
 
-def verify_target(c, tree):
+def verify_target(c, tree, head="HEAD"):
     last = last_finished_fix(c)
-    if last and (current := tree_id(tree, "HEAD")) and tree_id(tree, last["done"]["head"]) == current:
+    if last and (current := tree_id(tree, head)) and tree_id(tree, last["done"]["head"]) == current:
         return fix_assignment(c, last), last
     return cycle_label(c), None
 
@@ -5066,7 +5070,11 @@ def same_tree_land(st, c, tree, land, head):
             and (current := tree_id(tree, head)) and current == tree_id(tree, land["pre"]))
 
 
-def review_target(st, c, tree, head):
+def baseline_review_target(st, c, head):
+    return cycle_label(c) + "-baseline", f"{st['base']}..{head}", None
+
+
+def review_target(st, c, tree, head, *, historical=False):
     lands = st.get("lands", [])
     if lands and head == lands[-1]["tip"]:
         # Only the recorded land rewrite can carry a review across commits.
@@ -5075,6 +5083,12 @@ def review_target(st, c, tree, head):
                 head = land["pre"]
     label = cycle_label(c)
     start = st["rounds"][c["n"] - 1]["from"] if c["kind"] == "round" else st["base"]
+    if c["kind"] == "round":
+        baseline = baseline_review_target(st, c, head)
+        last_review = (c.get("reviews") or [{}])[-1]
+        if (last_review.get("assignment"), last_review.get("range")) == baseline[:2] or (
+                not historical and baseline_evidence(st, c, tree)[0]):
+            return baseline
     last = last_finished_fix(c)
     if last and head == last["done"]["head"]:
         # A fix-only review needs a completed chain from the start of this cycle.
@@ -5130,10 +5144,10 @@ def human_case(c, case):
     return c["level"] == "small" or case["you_check"]
 
 
-def required_result_cases(st, c, tree):
+def required_result_cases(st, c, tree, head="HEAD"):
     if c["level"] == "small":
         return set()
-    assignment, fix = verify_target(c, tree)
+    assignment, fix = verify_target(c, tree, head)
     want = set(c.get("verify_cases", {}).get(assignment, []))
     if fix and "verify_cases" in fix:
         want.update(fix["verify_cases"])
@@ -5144,17 +5158,17 @@ def required_result_cases(st, c, tree):
     return want
 
 
-def pending_results(st, c, tree):
-    if not (want := required_result_cases(st, c, tree)):
+def pending_results(st, c, tree, head="HEAD"):
+    if not (want := required_result_cases(st, c, tree, head)):
         return []
-    current, results = tree_id(tree, "HEAD"), latest_results(c)
+    current, results = tree_id(tree, head), latest_results(c)
     checked_trees = {commit: tree_id(tree, commit) for commit in {results[n]["commit"] for n in want if n in results and results[n].get("commit")}}
     return sorted(n for n in want if not current or n not in results or checked_trees.get(results[n].get("commit")) != current)
 
 
-def verify_case_scope(st, c, tree, cases=(), *, recapture=False):
-    if verify_target(c, tree)[1] or c["kind"] == "round":
-        recheck = required_result_cases(st, c, tree) if recapture else pending_results(st, c, tree)
+def verify_case_scope(st, c, tree, cases=(), *, recapture=False, head="HEAD"):
+    if verify_target(c, tree, head)[1] or c["kind"] == "round":
+        recheck = required_result_cases(st, c, tree, head) if recapture else pending_results(st, c, tree, head)
         failed = {n for n, r in latest_results(c).items() if r["outcome"] == "failed"}
         return set(cases) | set(recheck) | failed
     return set(cases) or {d["n"] for d in st.get("done", []) if not d["you_check"]}
@@ -5385,7 +5399,11 @@ def brief_cycle(st, kind, cli, md, tree, cases, review):
             out += ["Items the fix took:"] + [f"- {i['id']} {i.get('where', '')} {i['text']}".replace("  ", " ") for i in items_of(c, last["items"])]
         elif c["kind"] == "round":
             has_commits = git("rev-list", "-1", range_, cwd=tree).stdout
-            out += [f"Range: {range_} (the round's commits)" if has_commits else f"Range: none (round {c['n']} made no commit)", f"Level: {c['level']}"]
+            if assignment.endswith("-baseline"):
+                out += [f"Range: {range_} (the full current baseline, to recover missing earlier evidence)"]
+            else:
+                out += [f"Range: {range_} (the round's commits)" if has_commits else f"Range: none (round {c['n']} made no commit)"]
+            out += [f"Level: {c['level']}"]
         else:
             out += [f"Range: {range_}", f"Level: {c['level']}"]
         if run_ := selected_run(c):
@@ -5400,7 +5418,9 @@ def brief_cycle(st, kind, cli, md, tree, cases, review):
                 "Record completion after all findings, including when the review is clean or the assigned range is empty. Return one line.", ""]
     elif kind == "verify":
         owed_cases = {n for _, cases in outstanding_evidence(st, c, tree) for n in cases}
-        want = sorted(verify_case_scope(st, c, tree, set(cases) | owed_cases))
+        baseline = baseline_evidence(st, c, tree)[1]
+        baseline -= captured_cases(baseline, latest_results(c), tree, "HEAD")
+        want = sorted(verify_case_scope(st, c, tree, set(cases) | owed_cases | baseline))
         bind = f"--cycle {label} --head {head_sha(md, tree)}"
         out += ["## Cases to drive", ""]
         out += [f"{n}. {done_text(st, n)}" for n in want] or ["no case to drive"]
@@ -5546,6 +5566,13 @@ def cmd_round(plan, a):
             take = [] if a.conflict else [n for n in st["notes"] if n["verdict"] in {v["n"] for v in vs}] if vs else open_notes(st)
             if not take and not a.conflict:
                 raise Refuse("nothing-open", "no open note for a round", "record the human's notes with `pipeline.py note add`")
+            if awaiting_first_verdict(st):
+                outgoing = cycle_of(st)
+                try:
+                    require_evidence(st, outgoing, require_current_checks(plan, st, outgoing), None)
+                except Refuse as error:
+                    raise refuse_all([(code, f"cannot leave {cycle_label(outgoing)} before the first verdict: {message}", fix)
+                                      for code, message, fix in error.diags]) from None
             if a.conflict and st["status"] == "passed":
                 set_plan(plan, st, status="building", note=f"conflict at finish: {a.conflict}")
             r = {"n": len(rs) + 1, "at": now(), "by": "judge" if vs else "human", "from": head_sha(md, tree), "notes": [n["n"] for n in take], "report": None, "done": None}
@@ -5677,12 +5704,18 @@ def round_notes_file(md, st, round_):
 
 
 def require_evidence(st, c, tree, note):
-    require_review(c, review_target(st, c, tree, head_sha(None, tree)))
-    owed = outstanding_evidence(st, c, tree)
+    baseline, cases, baseline_owed = baseline_evidence(st, c, tree)
+    target = review_target(st, c, tree, head_sha(None, tree))
+    if baseline and not review_is_current(c, target):
+        raise Refuse("review-missing", f"earlier evidence is incomplete for {', '.join(baseline)}",
+                     "the reviewer uses `brief reviewer` for the full current baseline and records `review complete`")
+    require_review(c, target)
+    owed = outstanding_evidence(st, c, tree) + baseline_owed
     if review := next((v for v, _ in owed if v["owed"] == "reviewer"), None):
         raise Refuse("review-missing", f"the judge requested a new review: {review['report']}",
                      "the reviewer uses `brief reviewer` and records `review complete`")
-    left = sorted(set(pending_results(st, c, tree)) | {n for _, cases in owed for n in cases})
+    cases -= captured_cases(cases, latest_results(c), tree, "HEAD")
+    left = sorted(set(pending_results(st, c, tree)) | cases | {n for _, missing in owed for n in missing})
     if (left or owed) and not (note or "").strip():
         exception = "the judge names the reason with `verdict --evidence-note TEXT`"
         if left:
@@ -5692,12 +5725,18 @@ def require_evidence(st, c, tree, note):
     return owed
 
 
-def requested_result_cases(st, c, tree, report):
+def requested_result_cases(st, c, tree, report, head="HEAD"):
     named = set(re.findall(r"\bDone\s+(\d+)\b", report, re.IGNORECASE))
-    return {d["n"] for d in st.get("done", []) if str(d["n"]) in named} or verify_case_scope(st, c, tree, recapture=True)
+    return {d["n"] for d in st.get("done", []) if str(d["n"]) in named} or verify_case_scope(st, c, tree, recapture=True, head=head)
 
 
-def outstanding_evidence(st, c, tree):
+def captured_cases(cases, results, tree, head, after=""):
+    current = tree_id(tree, head) if cases and results else None
+    return {n for n in cases if (r := results.get(n)) and r["at"] > after and r.get("capture")
+            and current and r.get("commit") and tree_id(tree, r["commit"]) == current}
+
+
+def outstanding_evidence(st, c, tree, head=None):
     requests = []
     label = cycle_label(c)
     for v in st.get("verdicts", []):
@@ -5712,18 +5751,43 @@ def outstanding_evidence(st, c, tree):
         if v["owed"] == "reviewer":
             reviews = c.get("reviews", [])
             recorded = len(reviews) > v["review_count"] if "review_count" in v else reviews and reviews[-1]["at"] > v["at"]
-            if not recorded or not review_is_current(c, review_target(st, c, tree, head_sha(None, tree))):
+            if not recorded or not review_is_current(c, review_target(st, c, tree, head or head_sha(None, tree), historical=head is not None)):
                 owed.append((v, []))
             continue
-        cases = v.get("owed_cases") or requested_result_cases(st, c, tree, v["report"])
+        cases = v.get("owed_cases") or requested_result_cases(st, c, tree, v["report"], head or "HEAD")
         results = latest_results(c, v.get("result_count", 0))
-        current = tree_id(tree, "HEAD") if cases and results else None
-        captured = {n for n in cases if (r := results.get(n)) and ("result_count" in v or r["at"] > v["at"]) and r.get("capture")
-                    and current and r.get("commit") and tree_id(tree, r["commit"]) == current}
+        captured = captured_cases(cases, results, tree, head or "HEAD", "" if "result_count" in v else v["at"])
         missing = sorted(set(cases) - captured)
         if missing or not cases:
             owed.append((v, missing))
     return owed
+
+
+def baseline_evidence(st, c, tree):
+    reviews, cases, unscoped = [], set(), []
+    if c["kind"] != "round" or not awaiting_first_verdict(st):
+        return reviews, cases, unscoped
+    # Each next round records the tip at which the prior cycle stopped collecting evidence.
+    for prior, following in zip(st["cycles"], st["rounds"][:c["n"]]):
+        head = following["from"]
+        run_ = selected_run(prior)
+        checked = run_ and run_.get("done", True) and (tip := tree_id(tree, head)) and tip == tree_id(tree, run_["head"])
+        if checked:
+            if review_is_current(prior, baseline_review_target(st, prior, head)):
+                reviews.clear()
+            cases -= captured_cases(cases, latest_results(prior), tree, head)
+        requests = outstanding_evidence(st, prior, tree, head)
+        if (not checked or not review_is_current(prior, review_target(st, prior, tree, head, historical=True))
+                or any(v["owed"] == "reviewer" for v, _ in requests)):
+            reviews.append(cycle_label(prior))
+        cases.update(pending_results(st, prior, tree, head))
+        for v, missing in requests:
+            if v["owed"] == "verify":
+                if missing:
+                    cases.update(missing)
+                else:
+                    unscoped.append((v, missing))
+    return reviews, cases, unscoped
 
 
 def cmd_verdict(plan, a):
@@ -5840,6 +5904,11 @@ def brief_judge(plan, st, cli, md, note):
     if first and c["kind"] == "round":
         out += ["First substantive verdict: read the full plan, gate and round evidence, and record the Prediction and engine.",
                 "Decide only the current round's Open entries and Conventions."]
+        baseline, cases, _ = baseline_evidence(st, c, tree)
+        if baseline:
+            out.append(f"The current baseline review recovers missing earlier evidence from {', '.join(baseline)}.")
+        if captured := captured_cases(cases, latest_results(c), tree, "HEAD"):
+            out.append("Current baseline captures recover earlier verification for Done " + ", ".join(map(str, sorted(captured))) + ".")
     for evidence in st["cycles"] if first else [c]:
         r = st["rounds"][evidence["n"] - 1] if evidence["kind"] == "round" else None
         if first and c["kind"] == "round":

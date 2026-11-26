@@ -135,6 +135,8 @@ try:
     assert "checks-recovery-stale" in complete(retry, code=1)
 
     # A descendant which closes inherited descriptors still belongs to the check's process group.
+    review = action()["assignment"]
+    call("review", "complete", "--assignment", review["id"], "--range", review["range"])
     call("note", "add", "--text", "round work", "--cause", "bug")
     complete([*cli, "note", "edit", plan, "1", "--source", "missed"])
     call("round", "start")

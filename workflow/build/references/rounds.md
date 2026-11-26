@@ -27,9 +27,10 @@ the human wanted), `feel-ui` (it works as planned but feels or looks wrong),
 
 ## A round
 
-A round needs an instruction to build notes; notes during review are not one. Name what the round takes; the human can
-overrule. `CLI round start <plan>` takes every open note, or the judge's notes
-when the last verdict ordered a round:
+A round needs authorization. Name what it takes; the human can overrule.
+Before the first verdict, finish the outgoing cycle's evidence.
+`CLI round start <plan>` takes every open note, or the judge's notes when the
+last verdict ordered a round:
 
 1. A note that changes a rule changes `## Spec` along with Done first. Then a
    new `runweld implementer` handed `CLI brief round --provider <provider> <plan>`; its territory
