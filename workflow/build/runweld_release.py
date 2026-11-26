@@ -24,8 +24,6 @@ WORKFLOW_GUIDES = ("writing-guides", "grill", "prototype", "run-file", "plan", "
 ROLES = ("implementer", "reviewer", "judge")
 GUIDE_COMMANDS = (*WORKFLOW_GUIDES, *ROLES, "build-verification", "human-review")
 REQUIRED = {str(PROGRAM), WORKFLOW, INSTRUCTIONS, "bin/runweld", "workflow/build/runweld_release.py",
-            *(f"workflow/build/_marko/{name}.py" for name in ("__init__", "block", "element", "helpers", "inline",
-                                                         "inline_parser", "parser", "patterns", "source")),
             "workflow/browser-test/tab.mjs", "workflow/run-file/references/example.run.toml",
             "workflow/build/references/example.guide.md", "workflow/build/references/judge.md", "references/SESSIONS.md",
             "references/WORKFLOW-PATHS.md", "workflow/build/references/human-guide.md",
@@ -185,12 +183,9 @@ def task_folders(plans):
 def task_plan(project, name):
     if not TASK_ID.fullmatch(name):
         return None
-    workflow = project / ".runweld/workflow"
-    plans = workflow / "plans"
+    plans = project / ".runweld/workflow/plans"
     matches = [folder / f"{name}.md" for id_, folder in task_folders(plans)
                if id_ == name and os.path.lexists(folder / f"{name}.task.json")]
-    if os.path.lexists(workflow / "tasks" / f"{name}.json"):
-        matches.append(plans / f"{name}.md")
     if len(matches) > 1:
         raise ReleaseError(f"multiple task records for {name}: {', '.join(map(str, matches))}; restore one registration")
     return matches[0] if matches else None
@@ -224,7 +219,7 @@ def component_key(path):
     if parts[0] == "agents" and len(parts) == 2 and path.endswith(".md"):
         return "roles", parts[1][:-3]
     if parts[0] == "workflow" and len(parts) >= 3:
-        if parts[1] == "build" and (path.endswith(".py") or parts[2] == "_marko"):
+        if parts[1] == "build" and (path.endswith(".py") or parts[2].startswith("_")):
             return "cli", "engine"
         return "guides", parts[1]
     if parts[0] == "adapters" and len(parts) >= 3:
@@ -378,8 +373,6 @@ def registered_task(plan):
     if not TASK_ID.fullmatch(plan.stem):
         return None
     plans = (".runweld", "workflow", "plans")
-    if plan.parent.parts[-3:] == plans:
-        return read_task_record(plan.parent.parent / "tasks" / (plan.stem + ".json"), plan.stem)
     folder = plan.parent
     if folder.parent.parts[-3:] == plans and (match := DATED_TASK.fullmatch(folder.name)) and match[1] == plan.stem:
         if folder.is_symlink():
@@ -411,7 +404,7 @@ def run_pin(plan):
         values = state.get("run", {})
         if not isinstance(approvals, dict) or not isinstance(values, dict):
             raise ReleaseError(f"{state_path} has an invalid run snapshot; restore the state")
-        if "plan" in approvals or "run" in approvals or state.get("status") != "draft":
+        if "plan" in approvals or state.get("status") != "draft":
             return task_pin(release_pin(values, state_path), task, state_path)
     run_file = plan.with_suffix(".run.toml")
     proposed = read_data(run_file, tomllib.loads)

@@ -33,7 +33,9 @@ engine has its own digest. Models and checks live in `.runweld/config.toml`.
 Use `runweld update --project RELEASE` to select a specific installed build ID.
 That changes the release for new tasks only. From an older task’s worktree,
 `runweld next` still uses that task’s release for commands, roles and references.
-Keep both builds installed while tasks use them.
+Keep both builds installed while tasks use them. Tasks from versions before
+`runweld next` and dated task directories are not migrated. Start a new task
+to use this workflow.
 
 In a terminal, `runweld update` asks you to choose `cli` or `project`.
 Scripts must pass a scope explicitly. Outside an initialized project,

@@ -15,51 +15,6 @@ preceding="$sandbox/release-a"
 mkdir "$sandbox/project with spaces" "$preceding"
 cp -R "$repo_root/." "$preceding/"
 printf '\nRelease A fixture.\n' >> "$preceding/README.md"
-python3 - "$preceding" <<'PY'
-from pathlib import Path
-import sys
-root = Path(sys.argv[1])
-catalog = root / "references/workflow.toml"
-catalog.write_text("".join(line for line in catalog.read_text().splitlines(keepends=True)
-                           if not line.startswith("purpose = ")))
-engine = root / "workflow/build/pipeline.py"
-code = engine.read_text().replace('if a.group == "next":\n                return cmd_next',
-                                  'if a.group == "next":\n                raise AssertionError("release A has no next")\n                return cmd_next')
-# The pre-next engine exposed this exact work action without any executable binding.
-start = '        data = read_discovery(plan)\n'
-task_stage = code.index("def task_stage(")
-insert = code.index(start, task_stage)
-legacy = """        if task["id"] == "previous-draft":
-            step = work_action("User and planner", "In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning.", "planner", "grill")
-            return {**row, "workflow": workflow_view(plan, "grill", [step])}
-"""
-code = code[:insert] + legacy + code[insert:]
-# Exercise the old wire format even when the historical Git object is unavailable.
-entry = '    if plan is None:\n'
-insert = code.index(entry, code.index("def cmd_status("))
-legacy = '''    if plan and as_json and (mode := os.getenv("RW_TEST_LEGACY_STATE")):
-        row = cmd_status(plan, False, cwd, provider=provider, as_data=True)
-        if mode in ("run", "summary", "start"):
-            row.update(status="approved" if mode == "start" else "draft", approvals={}, drift=["legacy diagnostic"])
-            if mode == "start":
-                action = workflow_action("Coordinator", "wait", "Wait for a separate start instruction.", waiting_for="start-instruction")
-            else:
-                action = workflow_action("User and planner", "ask", "Record approval with pipeline.py", input=f"{mode}-approval")
-                row["drift"][0] += f" — fix: record the user's words with `pipeline.py {mode} approve`"
-            row["workflow"].update(stage="plan", actions=[action])
-        else:
-            work = next(step for step in row["workflow"]["actions"] if step["kind"] == "work")
-            scope = {"kind": "phase", "phase": 1}
-            work.update(assignment=scope, action="Work from the phase brief and record the phase report.")
-            generate = run_action(plan, "Coordinator", "Generate the implementer brief.", "brief implementer", 1, "--provider", provider)
-            generate.pop("cwd")
-            generate.update(role="implementer", assignment=scope)
-            row["workflow"]["actions"] = [work, generate]
-        print(json.dumps(row))
-        return 0
-'''
-engine.write_text(code[:insert] + legacy + code[insert:])
-PY
 launcher="$sandbox/bin/runweld"
 "$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 a=$(cat "$sandbox/lib/runweld/default")
@@ -68,18 +23,17 @@ cd "$sandbox/project with spaces"
 git init -qb main
 git commit --allow-empty -qm base
 cli init --non-interactive --provider Test --primary-model main --secondary-model helper >/dev/null
-previous=(previous-draft previous-active previous-plan previous-repair previous-adopt)
+previous=(previous-draft previous-active previous-plan previous-repair)
 for id in "${previous[@]}"; do
   entry=$(cli task start "$id" --finish-how ff-only --finish-target main --json)
-  reserved=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"])' <<< "$entry")
-  # Retain the flat layout used by releases before dated task directories.
-  mkdir -p .runweld/workflow/artifacts
-  mv "${reserved%.md}.task.json" ".runweld/workflow/tasks/$id.json"
-  mv "${reserved%.md}.run.toml" ".runweld/workflow/plans/$id.run.toml"
-  mv "${reserved%/*}/artifacts" ".runweld/workflow/artifacts/$id"
-  rmdir "${reserved%/*}"
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"])' <<< "$entry" > "$sandbox/$id.plan"
+  if [[ "$id" != previous-draft ]]; then
+    reserved=$(cat "$sandbox/$id.plan")
+    cli grill skip "$reserved" --reason 'The fixture has no open questions' >/dev/null
+    cli prototype skip "$reserved" --reason 'The fixture needs no prototype' >/dev/null
+  fi
 done
-plan="$PWD/.runweld/workflow/plans/previous-active.md"
+plan=$(cat "$sandbox/previous-active.plan")
 base=$(git rev-parse HEAD)
 cat > "$plan" <<PLAN
 # Plan: Retain pinned guidance
@@ -123,13 +77,12 @@ Skills to read first: none
 
 none
 PLAN
-for id in previous-plan previous-repair previous-adopt; do
-  sed "s|runweld/previous-active|runweld/$id|" "$plan" > "${plan%/*}/$id.md"
+for id in previous-plan previous-repair; do
+  sed "s|runweld/previous-active|runweld/$id|" "$plan" > "$(cat "$sandbox/$id.plan")"
 done
-cli approve "${plan%/*}/previous-repair.md" >/dev/null
-rm "${plan%/*}/previous-repair.json"
-sed 's/Status: draft/Status: building/' "${plan%/*}/previous-adopt.md" > "$sandbox/adopt.md"
-mv "$sandbox/adopt.md" "${plan%/*}/previous-adopt.md"
+repair=$(cat "$sandbox/previous-repair.plan")
+cli approve "$repair" >/dev/null
+rm "${repair%.md}.json"
 approve_plan "$plan" >/dev/null
 cli build start "$plan" >/dev/null
 cli phase start "$plan" 1 >/dev/null
@@ -157,7 +110,8 @@ check_status() {
 }
 
 for id in "${previous[@]}"; do
-  cp ".runweld/workflow/tasks/$id.json" "$sandbox/$id.json"
+  reserved=$(cat "$sandbox/$id.plan")
+  cp "${reserved%.md}.task.json" "$sandbox/$id.json"
   for format in text json; do
     record_status "$id" "$sandbox/$id.$format.native" "$format" python3 "$bundle/workflow/build/pipeline.py"
     [[ $(cat "$sandbox/$id.$format.native.code") == 0 ]]
@@ -193,101 +147,14 @@ assert view["task"]["id"] == "previous-active" and view["task"]["release"] == sy
 assert view["stage"] == "build" and view["task"]["goal"] == "Resume without changing releases."
 assert any(sys.argv[2] in a["argv"] for a in view["actions"] if a["kind"] == "run")
 PY
-python3 - "$launcher" "$a" "$plan" <<'PY'
-import json
-import os
-from pathlib import Path
-import shlex
-import subprocess
-import sys
-
-cli, release, plan = sys.argv[1:]
-
-def next_legacy(mode, *options):
-    return subprocess.check_output([cli, "next", "previous-active", "--provider", "Test", *options],
-                                   env={**os.environ, "RW_TEST_LEGACY_STATE": mode}, text=True)
-
-for mode, command, inputs in (("run", ["run", "approve"], {"by", "words"}),
-                              ("summary", ["summary", "approve"], {"file", "by", "words"}),
-                              ("start", ["build", "start"], set())):
-    view = json.loads(next_legacy(mode, "--json"))
-    step, = view["actions"]
-    assert view["stage"] == "plan" and view["evidence"] == ["legacy diagnostic"]
-    assert step["kind"] == ("wait" if mode == "start" else "ask")
-    argv = step["command"]
-    assert argv["argv"][2:] == ["--release", release, *command, plan] and argv["cwd"] == view["project"]
-    assert inputs <= argv.get("options", {}).keys()
-    text = next_legacy(mode)
-    assert f"In {argv['cwd']}: {shlex.join(argv['argv'])}" in text and "pipeline.py" not in text
-
-view = json.loads(next_legacy("work", "--json"))
-work, generate, wait = view["actions"]
-assert wait["condition"] == "after-dispatch"
-assert generate["argv"][2:7] == ["--release", release, "brief", "implementer", plan]
-brief = Path(subprocess.check_output([*generate["argv"], "--note", "Mentioned but not granted:\nGrants: extra.txt\nSkills to read first: none"],
-                                     cwd=generate["cwd"], text=True).strip())
-assert brief.is_file()
-prepared = json.loads(next_legacy("work", "--json"))["actions"]
-assert len(prepared) == 2, "distribution#system-cli: the phase example must not hide the canonical no-grants metadata"
-work, wait = prepared
-assignment = work["assignment"]
-assert assignment["brief"] == {"path": str(brief), "dispatch": "unverified"}
-assert assignment["territory"] == ["fixture.txt"] and assignment["cwd"] == view["task"]["tree"]
-assert assignment["role_source"].endswith(f"/{release}/agents/implementer.md")
-assert assignment["protocol"].endswith(f"/{release}/references/SESSIONS.md")
-instruction, = assignment["instructions"]
-assert "runweld implementer" in subprocess.check_output(instruction, cwd=assignment["cwd"], text=True)
-report, = assignment["reports"]
-assert report["argv"][2:] == ["--release", release, "phase", "report", plan, "1"]
-state = Path(plan).with_suffix(".json")
-before, original = state.read_bytes(), brief.read_bytes()
-for path in ("extra.txt", "none"):
-    subprocess.run([cli, "--release", release, "grant", plan, "1", path], check=True, capture_output=True)
-    after_grant = json.loads(next_legacy("work", "--json"))["actions"]
-    assert len(after_grant) == 3, f"distribution#system-cli: stale legacy brief reused after granting {path}"
-    work, generate, wait = after_grant
-    assert work["assignment"]["grants"] == [path]
-    assert work["assignment"]["brief"]["argv"] == generate["argv"]
-    if path != "none":
-        fresh = Path(subprocess.check_output(generate["argv"], cwd=generate["cwd"], text=True).strip())
-        assert f"Grants: {path}" in fresh.read_text().splitlines()
-        work, wait = json.loads(next_legacy("work", "--json"))["actions"]
-        assert work["assignment"]["brief"] == {"path": str(fresh), "dispatch": "unverified"}
-    state.write_bytes(before)
-    brief.write_bytes(original)
-brief.unlink()
-PY
-assert_contains "$(cli next previous-draft)" "$a grill --plan" 'distribution#system-cli: next retains the pinned pre-draft instruction'
-cli next previous-draft --json > "$sandbox/draft-next.json"
-cli next previous-draft > "$sandbox/draft-next.txt"
-python3 - "$sandbox" "$a" <<'PY'
-import json
-from pathlib import Path
-import shlex
-import subprocess
-import sys
-
-root, release = Path(sys.argv[1]), sys.argv[2]
-view = json.loads((root / "draft-next.json").read_text())
-text = (root / "draft-next.txt").read_text()
-work, = view["actions"]
-assignment = work["assignment"]
-assert work["kind"] == "work" and assignment["kind"] == "grill"
-assert view["task"]["release"] == release and assignment["cwd"] == view["task"]["tree"]
-assert assignment["return_channel"]["records"] == view["task"]["path"]
-for guide, instruction in zip(("grill", "plan"), assignment["instructions"], strict=True):
-    assert instruction[-5:] == ["--release", release, guide, "--plan", view["task"]["path"]]
-    assert f"In {assignment['cwd']}: {shlex.join(instruction)}" in text
-    assert f"# {guide.capitalize()}" in subprocess.check_output(instruction, cwd=assignment["cwd"], text=True)
-report, = assignment["reports"]
-assert report["argv"][-4:] == ["--release", release, "approve", view["task"]["path"]]
-assert f"In {report['cwd']}: {shlex.join(report['argv'])}" in text
-PY
+assert_contains "$(cli next previous-draft)" "$a grill --plan" 'distribution#system-cli: next retains the pinned planning instruction'
 for format in text json; do
   record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/workflow/build/pipeline.py"
 done
 # An unrelated plan and task record must not be read, even by a retained engine.
-printf '%s\n' 'not json' > .runweld/workflow/tasks/unrelated.json
+unrelated=".runweld/workflow/plans/1900-01-01-unrelated"
+mkdir "$unrelated"
+printf '%s\n' 'not json' > "$unrelated/unrelated.task.json"
 printf '%s\n' 'not json' > .runweld/workflow/plans/unrelated.json
 touch .runweld/workflow/plans/unrelated.md
 for id in "${previous[@]}" current; do
@@ -303,7 +170,7 @@ import sys
 
 root, a, b = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 rows = {r['plan']: r['release'] for r in json.loads((root / 'inventory').read_text())}
-assert rows == dict.fromkeys(('previous-draft', 'previous-active', 'previous-plan', 'previous-repair', 'previous-adopt'), a) | {'current': b}
+assert rows == dict.fromkeys(('previous-draft', 'previous-active', 'previous-plan', 'previous-repair'), a) | {'current': b}
 for id in rows:
     row, = json.loads((root / f'{id}.json.actual.out').read_text())
     assert row['plan'] == id and row['release'] == rows[id]
@@ -315,16 +182,12 @@ for id in rows:
         assert f'{root}/lib/runweld/releases/{a}/agents/implementer.md' in Path(brief).read_text()
     elif id == 'previous-plan':
         assert row['status'] == 'draft' and row['nostate'] and row['ready'] == [] and row['state_repair'] is None
-        action, = steps
-        assert action['kind'] == 'run' and action['argv'][-4:] == ['--release', a, 'approve', row['path']]
+        assert any(action['kind'] == 'run' and action['argv'][-4:] == ['--release', a, 'approve', row['path']] for action in steps)
     elif id == 'previous-repair':
         restore = f"restore {Path(row['path']).with_suffix('.json')}"
         assert row['nostate'] and row['ready'] == [] and row['state_repair'] == restore
         action, = steps
         assert action['assignment']['kind'] == 'repair-file' and action['action'] == restore
-    elif id == 'previous-adopt':
-        assert row['status'] == 'building' and row['nostate'] and row['state_repair'] is None
-        assert steps[0]['assignment']['kind'] == 'adopt-plan'
     else:
         assert row['status'] == 'planning' and row['ready'] == []
         assert steps[0]['assignment']['kind'] == 'grill'
@@ -335,12 +198,13 @@ for format in text json; do
   check_status previous-active "$sandbox/broken.$format.native" "$format"
 done
 cp "$sandbox/active.md" "$plan"
-rm .runweld/workflow/tasks/unrelated.json .runweld/workflow/plans/unrelated.{json,md}
+rm "$unrelated/unrelated.task.json" .runweld/workflow/plans/unrelated.{json,md}
+rmdir "$unrelated"
 
 # Also compare the same-release launcher to the native command as a new task gains and loses state.
 cli grill skip "$same_plan" --reason 'The fixture has no open questions' >/dev/null
 cli prototype skip "$same_plan" --reason 'The fixture needs no prototype' >/dev/null
-sed 's|runweld/previous-plan|runweld/current|' "${plan%/*}/previous-plan.md" > "$same_plan"
+sed 's|runweld/previous-plan|runweld/current|' "$(cat "$sandbox/previous-plan.plan")" > "$same_plan"
 for state in draft active unreadable repair; do
   expected_code=0
   case "$state" in
@@ -380,7 +244,8 @@ for id in "${previous[@]}"; do
   fi
   assert_contains "$output" "$a" 'distribution#project-lock: recovery names the exact pinned release'
   assert_contains "$output" 'install this exact release' 'distribution#project-lock: recovery explains how to repair it'
-  cmp ".runweld/workflow/tasks/$id.json" "$sandbox/$id.json"
+  reserved=$(cat "$sandbox/$id.plan")
+  cmp "${reserved%.md}.task.json" "$sandbox/$id.json"
 done
 mv "$bundle" "$sandbox/damaged-a"
 if output=$(cd .runweld/workflow/trees/previous-repair && cli status --current 2>&1); then

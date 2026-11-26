@@ -262,11 +262,11 @@ Run `runweld next` in the worktree to see the next action and its owner. For aut
 $ runweld task start export-csv
 […]
 Tree: /Users/alex/src/reports/.runweld/workflow/trees/export-csv
-Plan: /Users/alex/src/reports/.runweld/workflow/plans/export-csv.md
-Artifacts: /Users/alex/src/reports/.runweld/workflow/artifacts/export-csv
+Plan: /Users/alex/src/reports/.runweld/workflow/plans/2026-11-27-export-csv/export-csv.md
+Artifacts: /Users/alex/src/reports/.runweld/workflow/plans/2026-11-27-export-csv/artifacts
 […]
 Next:
-  User and planner — Continue in the task worktree with a grill or plan. [work]
+  Human and planner — Read the grill instructions for this task. [work]
 ```
 
 Open your coding agent in the printed `Tree` and ask it to plan the export. From the project, use the task list or resume by name.

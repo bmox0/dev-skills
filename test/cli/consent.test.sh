@@ -3,7 +3,7 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PIPELINE="$here/../../workflow/build/pipeline.py"
 python3 -B <<'PY'
-import hashlib, json, os, pathlib, subprocess, tempfile
+import json, os, pathlib, subprocess, tempfile
 
 with tempfile.TemporaryDirectory(prefix='consent repo ') as directory:
     root = pathlib.Path(directory).resolve()
@@ -189,26 +189,6 @@ effort = "high"
     started = json.loads(cli('build', 'start', plan, '--base', 'main', '--json'))
     assert not started['resumed'] and started['build_provider'] == 'GPT' and started['active_phases'] == []
     cli('phase', 'start', plan, '1')
-    # An older active state keeps its existing approvals without being rewritten.
-    old_state = compiled.read_bytes()
-    legacy = state()
-    legacy_summary = plan.with_suffix('.summary.md')
-    legacy_summary.write_text(f'Review [this plan]({plan.name}).\n')
-    old_digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-    run_digest = old_digest(legacy['run'])
-    origin = {'at': '2026-11-17', 'by': 'user', 'words': 'Yes'}
-    legacy['approvals'] = {'run': {**origin, 'digest': run_digest},
-                           'summary': {**origin, 'acceptor': 'user', 'file': str(legacy_summary),
-                                       'digest': old_digest(legacy_summary.read_text()),
-                                       'planning': old_digest(review['plan'].split('\n')), 'run': run_digest}}
-    compiled.write_text(json.dumps(legacy))
-    before = facts()
-    assert display()['current'] and cli('build', 'start', plan, '--json')
-    assert facts() == before
-    legacy_summary.write_text('There is no plan link.\n')
-    unchanged('build', 'start', plan, code='bad-summary')
-    compiled.write_bytes(old_state)
-    legacy_summary.unlink()
     # build#start-chosen: restarting reports the same phase and executor and does not write.
     before = facts()
     current = json.loads(cli('build', 'start', plan, '--json'))

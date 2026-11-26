@@ -107,7 +107,6 @@ import stat
 import tempfile
 import tomllib
 from pathlib import Path
-from urllib.parse import unquote
 
 sys.dont_write_bytecode = True
 
@@ -1156,14 +1155,12 @@ def state_problem(st, md):
             fields = {**report, "check_outcomes": dict}
             if problem := check_state_fields(phase["report"], fields, f"state.phases[{i}].report", optional=("check_outcomes",)):
                 return problem
-    for kind, fields in (("plan", {"revision": str, "planning": [str], "run": str, "by": str, "words": str,
-                                   "at": str, "acceptor": str, "authority": nullable_text}),
-                         ("run", {"digest": str}),
-                         ("summary", {"digest": str, "file": str, "planning": str, "run": str, "acceptor": str})):
-        approvals = st.get("approvals", {})
-        if kind in approvals:
-            if problem := check_state_fields(approvals[kind], fields, f"state.approvals.{kind}"):
-                return problem
+    approvals = st.get("approvals", {})
+    if "plan" in approvals:
+        fields = {"revision": str, "planning": [str], "run": str, "by": str, "words": str,
+                  "at": str, "acceptor": str, "authority": nullable_text}
+        if problem := check_state_fields(approvals["plan"], fields, "state.approvals.plan"):
+            return problem
     if "run" in st and (problems := run_diags(st["run"])):
         return f"state.run: {problems[0][1]}"
 
@@ -2051,9 +2048,7 @@ def task_lookup(project, name):
     from runweld_release import task_plan
     if not re.fullmatch(ID, name):
         raise Refuse("task-name", f"{name!r} is not a task ID", "use lowercase letters, numbers and hyphens")
-    root = workflow_dir(project)
-    for area in ("plans", "tasks"):
-        workflow_subdir(root / area)
+    workflow_subdir(workflow_dir(project) / "plans")
     if plan := task_plan(project, name):
         return task_for(plan, project)
 
@@ -2063,19 +2058,17 @@ def task_for(plan, project=None):
     md = Path(plan_paths(plan)[0])
     root = workflow_dir(Path(project or plan_root(md)))
     plans = workflow_subdir(root / "plans")
-    if (md.parent == plans or md.parent.parent == plans) and (value := registered_task(md)):
+    if md.parent.parent == plans and (value := registered_task(md)):
         tree = workflow_subdir(root / "trees") / md.stem
-        artifacts = (workflow_subdir(root / "artifacts") / md.stem if md.parent == plans else md.parent / "artifacts")
-        return {**value, "id": md.stem, "plan": str(md), "tree": str(tree), "artifacts": str(workflow_subdir(artifacts))}
+        artifacts = workflow_subdir(md.parent / "artifacts")
+        return {**value, "id": md.stem, "plan": str(md), "tree": str(tree), "artifacts": str(artifacts)}
 
 
 def task_rows(project):
     from runweld_release import task_folders
     root = workflow_dir(project)
-    tasks = workflow_subdir(root / "tasks")
-    ids = {path.stem for path in tasks.glob("*.json") if re.fullmatch(ID, path.stem)}
-    ids.update(name for name, folder in task_folders(workflow_subdir(root / "plans"))
-               if os.path.lexists(folder / (name + ".task.json")))
+    ids = {name for name, folder in task_folders(workflow_subdir(root / "plans"))
+           if os.path.lexists(folder / (name + ".task.json"))}
     return [task_lookup(project, name) for name in sorted(ids)]
 
 
@@ -2120,11 +2113,6 @@ def pending_discovery(task, stages):
     return next((stage for stage in discovery_route(task) if stages.get(stage, {}).get("status") not in ("done", "skipped")), None)
 
 
-def discovery_in_use(task, stages):
-    from runweld_release import DATED_TASK
-    return bool(DATED_TASK.fullmatch(Path(task["plan"]).parent.name) or task.get("bug") or task.get("goal") or stages)
-
-
 def discovery_artifact(task, value, *, red=False):
     artifacts = Path(task["artifacts"])
     try:
@@ -2140,7 +2128,7 @@ def discovery_artifact(task, value, *, red=False):
 
 def require_discovery(task):
     stages = read_discovery(task["plan"])["stages"]
-    if discovery_in_use(task, stages) and (stage := pending_discovery(task, stages)):
+    if stage := pending_discovery(task, stages):
         label = "reproduction" if stage == "reproduce" else stage
         raise Refuse("discovery-incomplete", f"task {task['id']} still needs {label}", f"run `runweld next {task['id']}` for the current actions")
     if task.get("bug"):
@@ -2324,12 +2312,12 @@ def cmd_task(bundle, a):
         return task_output({**row, **{k: stage[k] for k in ("workflow", "release", "discovery") if k in stage}}, a.json)
 
     root = workflow_dir(project)
-    tasks = workflow_subdir(root / "tasks")
     plans = workflow_subdir(root / "plans")
     tree = workflow_subdir(root / "trees") / name
-    tasks.mkdir(parents=True, exist_ok=True)
-    # Older releases take the same lock when reserving an ID.
-    with (tasks / ".lock").open("a") as lock:
+    reservations = workflow_subdir(root / "tasks")
+    reservations.mkdir(parents=True, exist_ok=True)
+    # Release engines must share the lock for task IDs.
+    with (reservations / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         row = task_lookup(project, name)
         r = lambda *args: git(*args, cwd=project, check=False)
@@ -2349,8 +2337,8 @@ def cmd_task(bundle, a):
             if commit.returncode:
                 raise Refuse("unknown-ref", f"{base} is not a commit", "name a project base with --base")
             folder = plans / f"{datetime.date.today()}-{name}"
-            if branch_tip or any(os.path.lexists(p) for p in (folder, tree, plans / (name + ".run.toml"),
-                        workflow_subdir(root / "artifacts") / name)) or any(p.stem == name for p in inventory(project)):
+            if branch_tip or any(os.path.lexists(p) for p in (folder, tree, plans / (name + ".run.toml"))) or any(
+                    p.stem == name for p in inventory(project)):
                 raise Refuse("task-collision", f"task {name} conflicts with an existing plan, branch, or path", "choose a different task ID")
             if a.goal is not None and not a.goal.strip():
                 raise Refuse("task-goal", "the task goal cannot be blank", "pass --goal with the requested outcome")
@@ -2366,7 +2354,7 @@ def cmd_task(bundle, a):
             row = task_lookup(project, name)
         plan = Path(row["plan"])
         artifacts = Path(row["artifacts"])
-        record_path = tasks / (name + ".json") if plan.parent == plans else plan.with_suffix(".task.json")
+        record_path = plan.with_suffix(".task.json")
         run_file = Path(run_path(plan))
         if ((a.goal is not None and a.goal != row.get("goal")) or (a.bug and not row.get("bug"))):
             raise Refuse("task-intent", f"task {name} is already registered with a different intent", "omit intent flags when resuming an existing task")
@@ -2659,13 +2647,7 @@ def planning_digest(plan):
 
 
 def plan_approval(st):
-    approvals = st.get("approvals", {})
-    return approvals.get("plan") or approvals.get("run")
-
-
-def acceptance_authority(st):
-    approvals = st["approvals"]
-    return approvals.get("plan") or approvals["summary"]
+    return st.get("approvals", {}).get("plan")
 
 
 def approval_revision(st, lines, run):
@@ -2697,7 +2679,7 @@ def cmd_plan_review(plan, as_json):
     consent = consent_diags(plan, st, head=head, values=run)
     result = {"plan_path": md, "plan": "\n".join(lines), "run_path": run_path(plan), "run_toml": text, "run": run,
               "branch": st["branch"], "base": st["base"], "revision": revision, "diff": diff,
-              "approval": acceptance_authority(st) if not consent else st.get("approvals", {}).get("plan"),
+              "approval": plan_approval(st),
               "current": not (consent or validation), "diagnostics": [dict(code=c, message=m, fix=f) for c, m, f in validation + consent],
               "approval_command": {"cwd": plan_root(md), "argv": approval_argv(plan, revision),
                                    "options": {"approver": "--by NAME", "words": "--words APPROVAL"}} if not validation else None}
@@ -2722,73 +2704,7 @@ def cmd_plan_review(plan, as_json):
     return 0
 
 
-# Default_Ignorable_Code_Point from https://www.unicode.org/Public/18.0.0/ucd/DerivedCoreProperties.txt
-# See references/unicode-license.txt.
-DEFAULT_IGNORABLE = re.compile(
-    "[\u00ad\u034f\u061c\u115f-\u1160\u17b4-\u17b5\u180b-\u180f"
-    "\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff"
-    "\uffa0\ufff0-\ufff8\U0001bca0-\U0001bca3\U0001d173-\U0001d17a"
-    "\U000e0000-\U000e0fff]"
-)
-
-
-def summary_destinations(text):
-    from _marko.inline import CodeSpan, Image, Link, Literal, RawText, unescape_text
-    from _marko.parser import Parser
-
-    def has_visible_label(link):
-        pending = list(link.children)
-        while pending:
-            node = pending.pop()
-            if isinstance(node, Image) and node.dest.strip():
-                return True
-            if isinstance(node, (RawText, Literal, CodeSpan)):
-                label = unescape_text(node.children) if isinstance(node, RawText) else node.children
-                label = DEFAULT_IGNORABLE.sub("", label)
-                if any(char.isprintable() and not char.isspace() for char in label):
-                    return True
-            elif isinstance(node.children, list):
-                pending.extend(node.children)
-        return False
-
-    try:
-        document = Parser().parse(text)
-    except RecursionError:
-        return
-    pending = [document]
-    while pending:
-        node = pending.pop()
-        if isinstance(node, Link):
-            if has_visible_label(node):
-                yield node.dest
-        elif not isinstance(node, Image) and isinstance(node.children, list):
-            pending.extend(reversed(node.children))
-
-
-def read_summary(plan, path):
-    fix = "write and present a summary of at most 350 words with a visible link such as `[Plan](<path to plan.md>)`"
-    source = path
-    text = read_required(source, "no-summary", fix)
-    expected = os.path.realpath(plan_paths(plan)[0])
-    if len(text.split()) > 350:
-        raise Refuse("bad-summary", f"{source} must link this plan and contain at most 350 words", fix)
-    for target in summary_destinations(markdown_newlines(text)):
-        if re.match(r"(?:[A-Za-z][A-Za-z0-9+.-]*:|//)", target):
-            continue
-        local = unquote(re.split(r"[?#]", target, maxsplit=1)[0])
-        if local and "\0" not in local:
-            # Relative links start at the recorded summary pathname, not its symlink target.
-            try:
-                if os.path.realpath(os.path.join(os.path.dirname(path), local), strict=True) == expected:
-                    return text
-            except OSError:
-                continue
-    raise Refuse("bad-summary", f"{source} must link this plan and contain at most 350 words", fix)
-
-
 def consent_diags(plan, st, *, head=None, values=None):
-    approvals = st.get("approvals", {})
-    run = approvals.get("run")
     review = shlex.join([*cli_argv(plan), "plan", "review", plan_paths(plan)[0]])
     fix = f"run `{review}` and obtain current human approval"
     if values is None:
@@ -2797,7 +2713,7 @@ def consent_diags(plan, st, *, head=None, values=None):
             if not plan_approval(st) and "run" not in st and not os.path.lexists(run_path(plan)):
                 return [("plan-unapproved", problems[0][1], f"{problems[0][2]}, then {fix}")]
             return problems
-    if approval := approvals.get("plan"):
+    if approval := plan_approval(st):
         if "run" not in st or approval["run"] != digest(st["run"]):
             return [("approval-snapshot", f"{plan_paths(plan)[1]} has no matching approved run snapshot", "restore the saved state")]
         if head is None:
@@ -2812,22 +2728,7 @@ def consent_diags(plan, st, *, head=None, values=None):
             keys = ", ".join(f"[{section}] {key}" for section, key in run_changes(st["run"], values))
             drift.append(("run-stale", f"the run configuration differs from its approval ({keys or 'section structure changed'})", fix))
         return drift
-    if not run:
-        return [("plan-unapproved", "the proposed plan and run configuration have no human approval", fix)]
-    if "run" not in st:
-        return [("run-stale", f"{plan_paths(plan)[1]} has no approved run snapshot", fix)]
-    if digest(values) != run["digest"] or digest(st["run"]) != run["digest"]:
-        return [("run-stale", f"{run_path(plan)} differs from its approval", fix)]
-    summary = approvals.get("summary")
-    if not summary:
-        return [("plan-unapproved", "the legacy run-only approval does not cover the complete plan", fix)]
-    try:
-        text = read_summary(plan, summary["file"])
-    except Refuse as error:
-        return error.diags
-    if summary["planning"] != planning_digest(plan) or summary["run"] != run["digest"] or digest(text) != summary["digest"]:
-        return [("plan-stale", f"the legacy approval's plan, Spec or linked summary ({summary['file']}) changed", fix)]
-    return []
+    return [("plan-unapproved", "the proposed plan and run configuration have no human approval", fix)]
 
 
 def require_consent(plan, st, *, head=None):
@@ -2922,8 +2823,7 @@ def require_judge(plan, st):
 
 
 def page_binding(plan, st):
-    key = "plan" if "plan" in st["approvals"] else "summary"
-    return digest({key: acceptance_authority(st), "contract": contract_digest(plan, st),
+    return digest({"plan": st["approvals"]["plan"], "contract": contract_digest(plan, st),
                    "records": {k: st.get(k) for k in ("cycles", "rounds", "notes", "verdicts", "lands", "decisions", "phases")}})
 
 
@@ -2957,7 +2857,7 @@ def cmd_accept(plan, a):
         if st["status"] not in ("at the human gate", "passed"):
             raise Refuse("bad-status", f"the plan is {st['status']}", "acceptance follows the current page at the human gate")
         pg = require_page(plan, st)
-        acceptor = acceptance_authority(st)["acceptor"]
+        acceptor = st["approvals"]["plan"]["acceptor"]
         if a.by != acceptor:
             raise Refuse("unauthorized-acceptor", f"{a.by!r} has no acceptance grant; the acceptor is {acceptor!r}", "obtain the designated acceptor's unchanged words")
         st["acceptance"] = {**entry, "page": digest(pg)}
@@ -3100,16 +3000,16 @@ def plan_release(plan):
         raise Refuse("run-release", str(error), "restore the run's release record") from None
 
 
-def cli_argv(plan=None, *, release=None):
+def cli_argv(plan=None):
     if (bundle := standalone_bundle()) is not None:
-        release = release or (plan_release(plan) if plan else None) or bundle.name
+        release = (plan_release(plan) if plan else None) or bundle.name
         return [sys.executable, str(bundle.parents[3] / "bin/runweld"), "--release", release]
     return [sys.executable, os.path.realpath(__file__)]
 
 
-def plan_command(plan, command, *args, cwd=None, release=None, **options):
+def plan_command(plan, command, *args, cwd=None, **options):
     return {"cwd": cwd or plan_root(plan),
-            "argv": [*cli_argv(plan, release=release), *command.split(), plan_paths(plan)[0], *map(str, args)],
+            "argv": [*cli_argv(plan), *command.split(), plan_paths(plan)[0], *map(str, args)],
             **({"options": options} if options else {})}
 
 
@@ -3284,15 +3184,14 @@ def role_definition(role):
     return next(stage for stage in workflow_catalog()["stages"].values() if role in stage.get("roles", {}))
 
 
-def bind_assignment(plan, st, brief, work, *, legacy=None):
+def bind_assignment(plan, st, brief, work):
     role, assignment = work["role"], work["assignment"]
     md, state, _ = plan_paths(plan)
-    tree = st["tree"] if legacy else tree_fact(plan, st)
-    bundle, source = legacy or (Path(PACKAGE), role_definition(role)["roles"][role])
-    release = bundle.name if legacy else None
+    tree = tree_fact(plan, st)
+    bundle, source = Path(PACKAGE), role_definition(role)["roles"][role]
 
     def report(label, command, *args, **options):
-        return {"label": label, **plan_command(plan, command, *args, cwd=tree, release=release, **options)}
+        return {"label": label, **plan_command(plan, command, *args, cwd=tree, **options)}
 
     if brief in ("implementer", "fix", "round"):
         args = (assignment["phase"],) if brief == "implementer" else ()
@@ -3324,11 +3223,11 @@ def bind_assignment(plan, st, brief, work, *, legacy=None):
                                              predict="--predict TEXT CAUSE (for each predicted note)")
     assignment.update(cwd=tree, role_source=str(bundle / source),
                       protocol=str(bundle / "references/SESSIONS.md"),
-                      instructions=[[*cli_argv(plan, release=release), role, "--plan", md]], reports=reports,
+                      instructions=[[*cli_argv(plan), role, "--plan", md]], reports=reports,
                       return_channel={"contact": "dispatching build coordinator",
                                       "method": "native message or agreed result channel",
                                       "records": state})
-    if not legacy and standalone_bundle() is not None:
+    if standalone_bundle() is not None:
         assignment["herdr_check"] = plan_command(plan, "handoff herdr", workspace="--workspace ID", pane="--pane ID")
 
 
@@ -3365,7 +3264,6 @@ def herdr_handoff(plan, a):
 
 
 def brief_binding(plan, st, kind, provider, *, phase=None, cases=(), review=None):
-    state = st.get("approvals", {})
     if kind == "implementer":
         scope = phase
     elif kind == "round":
@@ -3384,7 +3282,7 @@ def brief_binding(plan, st, kind, provider, *, phase=None, cases=(), review=None
         else:
             scope = [cycle_label(cycle), head, judge_evidence(st)]
         scope = [scope, (st.get("verdicts") or [None])[-1]]
-    return digest([kind, provider, scope, state.get("plan") or state.get("summary")])
+    return digest([kind, provider, scope, plan_approval(st)])
 
 
 def prepared_brief(plan, st, kind, provider, args):
@@ -3598,7 +3496,7 @@ def land_workflow(plan, st, tree, c, verdict, provider):
         if status.startswith("http"):
             return "human-review", [run_action(plan, "Coordinator", 'Restore human review with `plan status <plan> "at the human gate"` and obtain current acceptance.',
                                                "plan status", "at the human gate")]
-        authority = acceptance_authority(st)
+        authority = st["approvals"]["plan"]
         acceptor = authority["acceptor"]
         page_path = plan_paths(plan)[0] + "#human-gate"
         return stage_after("judge", "landed"), [workflow_action("Human", "ask",
@@ -3719,9 +3617,9 @@ def status_workflow(plan, head, stage, actions):
     return workflow_view(plan_paths(plan)[0], stage, actions, history)
 
 
-def pinned_response(bundle, plan, cwd, provider, command, *, release=None):
+def pinned_workflow(bundle, plan, cwd, provider, command):
     from runweld_release import PROGRAM, ReleaseError, verify_release
-    if bundle is None or not (release := release or plan_release(plan)) or release == bundle.name:
+    if bundle is None or not (release := plan_release(plan)) or release == bundle.name:
         return None
     engine = verify_release(bundle.parents[1], release) / PROGRAM
     if not command:
@@ -3732,12 +3630,7 @@ def pinned_response(bundle, plan, cwd, provider, command, *, release=None):
     result = subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
     if result.returncode:
         raise ReleaseError(result.stderr.strip() or result.stdout.strip() or f"{release} could not read {plan}")
-    return json.loads(result.stdout)
-
-
-def pinned_workflow(bundle, plan, cwd, provider, command):
-    response = pinned_response(bundle, plan, cwd, provider, command)
-    return response["workflow"] if response else None
+    return json.loads(result.stdout)["workflow"]
 
 
 def summary(plan, st, head, tail=None, *, workflow=False, provider=None):
@@ -3799,8 +3692,7 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
                     if current:
                         delegated = pinned_workflow(bundle, full, cwd, provider, ("status", full) if m[1] == "draft" and not compiled else ())
                         if delegated is None:
-                            recorded = read_discovery(full)["stages"] if task else {}
-                            if not compiled and task and discovery_in_use(task, recorded):
+                            if not compiled and task:
                                 view = task_stage(task)
                                 row["discovery"], delegated = view["discovery"], view["workflow"]
                             else:
@@ -3878,7 +3770,7 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
         step = (work_action("Planner", f"Prepare the draft and run file. {action}", "planner", "plan") if problems or run_problems
                 else run_action(plan, "Planner", action, "approve"))
         discovery = read_discovery(md)["stages"] if task else {}
-        view = (task_stage(task)["workflow"] if task and discovery_in_use(task, discovery)
+        view = (task_stage(task)["workflow"] if task
                 else status_workflow(plan, head, "plan", [step]))
         if as_json or as_data:
             row = {**draft, "plan": os.path.basename(md)[:-3], "workflow": view}
@@ -3904,147 +3796,7 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
     return 0
 
 
-def bind_legacy_planning_action(step, plan, tree, bundle):
-    assignment = step.get("assignment", {})
-    kind = assignment.get("kind")
-    if step.get("role") != "planner" or "instructions" in assignment or kind not in ("grill", "plan", "task-start"):
-        return
-    if kind == "task-start":
-        step.update(kind="run", cwd=plan_root(plan), argv=[*cli_argv(plan, release=bundle.name), "task", "start", Path(plan).stem])
-        return
-    guides = ("grill", "plan") if kind == "grill" else ("plan",)
-    assignment.update(cwd=tree, instructions=[[*cli_argv(plan, release=bundle.name), guide, "--plan", plan] for guide in guides],
-                      role_source=str(bundle / "workflow" / kind / "GUIDE.md"),
-                      protocol=str(bundle / "references/SESSIONS.md"),
-                      reports=[{"label": "Validate the written draft without approving it",
-                                **plan_command(plan, "approve", cwd=tree, release=bundle.name)}],
-                      return_channel={"contact": "human and planner",
-                                      "method": "save the decisions in the draft",
-                                      "records": plan})
-
-
-def legacy_brief(plan, head, status, brief, work):
-    assignment = work["assignment"]
-    scopes = {"implementer": ("phase",), "fix": ("cycle", "fix"), "round": ("round",),
-              "reviewer": ("id",), "verify": ("cycle",), "judge": ("cycle",)}
-    scope = "-".join(str(assignment[key]) for key in scopes[brief])
-    stem = f"{Path(plan).stem}.brief-{brief}-{scope}"
-    pattern = stem + ("*.md" if brief in ("reviewer", "verify") else ".md")
-    release = status.get("release") or "unversioned run"
-    label = f"{brief} phase {assignment['phase']}" if brief == "implementer" else brief
-    expected = [f"Plan: {plan}", f"Tree: {assignment['cwd']}", f"Branch: {status['branch']}",
-                f"Assignment: {label}", f"Run release: {release}", f"Role source: {assignment['role_source']}"]
-    grants = assignment.get("grants", [])
-    if brief == "implementer":
-        if grants == ["none"]:  # The legacy brief uses the same text for no grants.
-            return None
-        if not (phase := phase_brief_text(head, assignment["phase"])):
-            return None
-        phase.append(f"Grants: {', '.join(grants) or 'none'}")
-    if executor := work.get("executor"):
-        expected += [f"Executor {k}: {executor[k]}" for k in ("provider", "tier", "model", "effort") if k in executor]
-    if brief in ("reviewer", "verify", "judge"):
-        expected.append(f"HEAD: {head_sha(None, assignment['cwd'])}")
-    if brief == "judge" and assignment.get("verdict"):
-        answer = status["verdicts"][-1].get("answer")
-        expected.append(f"The user's answer: {answer}")
-    approved = max((record.get("at") or "" for record in status.get("approvals", {}).values()), default="")
-    # Legacy briefs lack an assignment digest. Match the saved scope and pinned context without inferring dispatch.
-    found = []
-    for path in Path(plan).parent.glob(pattern):
-        if path.is_symlink() or not path.is_file():
-            continue
-        try:
-            mtime = path.stat().st_mtime
-            if datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") < approved:
-                continue
-            lines = read_required(path, "brief", "restore the prepared brief").split("\n")
-        except (OSError, Refuse):
-            continue
-        if not all(line in lines for line in expected):
-            continue
-        if brief == "implementer":
-            # The writer's first section contains the literal phase before its grant metadata.
-            start = next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))
-            if lines[start:start + len(phase)] != phase:
-                continue
-        if brief == "reviewer":
-            binding = shlex.join([plan, "--assignment", assignment["id"], "--range", assignment["range"]])
-            if not any(line.startswith("- Complete the review: ") and line.endswith(binding) for line in lines):
-                continue
-        if brief == "verify":
-            body = "\n".join(lines).partition("## Cases to drive\n")[2].partition("\nHow to run the system:")[0]
-            if not all(re.search(rf"(?m)^{n}\. ", body) for n in assignment["cases"]):
-                continue
-        found.append((mtime, str(path)))
-    return max(found)[1] if found else None
-
-
-def bind_legacy_actions(status, workflow, plan, head, task, bundle, provider):
-    actions = workflow["actions"]
-    roles = {role: source for stage in workflow["stages"] for role, source in stage.get("roles", {}).items()}
-    briefs = {digest(step["assignment"]): step for step in actions
-              if step["kind"] == "run" and step.get("role") and step["argv"][4:5] == ["brief"]}
-    added, prepared = [], []
-
-    def command(name, *args, **options):
-        return plan_command(plan, name, *args, release=bundle.name, **options)
-
-    def consent_evidence(name):
-        for i, message in enumerate(status.get("drift", [])):
-            fact, _, fix = message.partition(" — fix: ")
-            if f"`{name}" in fix or f"`pipeline.py {name}" in fix:
-                status["drift"][i] = fact
-
-    for step in actions:
-        if not step.get("command"):
-            approval = step.get("input")
-            if approval == "run-approval":
-                consent_evidence("run approve")
-                step.update(action=f"Review {run_path(plan)} with the human and record their unchanged approval of this run.",
-                            command=command("run approve", by="--by NAME", words="--words TEXT"),
-                            alternatives=[command("run show")])
-            elif approval == "summary-approval":
-                consent_evidence("summary approve")
-                step.update(action="Present a summary linked to this plan and record the human's unchanged approval.",
-                            command=command("summary approve", file="--file PATH", by="--by NAME", words="--words TEXT",
-                                            acceptor="--acceptor NAME (for designated acceptance)",
-                                            authority="--authority TEXT (the human's grant for designated acceptance)"))
-            elif step.get("waiting_for") == "start-instruction":
-                step["command"] = command("build start", **({} if task else {"base": "--base REF"}))
-            elif approval == "provider":
-                step.update(action="Supply the current provider to get executable brief commands.",
-                            command=command("next --plan", provider="--provider NAME"))
-            elif step.get("waiting_for") == "judge-answer" or (approval == "evidence-exception" and "brief judge" in step["action"]):
-                note = "ANSWER" if step.get("waiting_for") == "judge-answer" else "REASON"
-                step["command"] = command("brief judge", *(("--provider", provider) if provider else ()),
-                                          note=f"--note {note}", **({} if provider else {"provider": "--provider NAME"}))
-        if step["kind"] != "work":
-            continue
-        bind_legacy_planning_action(step, plan, status["tree"] or plan_root(plan), bundle)
-        role, assignment = step.get("role"), step.get("assignment", {})
-        if role not in roles or "instructions" in assignment:
-            continue
-        kind = assignment["kind"]
-        if kind not in ("phase", "review", "verify", "fix", "round", "judge"):
-            continue
-        brief = {"phase": "implementer", "review": "reviewer"}.get(kind, kind)
-        generation = briefs.get(digest(assignment))
-        bind_assignment(plan, status, brief, step, legacy=(bundle, roles[role]))
-        if generation:
-            if path := legacy_brief(plan, head, status, brief, step):
-                assignment["brief"] = {"path": path, "dispatch": "unverified"}
-                step["action"] += " Recover the prepared brief. Inspect the host for a live assignment before dispatch or continuation."
-                prepared.append(generation)
-            else:
-                assignment["brief"] = {"argv": generation["argv"], "cwd": generation.get("cwd", plan_root(plan))}
-                generation["assignment"] = assignment
-            added.append(assignment_wait(brief, step))
-
-    return [step for step in actions if step not in prepared] + added
-
-
-def cmd_next(bundle, a, selected_plan, legacy_release):
+def cmd_next(a, selected_plan):
     from runweld_release import project_root
     cwd = Path.cwd()
     project = project_root(cwd)
@@ -4055,33 +3807,24 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
         plan = plan_paths(selected_plan)[0]
         task = task_for(plan)
         has_plan = os.path.lexists(plan)
-        head = []
         goal = task.get("goal") if task else None
-        if legacy_release:
-            command = ("task", "resume", task["id"]) if task and not has_plan else ("status", plan)
-            status = pinned_response(bundle, plan, cwd, a.provider, command, release=legacy_release)
-            if not has_plan:
-                status.update(status="planning", plan=task["id"], ready=[])
-            discovery = status.get("discovery", {})
+        discovery = read_discovery(plan)["stages"] if task else {}
+        if task and (not has_plan or not load_state(plan)):
+            status = task_stage(task)
         else:
-            discovery = read_discovery(plan)["stages"] if task else {}
-            if task and (not has_plan or (discovery_in_use(task, discovery) and not load_state(plan))):
-                status = task_stage(task)
-            else:
-                status = cmd_status(plan, False, cwd, provider=a.provider, as_data=True)
+            status = cmd_status(plan, False, cwd, provider=a.provider, as_data=True)
         if has_plan:
             head, _ = read_plan(plan)
             goal = "\n".join(sections(head).get("Result", (0, []))[1]).strip() or goal
         workflow = status.pop("workflow")
         stage = workflow["stage"]
-        actions = (bind_legacy_actions(status, workflow, plan, head, task, bundle.parent / legacy_release, a.provider)
-                   if legacy_release else workflow["actions"])
+        actions = workflow["actions"]
         for step in actions:
             if step["kind"] == "run":
                 step.setdefault("cwd", view["project"])
         purpose = ("Prepare the task worktree if needed, reproduce the failure and save the cause and red evidence."
                    if stage == "reproduce" else workflow_catalog()["stages"][stage].get("purpose", stage))
-        view.update(task={**status, "id": status["plan"], "path": plan, "release": legacy_release or status["release"],
+        view.update(task={**status, "id": status["plan"], "path": plan, "release": status["release"],
                           "artifacts": task["artifacts"] if task else str(Path(plan).parent),
                           "goal": goal, **({"discovery": discovery} if task else {})},
                     stage=stage, purpose=purpose, actions=actions, evidence=next_evidence(status))
@@ -4092,7 +3835,7 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
         config, lock = (project / ".runweld" / name for name in ("config.toml", "runweld.lock"))
         if not (config.is_file() and lock.is_file()):
             view["actions"] = [workflow_action("Human", "run", "Set up project defaults and executors with `runweld init`.",
-                                               cwd=root, argv=[*cli_argv(release=legacy_release), "init"])]
+                                               cwd=root, argv=[*cli_argv(), "init"])]
         elif git("rev-parse", "--verify", "HEAD", check=False, cwd=root).returncode:
             view["actions"] = [workflow_action("Human", "ask", "Make an initial Git commit before creating a task worktree.", input="base-commit")]
         else:
@@ -7154,7 +6897,7 @@ def agent_help(bundle):
     print("Use `runweld reference RELEASE_PATH --plan PLAN` for conditional material named by an instruction.")
 
 
-def main(*, current_task=None, next_release=None):
+def main(*, current_task=None):
     from runweld_release import ReleaseError
     bundle = standalone_bundle()
     p, a = parse_cli(sys.argv[1:] or (["--help"] if bundle else []), standalone=bundle is not None,
@@ -7177,9 +6920,8 @@ def main(*, current_task=None, next_release=None):
             from runweld_release import command_plan, run_pin, update_installation
             selected_plan = command_plan(a, Path.cwd())
             required = run_pin(selected_plan) if selected_plan else None
-            release = next_release or bundle.name
-            if required is not None and required != release:
-                raise ReleaseError(f"this run selects {required}, not {release}; use `runweld` without a release override")
+            if required is not None and required != bundle.name:
+                raise ReleaseError(f"this run selects {required}, not {bundle.name}; use `runweld` without a release override")
             if a.group == "update":
                 update_installation(bundle.parents[1], a.scope, a.version)
                 return 0
@@ -7197,7 +6939,7 @@ def main(*, current_task=None, next_release=None):
             if a.group == "task" and a.command == "setup":
                 return cmd_task_setup(a.plan, reproduction=a.reproduction, preview=a.preview)
             if a.group == "next":
-                return cmd_next(bundle, a, selected_plan, next_release)
+                return cmd_next(a, selected_plan)
             if a.group == "path":
                 return cmd_path(a.area)
             if a.group == "reference":

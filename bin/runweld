@@ -14,17 +14,17 @@ SCOPED_EXECUTION = """
 from pathlib import Path
 import sys
 
-engine, key, selected, *args = sys.argv[1:]
+engine, selected, *args = sys.argv[1:]
 sys.path.insert(0, str(Path(engine).parent))
 import pipeline
 
 sys.argv = [engine, *args]
-sys.exit(pipeline.main(**{key: Path(selected) if key == "current_task" else selected}))
+sys.exit(pipeline.main(current_task=Path(selected)))
 """
 
 
 def main():
-    from runweld_release import ReleaseError, command_plan, installed_default, project_root, read_lock, read_workflow, run_pin, update_installation, verify_release, PROGRAM
+    from runweld_release import ReleaseError, command_plan, installed_default, project_root, read_lock, run_pin, update_installation, verify_release, PROGRAM
 
     argv = sys.argv[1:]
     project_pin = None
@@ -59,10 +59,6 @@ def main():
                 release = installed_default(store)
         bundle = verify_release(store, release)
         engine = bundle / PROGRAM
-        if argv[:1] == ["next"] and "purpose" not in read_workflow(bundle)["stages"]["grill"]:
-            latest = verify_release(store, installed_default(store))
-            if "purpose" in read_workflow(latest)["stages"]["grill"]:
-                os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", SCOPED_EXECUTION, str(latest / PROGRAM), "next_release", release, *argv])
         if argv in (["--version"], ["--version", "--verbose"], ["--verbose", "--version"]):
             if project_pin is not None:
                 cli = installed_default(store)
@@ -78,7 +74,7 @@ def main():
             from route_pipeline import parse_cli
             parse_cli(argv, standalone=True, version=release)
         if scoped:
-            os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", SCOPED_EXECUTION, str(engine), "current_task", str(scoped), *argv])
+            os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", SCOPED_EXECUTION, str(engine), str(scoped), *argv])
         os.execv(sys.executable, [sys.executable, str(engine), *argv])
     except ReleaseError as error:
         print(f"runweld: {error}", file=sys.stderr)
