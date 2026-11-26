@@ -83,6 +83,8 @@ Waits for: nothing
 
 none
 PLAN
+runweld grill skip "$plan" --reason 'The fixture has no open questions' >/dev/null
+runweld prototype skip "$plan" --reason 'The fixture needs no prototype' >/dev/null
 cp "${plan%.md}.run.toml" "$sandbox/run-a.toml"
 mkdir docs
 sed 's|runweld/run-a|solo|' "$plan" > docs/solo.md
@@ -249,14 +251,15 @@ brief=$(cd "$sandbox" && runweld brief implementer "$plan" 1 --provider Test)
 assert_contains "$(cat "$brief")" "$engine_a/agents/implementer.md" 'distribution#project-lock: run briefs still use A'
 assert_contains "$(cat "$brief")" 'runweld tdd' 'distribution#system-cli: a phase can depend on an installed skill'
 (cd "$repo_worktree" && runweld status --current --json --provider Test) > "$sandbox/status.json"
-python3 - "$sandbox/status.json" "$sandbox" "$engine_a" <<'PY'
-import json, subprocess, sys
+python3 - "$sandbox/status.json" "$brief" "$engine_a" <<'PY'
+import json, sys
 from pathlib import Path
-view, cwd, release = sys.argv[1:]
+view, brief, release = sys.argv[1:]
 row, = json.loads(Path(view).read_text())
-step = next(s for s in row['workflow']['actions'] if s.get('role') == 'implementer' and s['kind'] == 'run')
-brief = subprocess.check_output(step['argv'], cwd=cwd, text=True).strip()
-assert f'{release}/agents/implementer.md' in Path(brief).read_text(), 'distribution#project-lock: advertised argv is bound to A from another directory'
+step, = (s for s in row['workflow']['actions'] if s.get('role') == 'implementer' and s['kind'] == 'work')
+assert step['assignment']['brief'] == {'path': brief, 'dispatch': 'unverified'}
+assert not any(s['kind'] == 'run' and s.get('role') == 'implementer' for s in row['workflow']['actions'])
+assert step['assignment']['role_source'] == f'{release}/agents/implementer.md'
 PY
 
 # Missing or changed contents must not select a fallback or alter the lock or run.

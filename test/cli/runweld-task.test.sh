@@ -18,7 +18,8 @@ with tempfile.TemporaryDirectory() as folder:
     home = Path(folder).resolve()
     project = home / "project with spaces"
     project.mkdir()
-    env = dict(os.environ, GIT_AUTHOR_NAME="Tester", GIT_AUTHOR_EMAIL="test@example.org",
+    env = dict({k: v for k, v in os.environ.items() if not k.startswith("RUNWELD_")},
+               GIT_AUTHOR_NAME="Tester", GIT_AUTHOR_EMAIL="test@example.org",
                GIT_COMMITTER_NAME="Tester", GIT_COMMITTER_EMAIL="test@example.org")
     runweld = home / "bin/runweld"
 
@@ -128,6 +129,13 @@ Waits for: nothing
 
 {rules}
 """)
+        # planning#early-progress: omitting a goal does not bypass recording optional stages.
+        assert "discovery-incomplete" in run(runweld, "spec", "check", path, ok=False)
+        assert "discovery-incomplete" in run(runweld, "approve", path, ok=False)
+        for stage in ("grill", "prototype"):
+            view = json.loads(run(runweld, "next", "--json", cwd=Path(row["tree"])))
+            assert view["stage"] == stage
+            run(runweld, stage, "skip", path, "--reason", "The fixture follows a settled plan")
         # This source instruction is deliberately absent from the main checkout.
         skill = Path(row["tree"]) / "local-skill.md"
         caller_skill = project / skill.name
@@ -158,6 +166,9 @@ Waits for: nothing
         assert "[workflow]" in run(runweld, *approval, ok=False)
         run_file.write_text(snapshot)
         run(runweld, *approval)
+        discovery = json.loads(run(runweld, "next", "--json", cwd=Path(row["tree"])))["task"]["discovery"]
+        assert {stage: (fact["status"], fact["reason"]) for stage, fact in discovery.items()} == dict.fromkeys(
+            ("grill", "prototype"), ("skipped", "The fixture follows a settled plan"))
         return path
 
     a_plan, b_plan = make_plan(a), make_plan(b)

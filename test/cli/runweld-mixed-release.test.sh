@@ -23,8 +23,17 @@ catalog = root / "references/workflow.toml"
 catalog.write_text("".join(line for line in catalog.read_text().splitlines(keepends=True)
                            if not line.startswith("purpose = ")))
 engine = root / "workflow/build/pipeline.py"
-engine.write_text(engine.read_text().replace('if a.group == "next":\n                return cmd_next',
-                                             'if a.group == "next":\n                raise AssertionError("release A has no next")\n                return cmd_next'))
+code = engine.read_text().replace('if a.group == "next":\n                return cmd_next',
+                                  'if a.group == "next":\n                raise AssertionError("release A has no next")\n                return cmd_next')
+# The pre-next engine exposed this exact work action without any executable binding.
+start = '        data = read_discovery(plan)\n'
+task_stage = code.index("def task_stage(")
+insert = code.index(start, task_stage)
+legacy = """        if task["id"] == "previous-draft":
+            step = work_action("User and planner", "In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning.", "planner", "grill")
+            return {**row, "workflow": workflow_view(plan, "grill", [step])}
+"""
+engine.write_text(code[:insert] + legacy + code[insert:])
 PY
 launcher="$sandbox/bin/runweld"
 "$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
@@ -155,6 +164,31 @@ assert view["stage"] == "build" and view["task"]["goal"] == "Resume without chan
 assert any(sys.argv[2] in a["argv"] for a in view["actions"] if a["kind"] == "run")
 PY
 assert_contains "$(cli next previous-draft)" "$a grill --plan" 'distribution#system-cli: next retains the pinned pre-draft instruction'
+cli next previous-draft --json > "$sandbox/draft-next.json"
+cli next previous-draft > "$sandbox/draft-next.txt"
+python3 - "$sandbox" "$a" <<'PY'
+import json
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+root, release = Path(sys.argv[1]), sys.argv[2]
+view = json.loads((root / "draft-next.json").read_text())
+text = (root / "draft-next.txt").read_text()
+work, = view["actions"]
+assignment = work["assignment"]
+assert work["kind"] == "work" and assignment["kind"] == "grill"
+assert view["task"]["release"] == release and assignment["cwd"] == view["task"]["tree"]
+assert assignment["return_channel"]["records"] == view["task"]["path"]
+for guide, instruction in zip(("grill", "plan"), assignment["instructions"], strict=True):
+    assert instruction[-5:] == ["--release", release, guide, "--plan", view["task"]["path"]]
+    assert f"In {assignment['cwd']}: {shlex.join(instruction)}" in text
+    assert f"# {guide.capitalize()}" in subprocess.check_output(instruction, cwd=assignment["cwd"], text=True)
+report, = assignment["reports"]
+assert report["argv"][-4:] == ["--release", release, "approve", view["task"]["path"]]
+assert f"In {report['cwd']}: {shlex.join(report['argv'])}" in text
+PY
 for format in text json; do
   record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/workflow/build/pipeline.py"
 done
@@ -210,6 +244,8 @@ cp "$sandbox/active.md" "$plan"
 rm .runweld/workflow/tasks/unrelated.json .runweld/workflow/plans/unrelated.{json,md}
 
 # Also compare the same-release launcher to the native command as a new task gains and loses state.
+cli grill skip "$same_plan" --reason 'The fixture has no open questions' >/dev/null
+cli prototype skip "$same_plan" --reason 'The fixture needs no prototype' >/dev/null
 sed 's|runweld/previous-plan|runweld/current|' "${plan%/*}/previous-plan.md" > "$same_plan"
 for state in draft active unreadable repair; do
   expected_code=0

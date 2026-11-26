@@ -221,7 +221,7 @@ cli approve "$plan" >/dev/null || fail "compile completed history"
 json 'assert "port" not in (c["alloc"] or {}), c["alloc"]' || fail "a merged plan gets no port"
 
 # the docstring names every command --help lists
-python3 - "$pipeline" <<'PY' || fail "the docstring names every command --help lists"
+python3 -B - "$pipeline" <<'PY' || fail "the docstring names every command --help lists"
 import re, subprocess, sys
 src = sys.argv[1]
 doc = re.search(r'"""(.*?)"""', open(src).read(), re.S)[1]

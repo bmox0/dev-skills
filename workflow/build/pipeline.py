@@ -2112,7 +2112,8 @@ def pending_discovery(task, stages):
 
 
 def discovery_in_use(task, stages):
-    return bool(task.get("bug") or task.get("goal") or stages)
+    from runweld_release import DATED_TASK
+    return bool(DATED_TASK.fullmatch(Path(task["plan"]).parent.name) or task.get("bug") or task.get("goal") or stages)
 
 
 def discovery_artifact(task, value, *, red=False):
@@ -2820,8 +2821,8 @@ def consent_diags(plan, st, *, head=None, values=None):
     return []
 
 
-def require_consent(plan, st):
-    if problems := consent_diags(plan, st):
+def require_consent(plan, st, *, head=None):
+    if problems := consent_diags(plan, st, head=head):
         raise refuse_all(problems)
 
 
@@ -3288,7 +3289,10 @@ def bind_assignment(plan, st, brief, work):
             assignment.update(territory=phase["territory"], grants=phase.get("grants", []))
     elif brief == "reviewer":
         args = ("--assignment", assignment["id"], "--range", assignment["range"])
-        reports = [report("Record a finding", "finding", *args, kind="--kind KIND", text="--text TEXT"),
+        reports = [report("Record a finding", "finding", *args, kind="--kind defect|convention|observation|unjudged",
+                          text="--text TEXT", where="--where FILE:LINE (except unjudged)",
+                          source="--source RULE_OR_PLAN_LINE (except unjudged)",
+                          again="--again DEFECT_ID (if the defect survived a fix)"),
                    report("Complete the review", "review complete", *args)]
     elif brief == "verify":
         reports = [report("Record each verification result", "result", "--cycle", assignment["cycle"], "--head", assignment["head"],
@@ -3871,6 +3875,25 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
     return 0
 
 
+def bind_legacy_planning_action(step, plan, tree, bundle):
+    assignment = step.get("assignment", {})
+    kind = assignment.get("kind")
+    if step.get("role") != "planner" or "instructions" in assignment or kind not in ("grill", "plan", "task-start"):
+        return
+    if kind == "task-start":
+        step.update(kind="run", cwd=plan_root(plan), argv=[*cli_argv(plan), "task", "start", Path(plan).stem])
+        return
+    guides = ("grill", "plan") if kind == "grill" else ("plan",)
+    assignment.update(cwd=tree, instructions=[[*cli_argv(plan), guide, "--plan", plan] for guide in guides],
+                      role_source=str(bundle / "workflow" / kind / "GUIDE.md"),
+                      protocol=str(bundle / "references/SESSIONS.md"),
+                      reports=[{"label": "Validate the written draft without approving it",
+                                **plan_command(plan, "approve", cwd=tree)}],
+                      return_channel={"contact": "human and planner",
+                                      "method": "save the decisions in the draft",
+                                      "records": plan})
+
+
 def cmd_next(bundle, a, selected_plan, legacy_release):
     from runweld_release import project_root
     cwd = Path.cwd()
@@ -3896,6 +3919,8 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
         stage = workflow["stage"]
         actions = workflow["actions"]
         for step in actions:
+            if legacy_release and task:
+                bind_legacy_planning_action(step, plan, task["tree"], bundle.parent / legacy_release)
             if step["kind"] == "run":
                 step.setdefault("cwd", view["project"])
         purpose = ("Prepare the task worktree if needed, reproduce the failure and save the cause and red evidence."
@@ -4380,6 +4405,7 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
         r = Refuse(*drift[0])
         r.diags = drift
         raise r
+    require_consent(plan, st, head=lines)
     cli = shlex.join(cli_argv(md)) if standalone_bundle() is not None else f'python3 "{os.path.realpath(__file__)}"'
     shell_md = shlex.quote(md)
     head = git("rev-parse", "HEAD", check=False, cwd=tree).stdout.strip()

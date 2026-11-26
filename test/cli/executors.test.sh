@@ -160,15 +160,14 @@ none
     assert selected['source'] == 'approved run snapshot'
     refused = cli('executor', 'show', plan, '--provider', 'Missing', ok=False, code='executors."Missing"')
     assert 'renewed human approval' in refused
-    # An approved snapshot without profiles is readable, but cannot invent executor assignments.
+    # Removing the approved presets must not produce a new worker assignment.
     state_file = plan.with_suffix('.json')
     saved_state = state_file.read_bytes()
     without_profiles = json.loads(saved_state)
     del without_profiles['run']['executors']
     state_file.write_text(json.dumps(without_profiles))
     cli('executor', 'show', plan, '--provider', 'GPT', ok=False, code='executors."GPT"')
-    brief_without_profile = pathlib.Path(cli('brief', 'implementer', plan, '1').strip()).read_text()
-    assert 'Executor model:' not in brief_without_profile
+    cli('brief', 'implementer', plan, '1', ok=False, code='approval-snapshot')
     state_file.write_bytes(saved_state)
     cli('build', 'start', plan, '--base', 'main', ok=False, code='provider-required')
     cli('build', 'start', plan, '--base', 'main', '--provider', 'GPT')

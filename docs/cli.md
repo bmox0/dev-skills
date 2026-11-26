@@ -80,9 +80,11 @@ printed plan path. A fresh agent only needs the worktree and the instruction
 to run `runweld next`. It can recover the goal, saved decisions, evidence,
 current owner and what has to happen before work advances.
 
-Follow the available actions through discovery and planning. Save open
-questions if you stop mid-interview. Add `--bug` when starting a task that
-needs a red reproduction. When the draft is ready, `runweld plan review "$plan"`
+Follow the available actions through discovery and planning. Even without
+`--goal`, complete the grill and prototype or skip each with a reason before
+validating the draft. Save open questions if you stop mid-interview. Add
+`--bug` when starting a task that needs a red reproduction instead.
+When the draft is ready, `runweld plan review "$plan"`
 shows the full plan, run settings and the revision to approve. Use its
 approval command with the human’s name and words. Approval records the
 decision. A separate instruction authorizes the displayed build-start command.

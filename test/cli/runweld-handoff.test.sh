@@ -139,6 +139,8 @@ with tempfile.TemporaryDirectory() as folder:
             commands += step.get("alternatives", []) + step.get("assignment", {}).get("reports", [])
             for command in commands:
                 assert f"In {command['cwd']}: {shlex.join(command['argv'])}" in terminal
+                if command.get("options"):
+                    assert "Inputs: " + ", ".join(command["options"].values()) in terminal
         for fact in view.get("evidence", []):
             assert fact in terminal
         return view
@@ -313,6 +315,18 @@ none
         follow(start, *selection)  # Fixture human authorizes a separate build start.
         assert "Next:" in advertised("phase", "start")
         if repair:
+            # run#changes-through-approve: recompiling an edited active plan does not authorize its new scope.
+            original = plan.read_text()
+            plan.write_text(original.replace("Territory: `hello.txt`", "Territory: `hello.txt`, `.gitignore`"))
+            run(cli, "approve", plan, cwd=tree)
+            assert "plan-stale" in run(cli, "brief", "implementer", plan, "1", "--provider", provider, cwd=tree, ok=False)
+            assert not list(plan.parent.glob("*.brief-implementer-*.md"))
+            assert view()["stage"] == "plan"
+            proposal = json.loads(advertised("plan", "review", extra=("--json",)))
+            assert ".gitignore" in proposal["plan"]
+            assert requested("plan-approval")
+            follow(proposal["approval_command"], "--by", "Fixture Human", "--words", "Approve the revised phase territory")
+        if repair:
             # distribution#system-cli: Herdr targets must be live and in the assigned checkout.
             fixture = home / ".local/bin/herdr"
             fixture.write_text('#!/bin/sh\n[ "$*" = "api snapshot" ] && cat "$HERDR_FIXTURE"\n')
@@ -351,8 +365,12 @@ none
         verify, _ = brief("verify", "secondary")
         assert str(bundle / "workflow/browser-test/tab.mjs") in verify
         if repair:
-            report("reviewer", ("finding",), "--kind", "defect", "--where", "hello.txt:2", "--source", "Done 1",
-                   "--text", "Greeting contains an extra line")
+            finding, = (entry for entry in assignment_for("reviewer")["reports"] if entry["argv"][4] == "finding")
+            values = {"kind": "defect", "where": "hello.txt:2", "source": "Done 1",
+                      "text": "Greeting contains an extra line"}
+            inputs = [arg for key, value in values.items() if key in finding["options"]
+                      for arg in (finding["options"][key].split()[0], value)]
+            assert "D1 recorded" in follow(finding, *inputs)
         capture = artifacts / "initial.txt"
         capture.write_text((tree / "hello.txt").read_text())
         assert capture.read_text().splitlines() == ([greeting.strip(), "extra line"] if repair else [greeting.strip()])
