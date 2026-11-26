@@ -54,8 +54,6 @@ You describe a task in your coding agent. Runweld gives it a worktree. While the
 
 ![Runweld workflow from task intake to acceptance, with parallel build phases and CLI responsibilities at each stage.](docs/workflow-board.png)
 
-[Workflow board source (HTML)](docs/workflow-board.html)
-
 The planner assigns each phase its files, checks and dependencies. The two phases shown can start together when both are ready. Each implementer tests and commits within its own files. As each phase closes, the CLI identifies any phases it unlocks. After the last phase, the coordinator moves on to project checks and independent review.
 
 **Across sessions**, the CLI records approvals, phase commits, check results and verdicts. A fresh coordinator can see which commit the reviewer examined, what evidence is missing and whose decision comes next. Your final acceptance applies to the exact revision you reviewed. [Roles and handoffs](#roles-and-handoffs)
