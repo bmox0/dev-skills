@@ -9,14 +9,14 @@ Why: instructions without their resources do not install the workflow
 - Load complete packages from relocated paths → command instructions, role sources, references and CLI resolve to the intended revision; target-project profiles/artifacts stay outside package code.
 - In a Qoder session, invoke the CLI and dispatch all three roles → capture loaded sources, role identity, requested/reported settings and result delivery; unavailable settings or authentication are not passed
 
-### system-cli — A standalone installation provides Runweld and all release-owned workflow instructions to humans and agents
+### system-cli — Humans and agents can enter with help and resume with next using the installed release
 
-Why: a new harness needs only the installed CLI to use the same process.
+Why: a new terminal or agent needs a discoverable path through the entire task
 
-- Install outside the project and run `runweld init` in a plain terminal → select one provider, enter its pair and checks, receive a usable config, lock, ignore rule and short AGENTS pointer. Repeat init or interrupt and retry → user-authored content and profiles survive.
-- Follow `runweld help agents` through planning, approved build, review, E2E, judge, land, human gate and authorized finish using only the installed CLI → the appropriate role receives its instructions, human receives a concrete guide, and release rules reject a premature transition or attempted project graph override.
-- In a real Codex project and a colleague’s Claude clone, run `runweld grill` → each agent receives the interview instructions directly from the CLI. Review the guide for the actual build
-- Attempt to install into a prefix with an unrelated executable named `runweld` → the installer refuses and leaves that executable untouched.
+- From a clean checkout follow help and next through init twice. Project checks, bootstrap and URL survive, format passes and the second init produces no diff.
+- Use a fresh process to follow a review finding through fix, recheck, judge and human feedback round. Execute the supplied argv in its indicated cwd. Find the brief and reporting command for work. Distinguish a question for the human from waiting on the assigned worker. Text and JSON agree on each action.
+- Start on release A, select B for new tasks, resume the first from a fresh session. Commands and roles resolve on this machine to the task's release. A second task uses B.
+- Give a fresh agent only the instruction to run next mid-task. Ask it to explain the goal, what has been decided, what evidence justifies the current action, who owns it and what will unlock the next step. Compare its answers with the saved records and observe it continue from the resulting report or human decision
 
 ### project-lock — The project locks the workflow release and `runweld update --project` changes that selection for new work
 
@@ -33,3 +33,9 @@ Why: a clone reuses project settings while execution records and evidence stay l
 
 - Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
 - Start a task in an initialized checkout → Git ignores its plan, worktree and evidence under `.runweld/workflow/`. The project can track its config, lock and specs.
+
+### task-artifacts — Each new task keeps its plan and execution records in one dated task directory
+
+Why: humans can browse runs and retain evidence after the working tree is removed
+
+- Create two tasks. Choose explicitly in the main checkout and resume by worktree. Retry across a date boundary. Each task has one dated plan directory holding its artifacts through finish.

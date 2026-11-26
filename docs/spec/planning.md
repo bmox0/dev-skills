@@ -2,10 +2,14 @@
 
 Interviewing, configuring a run and approving its execution summary.
 
-### summary-before-build — Planning interviews, approves the run, then requests approval of a linked summary of at most 350 words and stops
+### summary-before-build — A human approves the displayed complete plan and configuration together before a separate build start
 
-Why: the user reviews a concrete result without having to read raw planning files
+Why: one decision covers the exact work and execution terms presented together
 
-- Validate a draft before consent → no approval; approve run then the current summary → build becomes eligible. Change run, plan or Spec → affected consent is stale; progress records survive reapproval.
-- Follow planning through grill and the approved resume example → interview has no approval gate; the summary links the plan, explains phases, Spec, checks and limits within 350 words; approval alone starts nothing
-- Start build by explicit herdr/native/manual instruction; review directly and through a designated orchestrator → the chosen contact controls acceptance within granted authority; resume reuses the existing writer and relayed words stay unchanged
+- Review a complete plan and its config, approve once, then start separately. Change a criterion or finish target and see the affected approval become stale. Repeated start preserves the phase, worktree and executor.
+
+### early-progress — Explicit stage entry, completion and optional skips preserve decisions across sessions
+
+Why: a coordinator can recover the current work before a plan exists
+
+- Resume an interrupted interview with its saved decisions. Exercise taking and skipping optional stages and refusing a required skip. For a bug reproduce it in a fresh tree and validate the plan against its actual base.

@@ -113,12 +113,12 @@ Why: acceptance must describe the result being finished
 - Complete phases, gate, judge, land, page and authorized acceptance, including a feedback round → ff-only finish uses the agreed ending and retains backups; existing judge dispositions and explicit land-hook exceptions remain visible and supported.
 - Change the branch tree or approved planning content after a page/acceptance → stale stages are identified; passed and finish refuse until the required evidence and acceptance are current.
 
-### start-chosen — Summary approval starts nothing; a separate instruction chooses herdr, native independent session or manual handoff
+### start-chosen — Explicit build start after current plan approval starts or resumes the selected execution session
 
-Why: planning does not choose a session topology
+Why: a human controls launch and a resumed coordinator must find active work
 
-- Follow planning through grill and the approved resume example → interview has no approval gate; the summary links the plan, explains phases, Spec, checks and limits within 350 words; approval alone starts nothing
-- Start build by explicit herdr/native/manual instruction; review directly and through a designated orchestrator → the chosen contact controls acceptance within granted authority; resume reuses the existing writer and relayed words stay unchanged
+- Review a complete plan and its config, approve once, then start separately. Change a criterion or finish target and see the affected approval become stale. Repeated start preserves the phase, worktree and executor.
+- Give a fresh agent only the instruction to run next mid-task. Ask it to explain the goal, what has been decided, what evidence justifies the current action, who owns it and what will unlock the next step. Compare its answers with the saved records and observe it continue from the resulting report or human decision
 
 ### acceptance-contact — Questions, results and acceptance reach the user or designated orchestrator within authority, with unchanged relays and one coordinator advancing transitions
 

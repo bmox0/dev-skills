@@ -9,11 +9,11 @@ Why: the user answers once, before the plan, and a branch is the user's to remov
 - `finish`, `ff-only` into `main`, backups kept: at `at the human gate` → refused. At `passed` → `main` at the tip, Status and the epic's row `merged`, the branch and both backups kept, "nothing pushed". With `main` moved on → refused, Status `passed`, nothing changed.
 - `finish`, `no-ff`, `delete_backups = true`, with a worktree and a data directory → a merge commit with the page's message; `backup/<branch>-1` and `-2` gone, `backup/<branch>-old` and other branches' backups kept; worktree and data directory removed, branch kept. A conflicting `main` → merge aborted, tree clean, Status `passed`, the conflicting paths printed.
 
-### by-run-file — Finish uses the approved run ending after current authorized acceptance, without asking the ending again
+### by-run-file — After current human acceptance the coordinator completes and verifies the agreed ending, reporting any remaining cleanup
 
-Why: configuration is agreed during planning and execution requires current acceptance
+Why: humans need to know where the accepted result landed and which resources remain
 
-- Complete phases, gate, judge, land, page and authorized acceptance, including a feedback round → ff-only finish uses the agreed ending and retains backups; existing judge dispositions and explicit land-hook exceptions remain visible and supported.
+- Accept a landed result once. Verify the agreed local fast-forward and cleanup. Repeat with an unknown ignored file. Preserve it, expose pending cleanup, resolve it, and retry cleanup without a second integration. A changed accepted revision blocks finish.
 
 ### request-by-forge — A merge request goes through the forge the remote's URL names: `gh` for GitHub, push options for GitLab; on any other host the agent opens it
 

@@ -18,18 +18,18 @@ Why: malformed configuration must identify the affected setting across both term
 - Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
 - Change the shared test command and create a run with an older run present → the new run config records the current checks, profiles and exact release. Resume the older run → it uses its approved snapshot.
 
-### required-to-approve — Build requires explicit approval of the proposed run and a summary matching the current plan and Spec
+### required-to-approve — Build requires one current human approval binding the complete plan and run config
 
-Why: successful validation does not establish consent
+Why: authorization identifies both the work and how it will be executed
 
-- Validate a draft before consent → no approval; approve run then the current summary → build becomes eligible. Change run, plan or Spec → affected consent is stale; progress records survive reapproval.
+- Review a complete plan and its config, approve once, then start separately. Change a criterion or finish target and see the affected approval become stale. Repeated start preserves the phase, worktree and executor.
 
-### changes-through-approve — Approved run settings bind the release and execution inputs, and changing approved planning content requires corresponding renewed consent
+### changes-through-approve — Changes to approved planning content or execution settings identify the stale approval and preserve progress
 
-Why: a project update or another contributor’s configuration cannot silently change approved work.
+Why: the human must see a material change before work proceeds under it
 
-- Change the shared test command and create a run with an older run present → the new run config records the current checks, profiles and exact release. Resume the older run → it uses its approved snapshot.
-- Install releases A and B, start a run on A and call `runweld update --project` → the project lock moves to B, new work uses B, and the active run and its briefs still use A. An unavailable or damaged release gives an actionable error and leaves the prior lock or run intact.
+- Review a complete plan and its config, approve once, then start separately. Change a criterion or finish target and see the affected approval become stale. Repeated start preserves the phase, worktree and executor.
+- Accept a landed result once. Verify the agreed local fast-forward and cleanup. Repeat with an unknown ignored file. Preserve it, expose pending cleanup, resolve it, and retry cleanup without a second integration. A changed accepted revision blocks finish.
 
 ### isolated — Plans of one project being built get a port and an app data directory of their own from code
 
