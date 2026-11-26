@@ -6,25 +6,39 @@ shared = ["references/SESSIONS.md", "references/WORKFLOW-PATHS.md"]
 label = "Grill (optional)"
 purpose = "Resolve open product questions and save decisions before planning. Skip if the task is already clear."
 next = { prototype_requested = "prototype", ready_to_plan = "plan" }
-inputs = ["workflow/grill/GUIDE.md", "workflow/grill/references/INTERVIEW.md", "workflow/spec/references/FORMAT.md",
-          "workflow/domain-modeling/GUIDE.md", "workflow/domain-modeling/references/ADR-FORMAT.md", "workflow/domain-modeling/references/CONTEXT-FORMAT.md"]
+inputs = ["workflow/grill/GUIDE.md", "workflow/grill/references/INTERVIEW.md"]
+
+[stages.grill.references]
+"workflow/spec/references/FORMAT.md" = "Check the existing product rules"
+"workflow/domain-modeling/GUIDE.md" = "Capture settled terms or decisions"
+"workflow/domain-modeling/references/ADR-FORMAT.md" = "Record an architectural decision"
+"workflow/domain-modeling/references/CONTEXT-FORMAT.md" = "Record the shared vocabulary"
 
 [stages.prototype]
 label = "Prototype (optional)"
 purpose = "Try an uncertain part of the design and keep the evidence. Plan once the risk is understood, or skip."
 next = { ready_to_plan = "plan" }
-inputs = ["workflow/prototype/GUIDE.md", "workflow/prototype/references/LOGIC.md", "workflow/prototype/references/UI.md"]
+inputs = ["workflow/prototype/GUIDE.md"]
+
+[stages.prototype.references]
+"workflow/prototype/references/LOGIC.md" = "Prototype a logic or state model"
+"workflow/prototype/references/UI.md" = "Prototype inside the application"
 
 [stages.plan]
 label = "Plan"
 purpose = "Turn the decisions and project base into a checked plan and run config. Human approval and a separate start open the build."
 next = { start_authorized = "build" }
-inputs = [
-  "workflow/plan/GUIDE.md", "workflow/plan/references/example.md", "workflow/plan/references/resume.example.md",
-  "workflow/plan/references/environment-contract.md", "workflow/run-file/GUIDE.md",
-  "workflow/run-file/references/project-config.md", "workflow/run-file/references/example.run.toml",
-  "workflow/spec/references/FORMAT.md", "workflow/build/references/gate.md",
-]
+inputs = ["workflow/plan/GUIDE.md"]
+
+[stages.plan.references]
+"workflow/plan/references/example.md" = "See a completed plan"
+"workflow/plan/references/resume.example.md" = "Write the linked summary"
+"workflow/plan/references/environment-contract.md" = "Read the project's environment instructions"
+"workflow/run-file/GUIDE.md" = "Configure this task's run"
+"workflow/run-file/references/project-config.md" = "Read the project defaults"
+"workflow/run-file/references/example.run.toml" = "See an example run configuration"
+"workflow/spec/references/FORMAT.md" = "Describe changed product rules"
+"workflow/build/references/gate.md" = "Choose the build gate"
 
 [stages.build]
 label = "Build"

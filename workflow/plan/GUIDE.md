@@ -11,7 +11,8 @@ Read shared `AGENTS.md` and the executor contract:
 Planning uses primary; research helpers use secondary. This session plans and never edits code.
 
 Use `runweld` as `CLI`. [Enter or resume the task](../../references/WORKFLOW-PATHS.md)
-before planning. Use `CLI status <plan>` once its plan exists.
+before planning. Read the saved discovery, worktree, branch and registered base
+with `CLI next`. Choose conditional references from the commands below.
 
 A plan is always a file, about 1000 words. It holds only what an
 implementer cannot decide alone: the product decisions with a reason each, the
@@ -117,7 +118,7 @@ with `none` when no rule changes.
 
 Before showing it:
 
-- **The spec.** Run `CLI spec check <plan> --base <default branch>` until it is silent.
+- **The spec.** Run `CLI spec check <plan>` against the task's registered base.
 - **What e2e cannot do.** A Done use case e2e cannot reach with what the run file
   gives (`[run]` keys, `[checks].dev` and `url`, `[isolation]`), or one judged by
   its look alone, is marked `you check`: the user checks it at the human gate.

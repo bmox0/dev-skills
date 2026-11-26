@@ -1702,7 +1702,13 @@ def allocate(plan, md, st, have=None):
 
 
 def ensure_allocation(plan, md, st):
-    previous = st.get("alloc", {})
+    discovery = {}
+    if task := task_for(plan):
+        discovery = read_discovery(plan).get("alloc", {})
+        if "data_dir" in discovery and Path(discovery["data_dir"]) != Path(task["artifacts"]) / "data":
+            raise Refuse("discovery-allocation", f"{discovery_path(plan)} does not name the task's data directory",
+                         "restore the recorded discovery allocation")
+    previous = {**discovery, **st.get("alloc", {})}
     alloc = {**previous, **allocate(plan, md, st, previous)}
     if alloc:
         if "data_dir" in alloc:
@@ -1714,11 +1720,16 @@ def ensure_allocation(plan, md, st):
 def free_port(plan, md):
     """The first port of PORTS that nothing listens on and no live plan holds."""
     held = set()
-    for path in inventory(plan_root(md), md):
+    root = plan_root(md)
+    for path in inventory(root, md):
         if str(path) != md:
             o = load_state(path)
             if o and o["status"] != "merged":
                 held.add(o.get("alloc", {}).get("port"))
+    for task in task_rows(Path(root)):
+        path = task["plan"]
+        if path != md and (load_state(path) or {}).get("status") != "merged":
+            held.add(read_discovery(path).get("alloc", {}).get("port"))
     ports = PORTS
     for p in ports:
         if p in held:
@@ -2051,6 +2062,170 @@ def ensure_task_tree(task, root):
                      f"restore this checkout with `git worktree add {path} {task['branch']}`, or use the current checkout if it was moved back")
 
 
+def discovery_path(plan):
+    return Path(plan_paths(plan)[0]).with_suffix(".discovery.json")
+
+
+def read_discovery(plan):
+    from runweld_release import ReleaseError, read_data
+    path = discovery_path(plan)
+    data = read_data(path, json.loads)
+    if data is None and not path.exists():
+        return {"stages": {}}
+    fix = "restore the saved copy"
+    if problem := check_state_fields(data, {"stages": dict, "alloc?": {"port?": int, "data_dir?": str}}, str(path)):
+        raise ReleaseError(f"{problem}; {fix}")
+    fields = {"status": str, "questions": [str], **{key + "?": str for key in ("entered", "closed", "result", "reason", "command", "artifact")}}
+    for stage, record in data["stages"].items():
+        if problem := check_state_fields(record, fields, f"{path}.{stage}"):
+            raise ReleaseError(f"{problem}; {fix}")
+        if stage not in ("grill", "prototype", "reproduce") or record["status"] not in ("active", "done", "skipped"):
+            raise ReleaseError(f"{path}.{stage} has an invalid discovery stage or status; {fix}")
+        if stage == "reproduce" and (record["status"] == "skipped" or
+                                     record["status"] == "done" and not all(record.get(key) for key in ("result", "command", "artifact"))):
+            raise ReleaseError(f"{path}.{stage} has no red reproduction; {fix}")
+    return data
+
+
+def discovery_route(task):
+    return ("reproduce",) if task.get("bug") else ("grill", "prototype")
+
+
+def pending_discovery(task, stages):
+    return next((stage for stage in discovery_route(task) if stages.get(stage, {}).get("status") not in ("done", "skipped")), None)
+
+
+def discovery_in_use(task, stages):
+    return bool(task.get("bug") or task.get("goal") or stages)
+
+
+def discovery_artifact(task, value, *, red=False):
+    artifacts = Path(task["artifacts"])
+    try:
+        path = Path(value).resolve()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise Refuse("discovery-artifact", f"cannot resolve {value}: {error}", "use a path to the saved evidence") from None
+    if not path.is_relative_to(artifacts) or (not path.is_dir() and not path.is_file()):
+        raise Refuse("discovery-artifact", f"{value} is not an existing artifact in {artifacts}", "save the evidence under the task's artifacts")
+    if red:
+        read_required(path, "discovery-artifact", "save the failing test as a red patch under the task's artifacts")
+    return str(path)
+
+
+def require_discovery(task):
+    stages = read_discovery(task["plan"])["stages"]
+    if discovery_in_use(task, stages) and (stage := pending_discovery(task, stages)):
+        label = "reproduction" if stage == "reproduce" else stage
+        raise Refuse("discovery-incomplete", f"task {task['id']} still needs {label}", f"run `runweld next {task['id']}` for the current actions")
+    if task.get("bug"):
+        discovery_artifact(task, stages["reproduce"]["artifact"], red=True)
+
+
+def on_reproduction_base(task):
+    on_branch(task, task["tree"])
+    if head_sha(task["plan"], task["tree"]) != task["base"]:
+        raise Refuse("reproduction-base", f"the task worktree is no longer at {task['base']}",
+                     "use the registered base for reproduction so the red evidence matches the plan")
+
+
+def cmd_discovery(plan, a):
+    from runweld_release import atomic_write
+    if plan is None or (task := task_for(plan)) is None or not task["ready"]:
+        raise Refuse("no-task", "discovery needs a registered task with a worktree", "run `runweld task start ID` or pass the plan path")
+    plan = task["plan"]
+    stage, event = a.stage, a.event
+    if event == "skip" and stage in ("reproduce", "plan"):
+        raise Refuse("required-stage", f"{stage} is required and cannot be skipped", f"run `runweld next {task['id']}` for the available actions")
+    ensure_task_tree(task, plan_root(plan))
+    setup_lock = task_setup_lock(task) if stage == "reproduce" and event == "done" else contextlib.nullcontext()
+    with setup_lock, locked(plan):
+        if load_state(plan):
+            raise Refuse("discovery-closed", f"{plan} has already been compiled", "read the saved discovery with `runweld next`")
+        data = read_discovery(plan)
+        stages = data["stages"]
+        current = pending_discovery(task, stages)
+        if stage != current:
+            raise Refuse("discovery-stage", f"{stage} is not the current stage (now {current or 'plan'})", f"run `runweld next {task['id']}`")
+        if stage == "reproduce":
+            on_reproduction_base(task)
+        record = stages.get(stage)
+        fields = {key: value for key, value in (("result", a.result), ("questions", a.questions),
+                                               ("command", a.repro_command), ("artifact", a.artifact)) if value is not None}
+        if a.clear_questions:
+            fields["questions"] = []
+        if ("command" in fields and stage != "reproduce" or a.reason is not None and event != "skip"
+                or "artifact" in fields and stage not in ("prototype", "reproduce")
+                or fields and event in ("start", "skip")):
+            raise Refuse("discovery-input", "this event does not take those inputs", "use `runweld task stage --help`")
+        if any(not item.strip() for value in fields.values() for item in (value if isinstance(value, list) else [value])):
+            raise Refuse("discovery-input", "discovery inputs cannot be blank", "provide a result, question, command or artifact")
+        if event == "start":
+            if not record:
+                record = {"entered": now(), "status": "active", "questions": []}
+        elif event == "skip":
+            if not (a.reason or "").strip():
+                raise Refuse("skip-reason", f"skipping {stage} needs a reason", "pass --reason TEXT")
+            record = {**(record or {"questions": []}), "status": "skipped", "reason": a.reason, "closed": now()}
+        else:
+            if not record:
+                raise Refuse("discovery-not-started", f"{stage} has not been entered", f"run `runweld next {task['id']}` and start it first")
+            if a.artifact is not None:
+                fields["artifact"] = discovery_artifact(task, a.artifact, red=stage == "reproduce")
+            if event == "save" and not fields:
+                raise Refuse("discovery-input", "nothing to save", "pass a result, open questions or evidence")
+            record.update(fields)
+            if event == "done":
+                if not record.get("result") or a.questions or record["questions"] and not a.result:
+                    raise Refuse("discovery-result", f"{stage} needs its result and no open questions",
+                                 "pass --result and resolve the questions before closing")
+                if stage == "reproduce":
+                    if not (record.get("command") and record.get("artifact")):
+                        raise Refuse("discovery-result", "reproduction needs a repeatable red command and artifact",
+                                     "pass --command SHELL and --artifact PATH")
+                    discovery_artifact(task, record["artifact"], red=True)
+                record.update(status="done", closed=now(), questions=[])
+        if event != "start" or stage not in stages:
+            stages[stage] = record
+            atomic_write(discovery_path(plan), json.dumps(data, ensure_ascii=False).encode(), 0o600)
+    stage = task_stage(task)
+    return task_output({**task, "workflow": stage["workflow"], "discovery": stage["discovery"]}, a.json)
+
+
+def discovery_actions(task, current, stages):
+    plan, tree = task["plan"], task["tree"]
+    owner = "Human and planner" if current == "grill" else "Planner"
+    guide = "bug" if current == "reproduce" else current
+    guide_action = work_action(owner, f"Read the {guide} instructions for this task.", "planner", current,
+                               cwd=tree, instructions=[[*cli_argv(plan), guide, "--plan", plan]])
+    if current == "plan":
+        actions = [guide_action]
+        if Path(plan).is_file():
+            actions += [run_action(plan, owner, "Check the draft against the registered base.", "spec check"),
+                        run_action(plan, owner, "Validate the draft without approving it.", "approve")]
+        return actions
+    def command(event, action, **inputs):
+        return workflow_action(owner, "run", action, cwd=tree, argv=[*cli_argv(plan), guide, event, plan], **inputs)
+    if current not in stages:
+        actions = [guide_action, command("start", f"Enter {current} and keep progress for later.")]
+    else:
+        actions = [guide_action]
+        if current == "reproduce":
+            actions += setup_actions(task)
+        if questions := stages[current]["questions"]:
+            actions.append(workflow_action("Human", "ask", f"Resolve the saved questions for {current}.", input="discovery-questions", questions=questions))
+        result = {"result": "--result TEXT"}
+        if current in ("prototype", "reproduce"):
+            result["artifact"] = "--artifact PATH"
+        if current == "reproduce":
+            result["command"] = "--command SHELL"
+        actions += [command("save", "Save work so far and the current open questions.",
+                            options={**result, "questions": "--question TEXT (repeatable) or --clear-questions"}),
+                    command("done", f"Record the {current} result and go to the next stage.", options=result)]
+    if current != "reproduce":
+        actions.append(command("skip", f"Skip the optional {current} stage and save why.", options={"reason": "--reason TEXT"}))
+    return actions
+
+
 def task_stage(task, *, workflow=True):
     plan = task["plan"]
     row = {"plan": task["id"], "path": plan, "status": "planning", "branch": task["branch"],
@@ -2058,9 +2233,15 @@ def task_stage(task, *, workflow=True):
     if not workflow:
         return row
     if task["ready"]:
-        step = work_action("User and planner", "In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning.", "planner", "grill",
-                           cwd=task["tree"], instructions=[
-                               [*cli_argv(plan), guide, "--plan", plan] for guide in ("grill", "plan")])
+        data = read_discovery(plan)
+        stages = data["stages"]
+        current = pending_discovery(task, stages) or "plan"
+        actions = discovery_actions(task, current, stages)
+        states = {stage: value["status"] for stage, value in stages.items() if stage != "reproduce"}
+        if task.get("bug"):
+            states = dict.fromkeys(("grill", "prototype"), "not applicable")
+        view = workflow_view(plan, "plan" if current == "reproduce" else current, actions, states)
+        return {**row, "discovery": stages, "workflow": {**view, "stage": current}}
     else:
         step = workflow_action("Planner", "run", f"Retry `runweld task start {task['id']}` to finish task entry.",
                                cwd=plan_root(plan), argv=[*cli_argv(plan), "task", "start", task["id"]])
@@ -2088,6 +2269,9 @@ def task_output(row, as_json):
     else:
         print(f"Task: {row['id']} · branch `{row['branch']}` · base `{row['base']}`")
         print(f"Tree: {row['tree']}\nPlan: {row['plan']}\nArtifacts: {row['artifacts']}")
+        if row.get("goal"):
+            print(f"Goal: {row['goal']}")
+        show_discovery(row.get("discovery", {}))
         if workflow := row.get("workflow"):
             show_workflow(workflow)
     return 0
@@ -2111,7 +2295,7 @@ def cmd_task(bundle, a):
         if row["ready"]:
             ensure_task_tree(row, project)
         stage = task_stage(row)
-        return task_output({**row, "workflow": stage["workflow"], "release": stage["release"]}, a.json)
+        return task_output({**row, **{k: stage[k] for k in ("workflow", "release", "discovery") if k in stage}}, a.json)
 
     root = workflow_dir(project)
     tasks = workflow_subdir(root / "tasks")
@@ -2142,7 +2326,13 @@ def cmd_task(bundle, a):
             if branch_tip or any(os.path.lexists(p) for p in (folder, tree, plans / (name + ".run.toml"),
                         workflow_subdir(root / "artifacts") / name)) or any(p.stem == name for p in inventory(project)):
                 raise Refuse("task-collision", f"task {name} conflicts with an existing plan, branch, or path", "choose a different task ID")
+            if a.goal is not None and not a.goal.strip():
+                raise Refuse("task-goal", "the task goal cannot be blank", "pass --goal with the requested outcome")
             reservation = {"base": commit.stdout.strip(), "branch": branch, "ready": False, "release": bundle.name, "finish": finish}
+            if a.goal is not None:
+                reservation["goal"] = a.goal
+            if a.bug:
+                reservation["bug"] = True
             plans.mkdir(exist_ok=True)
             with tempfile.TemporaryDirectory(prefix=".task-", dir=plans) as scratch:
                 atomic_write(Path(scratch) / (name + ".task.json"), json.dumps(reservation).encode(), 0o600)
@@ -2152,6 +2342,8 @@ def cmd_task(bundle, a):
         artifacts = Path(row["artifacts"])
         record_path = tasks / (name + ".json") if plan.parent == plans else plan.with_suffix(".task.json")
         run_file = Path(run_path(plan))
+        if ((a.goal is not None and a.goal != row.get("goal")) or (a.bug and not row.get("bug"))):
+            raise Refuse("task-intent", f"task {name} is already registered with a different intent", "omit intent flags when resuming an existing task")
         if (release := plan_release(plan) or read_lock(project, bundle.parent.parent)) != bundle.name:
             raise ReleaseError(f"this run selects {release}, not {bundle.name}; use `runweld` without a release override")
         if a.base and r("rev-parse", "--verify", "-q", "--end-of-options", f"{a.base}^{{commit}}").stdout.strip() != row["base"]:
@@ -2186,11 +2378,11 @@ def cmd_task(bundle, a):
                     raise Refuse("task-worktree", add.stderr.strip(), f"fix the Git error and retry `runweld task start {name}`")
             row.pop("finish", None)
             row.update(ready=True, release=bundle.name)
-            atomic_write(record_path, json.dumps({k: row[k] for k in ("base", "ready", "branch", "release")}).encode(), 0o600)
+            atomic_write(record_path, json.dumps({k: row[k] for k in ("base", "ready", "branch", "release", "goal", "bug") if k in row}).encode(), 0o600)
     if plan.is_file():
         return cmd_status(str(plan), a.json, os.getcwd())
     stage = task_stage(row)
-    return task_output({**row, "workflow": stage["workflow"], "release": stage["release"]}, a.json)
+    return task_output({**row, **{k: stage[k] for k in ("workflow", "release", "discovery") if k in stage}}, a.json)
 
 
 def task_env(task, project, alloc):
@@ -2201,7 +2393,70 @@ def task_env(task, project, alloc):
             **{k: str(v) for k, v in values.items() if v is not None}}
 
 
-def cmd_task_setup(plan, *, implicit=False):
+@contextlib.contextmanager
+def task_setup_lock(task):
+    artifacts = workflow_subdir(Path(task["artifacts"]))
+    artifacts.mkdir(exist_ok=True, parents=True)
+    with (artifacts / ".setup.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield lock
+
+
+def read_setup(plan, task, *, reproduction):
+    if reproduction:
+        data = read_discovery(plan)
+        if (not task.get("bug") or data["stages"].get("reproduce", {}).get("status") != "active"
+                or load_state(plan) is not None):
+            raise Refuse("task-setup-status", f"task {task['id']} has no active pre-plan reproduction",
+                         f"run `runweld next {task['id']}` to enter reproduction or use approved task setup")
+        run, problems = read_run(plan, draft=True)
+        if problems:
+            raise refuse_all(problems)
+        return run, data
+    st = load_state(plan)
+    if st is None or st["status"] not in ("approved", *LIVE):
+        raise Refuse("task-setup-status", f"task {task['id']} does not have an approved or active plan",
+                     "prepare the environment after approval or use --reproduction for an active bug investigation")
+    require_consent(plan, st)
+    return st["run"], st
+
+
+def setup_effects(task, run, alloc):
+    resources = run.get("isolation", {})
+    return {"command": run.get("setup", {}).get("command"), "cwd": task["tree"],
+            "data_dir": alloc.get("data_dir") or (str(Path(task["artifacts"]) / "data") if resources.get("data_dir") else None),
+            "port": alloc.get("port") or ("allocate a task-local port" if resources.get("port") else None)}
+
+
+def show_setup(effects):
+    value = effects["command"]
+    print(f"Setup in {effects['cwd']}: {value if value else 'no configured command'}", flush=True)
+    for key in ("port", "data_dir"):
+        if effects[key] is not None:
+            print(f"  {key.replace('_', ' ')}: {effects[key]}", flush=True)
+    if effects.get("recorded"):
+        print("  This command and these resources are already recorded as prepared.")
+
+
+def setup_actions(task):
+    from runweld_release import read_data
+    plan, tree = task["plan"], task["tree"]
+    argv = [*cli_argv(plan), "task", "setup", plan, "--reproduction"]
+    try:
+        run, data = read_setup(plan, task, reproduction=True)
+    except Refuse as error:
+        return [workflow_action("Planner", "ask", "Repair the run configuration before preparing reproduction.",
+                                input="run-config", evidence=[f"{message} — fix: {fix}" for _, message, fix in error.diags])]
+    alloc = data.get("alloc", {})
+    effects = setup_effects(task, run, alloc)
+    if effects["command"] and read_data(Path(task["artifacts"]) / ".setup", str) == digest([effects["command"], alloc]):
+        effects["recorded"] = True
+    return [workflow_action("Planner", "run", "Preview the configured reproduction setup without running it.",
+                            cwd=tree, argv=[*argv, "--preview"], effects=effects),
+            workflow_action("Planner", "run", "Prepare the task worktree if reproduction needs this setup.", cwd=tree, argv=argv)]
+
+
+def cmd_task_setup(plan, *, implicit=False, reproduction=False, preview=False):
     from runweld_release import atomic_write, read_data
     md = plan_paths(plan)[0]
     root = plan_root(md)
@@ -2210,29 +2465,40 @@ def cmd_task_setup(plan, *, implicit=False):
         if implicit:
             return 0
         raise Refuse("no-task", f"{md} is not a registered task plan", "start the task with `runweld task start ID`")
-    artifacts = workflow_subdir(Path(task["artifacts"]))
-    artifacts.mkdir(exist_ok=True, parents=True)
-    with (artifacts / ".setup.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        with port_lock(md), writing(plan) as st:
-            require_consent(plan, st)
-            if st["status"] not in ("approved", *LIVE):
-                raise Refuse("task-setup-status", f"task {task['id']} is {st['status']}", "prepare the environment for an approved or active task")
-            tree = tree_of(plan, st)
-            on_branch(st, tree)
-            alloc = ensure_allocation(plan, md, st)
-            command = st["run"].get("setup", {}).get("command")
+    ensure_task_tree(task, root)
+    if preview:
+        run, data = read_setup(plan, task, reproduction=reproduction)
+        show_setup(setup_effects(task, run, data.get("alloc", {})))
+        return 0
+    with task_setup_lock(task) as lock:
+        tree = task["tree"]
+        if reproduction:
+            with port_lock(md), locked(plan):
+                on_reproduction_base(task)
+                run, data = read_setup(plan, task, reproduction=True)
+                resources = {"run": run, "alloc": data.get("alloc", {})}
+                alloc = ensure_allocation(plan, md, resources)
+                data["alloc"] = alloc
+                atomic_write(discovery_path(plan), json.dumps(data, ensure_ascii=False).encode(), 0o600)
+        else:
+            with port_lock(md), writing(plan) as st:
+                run, _ = read_setup(plan, task, reproduction=False)
+                on_branch(st, tree)
+                alloc = ensure_allocation(plan, md, st)
+        command = run.get("setup", {}).get("command")
         if not command:
             return 0
-        stamp = artifacts / ".setup"
+        stamp = Path(task["artifacts"]) / ".setup"
         binding = digest([command, alloc])
         if read_data(stamp, str) == binding:
             return 0
+        show_setup(setup_effects(task, run, alloc))
         result = subprocess.run(command, cwd=tree, shell=True, env=task_env(task, root, alloc),
                                 pass_fds=(lock.fileno(),))
         if result.returncode:
+            suffix = " --reproduction" if reproduction else ""
             raise Refuse("task-setup-failed", f"setup exited {result.returncode} in {tree}",
-                         f"fix setup and retry `runweld task setup {shlex.quote(md)}` in the same task")
+                         f"fix setup and retry `runweld task setup {shlex.quote(md)}{suffix}` in the same task")
         atomic_write(stamp, binding.encode(), 0o600)
     return 0
 
@@ -2544,15 +2810,17 @@ def cmd_approve(plan, as_json):
     with port_lock(md), locked(plan):
         head, tail = read_plan(md)
         task = task_for(plan, root)
+        st = load_state(plan)
         if task:
             ensure_task_tree(task, root)
+            if st is None:
+                require_discovery(task)
         history = plan_checkout(md)
         P, problems = parse_plan(head, task["tree"] if task else history, history=history)
         if problems:
             print("\n".join(f"{plan}:{n}: {message} — fix: repair the plan Markdown and run `pipeline.py approve`"
                             for n, message in sorted(problems)))
             return 1
-        st = load_state(plan)
         if st is None:
             if was_compiled(head) and P["status"] != "merged":
                 raise missing_state(plan)
@@ -2686,9 +2954,23 @@ def work_action(owner, action, role, kind, **context):
 
 def show_workflow(view):
     print("Workflow" + (f" for {view['plan']}" if view["plan"] else "") + ":")
+    if view["stage"] == "reproduce":
+        print("Required before planning: bug reproduction.")
     for stage in view["stages"]:
         print(f"  {stage['label']} — {stage['state']}")
     show_next(view["actions"])
+
+
+def show_discovery(stages):
+    for name, stage in stages.items():
+        entered = f" (entered {stage['entered']})" if stage.get("entered") else ""
+        print(f"Discovery: {name} — {stage['status']}{entered}")
+        for key in ("result", "reason", "command", "artifact"):
+            if value := stage.get(key):
+                print(f"  {key.capitalize()}: {value}")
+        for question in stage["questions"]:
+            label = "Unresolved at skip" if stage["status"] == "skipped" else "Open question"
+            print(f"  {label}: {question}")
 
 
 def show_next(actions):
@@ -2698,6 +2980,12 @@ def show_next(actions):
             print(f"  {step['owner']} — {step['action']} [{step['kind']}]")
             if step["kind"] == "run":
                 print(f"    In {step['cwd']}: {shlex.join(step['argv'])}" if "cwd" in step else f"    {shlex.join(step['argv'])}")
+                if options := step.get("options"):
+                    print(f"    Inputs: {', '.join(options.values())}")
+                if effects := step.get("effects"):
+                    show_setup(effects)
+            for evidence in step.get("evidence", []):
+                print(f"    {evidence}")
             assignment = step.get("assignment", {})
             for instruction in assignment.get("instructions", []):
                 print(f"    In {assignment['cwd']}: {shlex.join(instruction)}")
@@ -3020,7 +3308,14 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
 
 
 def status_workflow(plan, head, stage, actions):
-    return workflow_view(plan_paths(plan)[0], stage, actions, optional_workflow_history(head))
+    history = optional_workflow_history(head)
+    if standalone_bundle() and (task := task_for(plan)):
+        if task.get("bug"):
+            history = dict.fromkeys(history, "not applicable")
+        else:
+            discovery = read_discovery(plan)["stages"]
+            history.update({name: discovery[name]["status"] for name in history if name in discovery})
+    return workflow_view(plan_paths(plan)[0], stage, actions, history)
 
 
 def pinned_workflow(bundle, plan, cwd, provider, command):
@@ -3093,10 +3388,15 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
                     if current:
                         delegated = pinned_workflow(bundle, full, cwd, provider, ("status", full) if m[1] == "draft" and not compiled else ())
                         if delegated is None:
-                            action = (work_action("Planner", row["state_repair"], "planner", "repair-file") if compiled
-                                      else run_action(full, "Planner", "Validate the draft with `approve <plan>`.", "approve") if m[1] == "draft"
-                                      else work_action("Planner", "Inspect the historical plan and adopt it with `approve <plan>`.", "planner", "adopt-plan"))
-                            delegated = status_workflow(full, head, "plan", [action])
+                            recorded = read_discovery(full)["stages"] if task else {}
+                            if not compiled and task and discovery_in_use(task, recorded):
+                                view = task_stage(task)
+                                row["discovery"], delegated = view["discovery"], view["workflow"]
+                            else:
+                                action = (work_action("Planner", row["state_repair"], "planner", "repair-file") if compiled
+                                          else run_action(full, "Planner", "Validate the draft with `approve <plan>`.", "approve") if m[1] == "draft"
+                                          else work_action("Planner", "Inspect the historical plan and adopt it with `approve <plan>`.", "planner", "adopt-plan"))
+                                delegated = status_workflow(full, head, "plan", [action])
                         row["workflow"] = delegated
                     rows.append((row, None))
             elif installed or st["status"] in LIVE or (current and (st["status"] == "approved" or st["status"].startswith("http"))):
@@ -3129,10 +3429,12 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
                 fix = r["state_repair"] or "run `pipeline.py approve` on " + (r["path"] if current else "it")
                 print(f"{r['plan']} — no state — fix: {fix}")
                 if current:
+                    show_discovery(r.get("discovery", {}))
                     show_workflow(r["workflow"])
             elif st is None:
                 print(f"{r['plan']} — {r['status']} · {r['tree']}")
                 if current:
+                    show_discovery(r.get("discovery", {}))
                     show_workflow(r["workflow"])
             elif current:
                 show_status(r, st)
@@ -3148,12 +3450,12 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
         if was_compiled(head):
             raise missing_state(plan)
         root = plan_root(md)
+        task = task_for(plan, root) if standalone_bundle() is not None else None
         draft, problems = parse_plan(head, root, check_references=False)
         if draft["status"] != "draft":
             raise missing_state(plan)
         if not problems:
             try:
-                task = task_for(plan, root)
                 history = plan_checkout(md)
                 _, problems = parse_plan(head, task["tree"] if task else history, history=history)
             except Refuse as error:
@@ -3162,17 +3464,21 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
         _, run_problems = read_run(plan)
         step = (work_action("Planner", f"Prepare the draft and run file. {action}", "planner", "plan") if problems or run_problems
                 else run_action(plan, "Planner", action, "approve"))
-        view = status_workflow(plan, head, "plan", [step])
+        discovery = read_discovery(md)["stages"] if task else {}
+        view = (task_stage(task)["workflow"] if task and discovery_in_use(task, discovery)
+                else status_workflow(plan, head, "plan", [step]))
         if as_json or as_data:
             row = {**draft, "plan": os.path.basename(md)[:-3], "workflow": view}
             if standalone_bundle() is not None:
-                task = task_for(plan, root)
                 row.update(path=md, release=plan_release(plan), tree=task["tree"] if task else branch_tree(root, draft["branch"]))
+                if task:
+                    row["discovery"] = discovery
             if as_data:
                 return row
             print(json.dumps(row, ensure_ascii=False))
         else:
             print(f"Status: draft · branch `{draft['branch']}` · base `{draft['base']}`")
+            show_discovery(discovery)
             show_workflow(view)
         return 0
     s = summary(plan, st, head, tail, workflow=True, provider=provider)
@@ -3195,14 +3501,15 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
     if selected_plan:
         plan = plan_paths(selected_plan)[0]
         task = task_for(plan)
-        goal = None
-        if task and not os.path.lexists(plan):
+        discovery = read_discovery(plan)["stages"] if task else {}
+        goal = task.get("goal") if task else None
+        if task and (not os.path.lexists(plan) or (not legacy_release and discovery_in_use(task, discovery) and not load_state(plan))):
             status = task_stage(task)
-            command = ("task", "resume", task["id"])
+            command = ("status", plan) if os.path.lexists(plan) else ("task", "resume", task["id"])
         else:
             status = cmd_status(plan, False, cwd, provider=a.provider, as_data=True)
             head, _ = read_plan(plan)
-            goal = "\n".join(sections(head).get("Result", (0, []))[1]).strip() or None
+            goal = "\n".join(sections(head).get("Result", (0, []))[1]).strip() or goal
             command = ("status", plan)
         workflow = (pinned_workflow(bundle, plan, cwd, a.provider, command) if legacy_release else None) or status["workflow"]
         del status["workflow"]
@@ -3211,9 +3518,11 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
         for step in actions:
             if step["kind"] == "run":
                 step.setdefault("cwd", view["project"])
+        purpose = ("Prepare the task worktree if needed, reproduce the failure and save the cause and red evidence."
+                   if stage == "reproduce" else workflow_catalog()["stages"][stage].get("purpose", stage))
         view.update(task={**status, "id": status["plan"], "artifacts": task["artifacts"] if task else str(Path(plan).parent),
-                          "goal": goal},
-                    stage=stage, purpose=workflow_catalog()["stages"][stage].get("purpose", stage), actions=actions)
+                          "goal": goal, **({"discovery": discovery} if task else {})},
+                    stage=stage, purpose=purpose, actions=actions)
     elif not project:
         view["actions"] = [workflow_action("Human", "ask", "Open a Git checkout, clone one, or run `git init` for a new project.", input="project")]
     else:
@@ -3235,7 +3544,7 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
                 select = [task["id"]] if task_for(path, project) else ["--plan", path]
                 actions.append(workflow_action("Planner", "run", f"Inspect {task['id']} ({task['status']}) with `{shlex.join(['runweld', 'next', *select])}`.",
                                                cwd=root, argv=[*cli_argv(path), "next", *select]))
-            actions.append(workflow_action("Planner", "ask", "For new work, choose a task ID and run `runweld task start ID`.",
+            actions.append(workflow_action("Planner", "ask", "For new work, choose a task ID and run `runweld task start ID --goal TEXT`. Add `--bug` for a reproduction.",
                                            input="task-id"))
             view.update(tasks=tasks, actions=actions)
     if a.json:
@@ -3250,6 +3559,7 @@ def cmd_next(bundle, a, selected_plan, legacy_release):
             print(f"Stage: {view['stage']} — {view['purpose']}")
             print(f"Branch: {task['branch']} · Base: {task['base']} · Release: {task['release']}")
             print(f"Tree: {task['tree']}\nPlan: {task['path']}\nArtifacts: {task['artifacts']}")
+            show_discovery(task.get("discovery", {}))
             for decision in task.get("decisions", []):
                 print(f"Decision ({decision['by']}): {decision['question']} — {decision['answer']}")
             for fact in task.get("drift", []) + task.get("stale", []):
@@ -5620,6 +5930,17 @@ class RoutingParser(argparse.ArgumentParser):
         raise ParseExit
 
 
+def discovery_options(parser):
+    parser.add_argument("--result", help="settled decisions or the evidenced cause")
+    questions = parser.add_mutually_exclusive_group()
+    questions.add_argument("--question", dest="questions", action="append", help="current open question (repeat for all)")
+    questions.add_argument("--clear-questions", action="store_true", help="record that no open questions remain")
+    parser.add_argument("--reason", help="why an optional stage was skipped")
+    parser.add_argument("--command", dest="repro_command", help="repeatable command for the red reproduction")
+    parser.add_argument("--artifact", help="saved evidence under the task's artifacts")
+    parser.add_argument("--json", action="store_true")
+
+
 def parse_cli(argv, *, standalone=False, routing=False, version=None):
     parser = RoutingParser if routing else argparse.ArgumentParser
     p = parser(prog="runweld" if standalone else "pipeline.py")
@@ -5637,6 +5958,9 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
         help_parser = top.add_parser("help", help="show terminal help or the installed agent workflow")
         help_parser.add_argument("topic", choices=("agents",), nargs="?")
         help_parser.add_argument("--plan", help="show help for this run's release")
+        reference = top.add_parser("reference", help="print a text resource from the selected release")
+        reference.add_argument("resource", help="the release-relative path from an instruction")
+        reference.add_argument("--plan", help="use a task's pinned release")
         next_parser = top.add_parser("next", help="find available actions from this project or task")
         next_parser.add_argument("--json", action="store_true", help="print the same facts and actions as JSON")
         next_parser.add_argument("--provider", help="the current provider for executable brief commands")
@@ -5667,10 +5991,18 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
         paths = top.add_parser("path", help="print the shared local workflow path without creating it")
         paths.add_argument("area", nargs="?", help="optional category under the project workflow")
         task_commands = top.add_parser("task", help="start or resume a task in its own worktree").add_subparsers(dest="command", required=True)
-        for name in ("start", "resume", "path", "setup"):
+        for name in ("start", "resume", "path", "setup", "stage"):
             task = task_commands.add_parser(name)
             if name == "setup":
-                task.add_argument("plan", help="the task's approved plan")
+                task.add_argument("plan", help="the task's plan path")
+                task.add_argument("--reproduction", action="store_true", help="prepare an active bug investigation before planning")
+                task.add_argument("--preview", action="store_true", help="show the setup command and effects without running it")
+                continue
+            if name == "stage":
+                task.add_argument("plan", help="the task's plan path")
+                task.add_argument("stage", choices=("grill", "prototype", "reproduce", "plan"))
+                task.add_argument("event", choices=("start", "save", "done", "skip"))
+                discovery_options(task)
                 continue
             task.add_argument("id", help="stable task ID (lowercase letters, numbers and hyphens)")
             if name == "path":
@@ -5679,6 +6011,8 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
                 task.add_argument("--json", action="store_true")
             if name == "start":
                 task.add_argument("--base", help="project base ref (default: source checkout HEAD)")
+                task.add_argument("--goal", help="the task's requested outcome")
+                task.add_argument("--bug", action="store_true", help="require a red reproduction before planning")
                 task.add_argument("--finish-how", choices=CHOICES["finish", "how"], help="agreed ending for this run")
                 task.add_argument("--finish-target", help="integration branch for this run")
                 task.add_argument("--delete-backups", action=argparse.BooleanOptionalAction, help="delete backups after this run finishes")
@@ -5932,6 +6266,13 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
             parser_for_guide.set_defaults(group="guide", guide=name)
             if name == "browser-test":
                 parser_for_guide.add_argument("browser_args", nargs=argparse.REMAINDER)
+            if standalone and name in ("grill", "prototype", "bug"):
+                events = parser_for_guide.add_subparsers(dest="event", metavar="{start,save,done,skip}")
+                for event in ("start", "save", "done", "skip"):
+                    stage = events.add_parser(event)
+                    stage.add_argument("plan", nargs="?", help="plan path (omit in its task worktree)")
+                    discovery_options(stage)
+                    stage.set_defaults(group="discovery", stage="reproduce" if name == "bug" else name)
     if argv and argv[0] in GUIDE_COMMANDS and (len(argv) == 1 or argv[1] == "--plan"):
         guide = type(p)(prog=f"{p.prog} {argv[0]}", description=f"Print {argv[0]} instructions")
         guide.add_argument("--plan", help="use a task's pinned release")
@@ -5947,18 +6288,34 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     return p, a
 
 
-def print_guide(name, browser_args=()):
+def print_reference(bundle, resource):
+    from runweld_release import release_manifest
+    if resource not in release_manifest(bundle, bundle.name)["files"] or Path(resource).suffix not in (".md", ".toml"):
+        raise Refuse("unknown-reference", f"{resource!r} is not a readable release resource", "copy an exact resource path from the instruction")
+    print((bundle / resource).read_text(encoding="utf-8").rstrip())
+    return 0
+
+
+def print_guide(name, browser_args=(), plan=None):
     from runweld_release import ROLES
     root = Path(PACKAGE)
     if name == "browser-test" and browser_args:
         return subprocess.run(["node", str(root / "workflow/browser-test/tab.mjs"), *browser_args]).returncode
     catalog = workflow_catalog()
     stage = catalog["stages"].get(name, {})
+    references = stage.get("references")
+    if name == "bug" and standalone_bundle():
+        references = {
+            "workflow/bug/references/root-cause-tracing.md": "Trace an unknown cause",
+            "workflow/bug/references/condition-based-waiting.md": "Investigate a real timing race",
+            "workflow/bug/references/defense-in-depth.md": "Place validation at the right boundaries",
+        }
     directory = root / "workflow" / name
     paths = [root / "agents" / f"{name}.md"] if name in ROLES else []
     if directory.is_dir():
         paths.append(directory / "GUIDE.md")
-        paths.extend(sorted(path for path in (directory / "references").glob("*") if path.suffix in (".md", ".toml")))
+        paths.extend(sorted(path for path in (directory / "references").glob("*")
+                            if path.suffix in (".md", ".toml") and path.relative_to(root).as_posix() not in (references or {})))
     paths.extend(root / path for path in stage.get("inputs", []))
     paths.extend(root / path for path in stage.get("roles", {}).values())
     paths.extend(root / path for path in catalog["shared"])
@@ -5973,6 +6330,14 @@ def print_guide(name, browser_args=()):
     for condition, dependency in stage.get("when", {}).items():
         commands = [Path(path).parent.name for path in dependency["inputs"] if path.endswith("/GUIDE.md")]
         print(f"For {condition}, {dependency['role']} uses " + ", ".join(f"`runweld {cmd}`" for cmd in commands) + ".")
+    if references and standalone_bundle():
+        print("References when needed:")
+        for resource, reason in references.items():
+            argv = [*cli_argv(plan), "reference", resource, *(["--plan", str(plan)] if plan else [])]
+            print(f"  {reason} — {shlex.join(argv)}")
+    elif references:
+        for resource in references:
+            print((root / resource).read_text(encoding="utf-8").strip(), end="\n\n")
     return 0
 
 
@@ -5981,7 +6346,7 @@ def agent_help(bundle):
     print(f"Runweld {bundle.name}\n")
     print("Run `runweld next` in a Git checkout or task worktree. Add `--json` for machine-readable actions.")
     print("If the project isn't initialized, `runweld init` previews and saves its settings and executor pair.")
-    print("Start new work with `runweld task start ID`, or choose existing work with `runweld next ID`.")
+    print("Start with `runweld task start ID --goal TEXT` (add `--bug` for a reproduction), or resume with `runweld next ID`.")
     print("From a task worktree, `runweld next` finds the assignment and its release without an ID.")
     print("\nWorkflow:")
     catalog = workflow_catalog()
@@ -5991,6 +6356,7 @@ def agent_help(bundle):
     print()
     print("Instruction commands (add --plan PLAN to select a task's release):")
     print("\n".join(f"  runweld {name}" for name in GUIDE_COMMANDS))
+    print("Use `runweld reference RELEASE_PATH --plan PLAN` for conditional material named by an instruction.")
 
 
 def main(*, current_task=None, next_release=None):
@@ -6017,12 +6383,18 @@ def main(*, current_task=None, next_release=None):
                     raise ReleaseError("initialization cancelled; rerun `runweld init` to continue") from None
                 except (OSError, Fail) as error:
                     raise ReleaseError(f"initialization could not finish: {error}; correct the issue and rerun `runweld init`") from None
-            if a.group == "task" and a.command != "setup":
+            if a.group == "discovery" or a.group == "task" and a.command == "stage":
+                return cmd_discovery(selected_plan, a)
+            if a.group == "task" and a.command not in ("setup", "stage"):
                 return cmd_task(bundle, a)
+            if a.group == "task" and a.command == "setup":
+                return cmd_task_setup(a.plan, reproduction=a.reproduction, preview=a.preview)
             if a.group == "next":
                 return cmd_next(bundle, a, selected_plan, next_release)
             if a.group == "path":
                 return cmd_path(a.area)
+            if a.group == "reference":
+                return print_reference(bundle, a.resource)
             if a.group == "help":
                 if a.topic == "agents":
                     agent_help(bundle)
@@ -6030,18 +6402,25 @@ def main(*, current_task=None, next_release=None):
                     p.print_help()
                 return 0
         if a.group == "guide":
-            return print_guide(a.guide, getattr(a, "browser_args", ()))
+            return print_guide(a.guide, getattr(a, "browser_args", ()), plan=selected_plan if bundle else None)
         if a.group == "spec":
             if a.command in ("list", "show"):
                 return read_spec(a.command, getattr(a, "id", None))
             task = task_for(a.plan) if bundle is not None else None
             if task:
                 ensure_task_tree(task, plan_root(plan_paths(a.plan)[0]))
+                state = load_state(task["plan"])
+                if a.command == "check" and (state is None or state["status"] in ("draft", "approved")):
+                    require_discovery(task)
+                    head, _ = read_plan(task["plan"])
+                    explicit = git("rev-parse", "--verify", "-q", "--end-of-options", f"{a.base}^{{commit}}",
+                                   cwd=task["tree"], check=False).stdout.strip() if a.base else task["base"]
+                    if base_of(head, None) != task["base"] or explicit != task["base"]:
+                        raise Refuse("task-base", f"the registered base is {task['base']}", "use that SHA in Status and omit --base")
+                    a.base = task["base"]
             return run(a.command, task["plan"] if task else a.plan, a.base, cwd=task["tree"] if task else None)
         if plan_arg and a.group not in ("run", "spec", "executor") and not os.path.isfile(plan_arg):
             read_plan(plan_paths(plan_arg)[0])
-        if a.group == "task" and a.command == "setup":
-            return cmd_task_setup(a.plan)
         if a.group == "run" and a.command == "approve":
             return cmd_consent(a.plan, "run", a)
         if a.group == "summary":

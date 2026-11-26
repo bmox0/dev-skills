@@ -156,7 +156,7 @@ old = 'show terminal help or the installed agent workflow'
 code = engine.read_text()
 assert old in code
 engine.write_text(code.replace(old, 'show terminal help from release B', 1)
-                  .replace('In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning.', 'Continue using release B.'))
+                  .replace('Read the {guide} instructions for this task.', 'Continue using release B.'))
 PY
 cp "$source_b/references/workflow.toml" "$sandbox/workflow.toml"
 sed 's|workflow/browser-test/tab.mjs|workflow/browser-test/missing.mjs|' "$sandbox/workflow.toml" > "$source_b/references/workflow.toml"
@@ -179,6 +179,8 @@ for missing in references/WORKFLOW-PATHS.md workflow/plan/references/environment
   mv "$sandbox/removed-resource" "$source_b/$missing"
 done
 printf '\nInterview instructions from build B.\n' >> "$source_b/workflow/grill/references/INTERVIEW.md"
+adr_reference=workflow/domain-modeling/references/ADR-FORMAT.md
+printf '\nADR reference from build B.\n' >> "$source_b/$adr_reference"
 "$source_b/scripts/install-runweld" --prefix "$prefix" >/dev/null
 b=$(cat "$prefix/lib/runweld/default")
 engine_b="$prefix/lib/runweld/releases/$b"
@@ -193,9 +195,11 @@ assert_contains "$(cd "$repo_worktree" && runweld --help)" 'installed agent work
 (cd "$repo_worktree" && runweld update --project) >/dev/null
 assert_eq "$(project_versions "$b" "$b")" "$(runweld --version)" 'distribution#project-lock: update changes the main checkout selection'
 assert_contains "$(runweld grill)" 'Interview instructions from build B.' 'project guide follows B'
+assert_contains "$(runweld reference "$adr_reference")" 'ADR reference from build B.' 'distribution#system-cli: project references follow B'
 if [[ $(cd "$repo_worktree" && runweld grill) == *'Interview instructions from build B.'* ||
-      $(runweld grill --plan "$plan") == *'Interview instructions from build B.'* ]]; then
-  echo 'task guide must retain release A' >&2
+      $(runweld grill --plan "$plan") == *'Interview instructions from build B.'* ||
+      $(runweld reference "$adr_reference" --plan "$plan") == *'ADR reference from build B.'* ]]; then
+  echo 'task guide and references must retain release A' >&2
   exit 1
 fi
 assert_contains "$(runweld help agents)" "$b" 'distribution#project-lock: project help now uses B'
@@ -217,7 +221,7 @@ assert_contains "$(runweld next run-b --json)" 'Continue using release B.' 'dist
 runweld status --current --json | python3 -c '
 import json, sys
 rows = {r["plan"]: r for r in json.load(sys.stdin)}
-assert rows["release-task"]["workflow"]["actions"][0]["action"] == "In the task worktree, run `runweld grill` for the interview or `runweld plan` for planning."
+assert rows["release-task"]["workflow"]["actions"][0]["action"] == "Read the grill instructions for this task."
 assert rows["previous-record"]["release"] == rows["release-task"]["release"]
 assert rows["run-b"]["workflow"]["actions"][0]["action"] == "Continue using release B."
 '

@@ -201,7 +201,7 @@ def command_plan(args, cwd):
         return plan
     by_id = (args.group == "task" and args.command in ("start", "resume", "path")) or (args.group == "next" and args.id)
     in_task = ((args.group == "status" and args.current) or
-               args.group in ("guide", "next") or (args.group == "help" and args.topic == "agents"))
+               args.group in ("guide", "next", "reference", "discovery") or (args.group == "help" and args.topic == "agents"))
     if not (by_id or in_task) or not (project := project_root(cwd)):
         return None
     workflow = project / ".runweld/workflow"
@@ -257,7 +257,7 @@ def read_workflow(root, files=None):
         check_paths(catalog["shared"])
         assignments = {"build": {"implementer"}, "build-verification": {"reviewer", "verify"}, "judge": {"judge"}}
         for key, stage in stages.items():
-            if set(stage) - {"label", "purpose", "inputs", "next", "roles", "when"} or not isinstance(stage["label"], str):
+            if set(stage) - {"label", "purpose", "inputs", "next", "roles", "when", "references"} or not isinstance(stage["label"], str):
                 raise ValueError(f"invalid stage definition for {key}")
             if "purpose" in stage and (not isinstance(stage["purpose"], str) or not stage["purpose"].strip()):
                 raise ValueError(f"invalid stage purpose for {key}")
@@ -265,6 +265,10 @@ def read_workflow(root, files=None):
             if set(transitions) != events[key] or set(transitions.values()) - stages.keys():
                 raise ValueError(f"invalid transition in {key}")
             check_paths(stage["inputs"])
+            references = stage.get("references", {})
+            if not isinstance(references, dict) or not all(isinstance(reason, str) and reason.strip() for reason in references.values()):
+                raise ValueError(f"invalid reference descriptions in {key}")
+            check_paths(list(references))
             roles = stage.get("roles", {})
             if set(roles) != assignments.get(key, set()):
                 raise ValueError(f"missing or unknown roles in {key}")
@@ -294,7 +298,7 @@ def project_lock(bundle):
             lines.append(f'{json.dumps(name)} = "sha256:{digest}"')
     for key in catalog["order"]:
         stage = catalog["stages"][key]
-        inputs = catalog["shared"] + stage["inputs"] + list(stage.get("roles", {}).values())
+        inputs = catalog["shared"] + stage["inputs"] + list(stage.get("references", {})) + list(stage.get("roles", {}).values())
         for dependency in stage.get("when", {}).values():
             inputs.extend(dependency["inputs"])
         entries = {path: manifest["files"][path] for path in sorted(set(inputs))}
@@ -359,10 +363,12 @@ def read_task_record(path, name):
     if value is None and not path.exists():
         return None
     fields = {"base", "ready", "branch", "release"}
-    if (not isinstance(value, dict) or set(value) not in (fields, fields | {"finish"}) or
+    if (not isinstance(value, dict) or not fields <= value.keys() <= fields | {"finish", "goal", "bug"} or
             not isinstance(value["base"], str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["base"]) or
             type(value["ready"]) is not bool or value["branch"] != "runweld/" + name or
             not valid_release(value["release"]) or
+            ("goal" in value and (not isinstance(value["goal"], str) or not value["goal"].strip())) or
+            ("bug" in value and value["bug"] is not True) or
             ("finish" in value and (value["ready"] or not isinstance(value["finish"], dict)))):
         raise ReleaseError(f"{path} has an invalid task record; restore the task record from a known-good copy")
     return value

@@ -43,7 +43,7 @@ elsewhere.
 2. **One command runs it**, with the project's own runtime.
 3. **No persistence** unless persistence is the question. **No polish:** no
    tests, no abstractions.
-4. **Capture the answer.** The user picks; the plan's Prototype line gets the
-   path and the chosen variant. The worker takes in-app prototype code out of
-   the tree; the build writes the real thing.
-5. **Then the run file:** `runweld run-file`, before the plan.
+4. **Capture the answer.** Save progress with `runweld prototype save`.
+   Record the user's choice and artifact with `runweld prototype done`, or
+   `runweld prototype skip --reason TEXT`. Remove in-app prototype code.
+5. Use the `next` command for planning.

@@ -1,6 +1,7 @@
 # Worktrees and workflow paths
 
-- Start new work with `runweld task start ID` before grill, reproduction or planning.
+- Start with `runweld task start ID --goal TEXT` before discovery.
+  Add `--bug` when a red reproduction is required.
   Use its branch, base, tree, plan path and artifacts directory as printed.
   Repeating the ID keeps its tree, dated plan directory and run settings.
   Use `runweld next [ID]`, omitting the ID inside its worktree.
@@ -13,10 +14,11 @@
   or retro material use `runweld path epics`, `runweld path handoff`, `runweld path spec` or
   `runweld path retro`. These commands print paths without creating them; create
   the directory when writing. Put lasting rules in the tracked project.
-- Plan before preparing a runtime. The first implementation phase or full
-  check prepares the approved environment. Run `runweld task setup PLAN` after
-  run and summary approval if the environment is needed sooner or setup
-  needs a retry. Use the printed worktree and allocated resources again.
+- The first implementation phase or full check prepares the approved
+  environment. `runweld task setup PLAN --preview` shows the command,
+  checkout and resources without running it. Run without `--preview` to
+  prepare or retry. For an active pre-plan bug reproduction, add
+  `--reproduction` to both commands. Reuse the worktree and allocated resources.
 - Finish keeps private history. If integration succeeds and cleanup refuses a
   worktree with unsaved or ignored local files, keep those files or move them
   out, then rerun `runweld finish PLAN` for cleanup alone.

@@ -154,7 +154,7 @@ assert view["task"]["id"] == "previous-active" and view["task"]["release"] == sy
 assert view["stage"] == "build" and view["task"]["goal"] == "Resume without changing releases."
 assert any(sys.argv[2] in a["argv"] for a in view["actions"] if a["kind"] == "run")
 PY
-assert_contains "$(cli next previous-draft)" 'runweld grill' 'distribution#system-cli: next retains a pre-draft legacy assignment'
+assert_contains "$(cli next previous-draft)" "$a grill --plan" 'distribution#system-cli: next retains the pinned pre-draft instruction'
 for format in text json; do
   record_status current "$sandbox/current.$format.native" "$format" python3 "$bundle_b/workflow/build/pipeline.py"
 done

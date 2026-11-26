@@ -13,7 +13,7 @@ This session remains the user’s orchestrator: it talks, decides with the user,
 and never edits code. Turn the idea into a design you and the user both agree
 on, through questions. This interview has no formal approval gate.
 
-Follow **The interview** below.
+Enter with `runweld grill start` in the task worktree. Follow **The interview**.
 
 ## While it runs
 
@@ -32,11 +32,10 @@ Follow **The interview** below.
 
 ## The end
 
-The grill ends when the decisions are clear enough to plan.
-Then:
+Save decisions and open questions with `runweld grill save`. Resume with
+the `next` command. When decisions are settled, record them with
+`runweld grill done --result TEXT`. If the work is already clear,
+record `runweld grill skip --reason TEXT`.
 
-1. Offer a prototype in one line, the shape for the user to pick: "A
-   prototype? An HTML file, inside the app with real data, or code for the
-   logic?" (`runweld prototype`). The user may decline.
-2. Write the run file: `runweld run-file`.
-3. Write the plan: `runweld plan`, with run and summary approval, then stop.
+Follow the next action. Offer a prototype in one line: an HTML file,
+inside the app with real data, or code for the logic.

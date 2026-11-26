@@ -8,11 +8,9 @@ description: Reproduce a bug and pin down its root cause before anything is fixe
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
 
-This session is the orchestrator: it judges the evidence and never edits code.
-A bug adds one stage in front of the plan: its reproduction and its cause. The
-fix is built from a plan whose phase 1 is the red test.
-
-**No fix without a root cause.** A symptom fix is a failure, even when it looks obvious.
+Start a task with `--bug`, then enter reproduction with `runweld bug start`.
+Use the `next` command for the worktree, setup preview and preparation command.
+Reproduce on the registered base. This session judges evidence, not code.
 
 ## 1. A worker reproduces and traces
 
@@ -34,10 +32,10 @@ guess.
 
 ## 2. Accept or send back
 
-Judge the evidence: accept the cause, or send the worker back with what is
-missing. After two failed hypotheses, start over from the reproduction: a fix
-that keeps uncovering new coupling is the wrong shape. Show the user the red
-command and the cause; the stage ends when the user agrees.
+Accept the evidenced cause or send back what is missing. After two failed
+hypotheses, start over from the reproduction. Show the user the command and
+cause. After agreement, record `runweld bug done --result TEXT --command SHELL
+--artifact PATH` in the task worktree.
 
 ## 3. The plan
 
