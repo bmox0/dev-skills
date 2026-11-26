@@ -120,51 +120,113 @@ with tempfile.TemporaryDirectory() as folder:
     run(cli, "update", "--project", release, cwd=nested)
     assert not (nested / ".runweld").exists()
     assert lock.read_bytes() == before
-    foreign = prefix / "bin/runweld"
-    foreign.write_text("another launcher\n")
-    assert "not a managed Runweld launcher" in run(source / "scripts/install-runweld", "--prefix", prefix, ok=False)
-    assert foreign.read_text() == "another launcher\n"
-
+    run(source / "scripts/install-runweld", "--prefix", prefix)
     codex, claude = home / "Codex checkout", home / "Claude clone"
     codex.mkdir()
     run("git", "init", "-qb", "main", cwd=codex)
     (codex / "hello.txt").write_text("before\n")
-    run("runweld", "init", "--non-interactive", "--provider", "GPT", "--primary-model", "codex-primary",
-        "--secondary-model", "codex-secondary", "--phase-check", "git diff --check",
-        "--full-check", "test -s hello.txt", cwd=codex)
+    (codex / ".gitignore").write_text(".fixture-*\n")
+    run("git", "add", ".", cwd=codex)
+    run("git", "commit", "-qm", "initial project", cwd=codex)
+    assert "runweld next" in run(cli, "help", "agents", cwd=codex)
+
+    def inspect(cwd, *scope):
+        view = json.loads(run(cli, "next", *scope, "--json", cwd=cwd))
+        terminal = run(cli, "next", *scope, cwd=cwd)
+        for step in view["actions"]:
+            assert f"{step['owner']} — {step['action']} [{step['kind']}]" in terminal
+            commands = ([step] if step["kind"] == "run" else [step["command"]] if step.get("command") else [])
+            commands += step.get("alternatives", []) + step.get("assignment", {}).get("reports", [])
+            for command in commands:
+                assert f"In {command['cwd']}: {shlex.join(command['argv'])}" in terminal
+        for fact in view.get("evidence", []):
+            assert fact in terminal
+        return view
+
+    def follow(command, *args, ok=True):
+        return run(*command["argv"], *args, cwd=command["cwd"], ok=ok).strip()
+
+    starter, = inspect(codex)["actions"]
+    options = ("--non-interactive", "--provider", "GPT", "--primary-model", "codex-primary",
+               "--secondary-model", "codex-secondary", "--phase-check", "git diff --check",
+               "--full-check", "test -s hello.txt", "--bootstrap", "printf ready > .fixture-setup",
+               "--data-dir", "--dev-url", "http://localhost:4000")
+    follow(starter, *options)
     config = codex / ".runweld/config.toml"
     initial = config.read_text()
+    settings = tomllib.loads(initial)
+    assert settings["setup"]["command"] == "printf ready > .fixture-setup"
+    assert settings["checks"] == {"phase": ["git diff --check"], "full": ["test -s hello.txt"],
+                                 "url": "http://localhost:4000"}
+    run("git", "add", ".", cwd=codex)
+    run("git", "commit", "-qm", "shared settings", cwd=codex)
+    follow(starter, *options)
+    assert not run("git", "status", "--porcelain", cwd=codex)
     config.write_text(initial + '\n[graph]\nfinish_without_acceptance = true\n')
     run("git", "add", ".", cwd=codex)
     run("git", "commit", "-qm", "initial project", cwd=codex)
-    assert "[graph]" in run("runweld", "task", "start", "forged", cwd=codex, ok=False)
-    assert json.loads(run("runweld", "status", "--json", cwd=codex)) == []
+    assert "[graph]" in run(cli, "task", "start", "forged", cwd=codex, ok=False)
+    assert json.loads(run(cli, "status", "--json", cwd=codex)) == []
     config.write_text(initial)
     run("git", "commit", "-qam", "use release graph", cwd=codex)
 
-    def lifecycle(project, provider, recorded_grill, prototype):
+    def lifecycle(project, provider, release, repair):
+        bundle = prefix / "lib/runweld/releases" / release
         run("git", "config", "core.hooksPath", "/dev/null", cwd=project)
         before = (project / "hello.txt").read_text()
-        assert release in run("runweld", "help", "agents", cwd=project)
-        entry = json.loads(run("runweld", "workflow", "--json", cwd=project))
-        definition = json.loads(run("runweld", "workflow", "--stage", "build-verification", "--json", cwd=project))
+        assert release in run(cli, "help", "agents", cwd=project)
+        entry = json.loads(run(cli, "workflow", "--json", cwd=project))
+        definition = json.loads(run(cli, "workflow", "--stage", "build-verification", "--json", cwd=project))
         assert definition["when"]["web-or-electron"]["role"] == "verify"
         assert definition["when"] == updated["stages"]["build-verification"]["when"]
         assert entry["actions"][0]["assignment"]["kind"] == "task-entry"
         slug = provider.lower() + "-message"
-        task = json.loads(run("runweld", "task", "start", slug, "--finish-how", "ff-only", "--finish-target", "main", "--json", cwd=project))
+        task = json.loads(run(cli, "task", "start", slug, "--goal", f"Print a {provider} greeting.",
+                              "--finish-how", "ff-only", "--finish-target", "main", "--json", cwd=project))
         plan, tree = map(Path, (task["plan"], task["tree"]))
-        assert task["tree"] in run("runweld", "task", "resume", slug, cwd=project)
         assert task["release"] == release
-        assert "# Plan" in run("runweld", "plan", "--plan", plan)
-        if prototype:
-            prototype = Path(task["artifacts"]) / "preview.txt"
-            prototype.write_text(f"hello {provider}\n")
+        artifacts = Path(task["artifacts"])
+        assert artifacts.parent == plan.parent and plan.parent.name.endswith("-" + slug)
+
+        def view():
+            return inspect(tree)
+
+        def actions():
+            return view()["actions"]
+
+        def advertised(*command, role=None, extra=(), ok=True):
+            step, = (x for x in actions() if x["kind"] == "run"
+                     and x["argv"][4:4 + len(command)] == list(command) and x.get("role") == role)
+            assert step["argv"][1:4] == [str(cli), "--release", release]
+            assert str(plan) in step["argv"]
+            return follow(step, *extra, ok=ok)
+
+        def requested(input_):
+            step, = (x for x in actions() if x.get("input") == input_)
+            assert step["kind"] == "ask" and step["owner"] == "Human"
+            return step
+
+        initial_view = view()
+        assert initial_view == inspect(project, slug)
+        assert initial_view["task"]["goal"] == f"Print a {provider} greeting."
+        if repair:
+            advertised("grill", "start")
+            advertised("grill", "save", extra=("--result", "One greeting line", "--question", "Which punctuation?"))
+            assert view()["task"]["discovery"]["grill"]["result"] == "One greeting line"
+            assert requested("discovery-questions")["questions"] == ["Which punctuation?"]
+            advertised("grill", "done", extra=("--result", "No punctuation"))
+            advertised("prototype", "start")
+            preview = artifacts / "preview.txt"
+            preview.write_text(f"hello {provider}\n")
+            advertised("prototype", "done", extra=("--result", "Use the plain greeting", "--artifact", preview))
+        else:
+            for stage in ("grill", "prototype"):
+                advertised(stage, "skip", extra=("--reason", "No open product choices"))
+        instruction, = actions()[0]["assignment"]["instructions"]
+        assert "# Plan" in run(*instruction, cwd=tree)
         plan.write_text(f"""# Plan: Hello {provider}
 
 Status: draft · branch `{task["branch"]}` · base `{task["base"]}`
-Grill: {recorded_grill}
-Prototype: {prototype or "none"}
 
 ## Result
 
@@ -192,7 +254,7 @@ Waits for: nothing
 
 ## Done
 
-1. Read the greeting → hello {provider}
+1. Read the greeting → a single greeting for {provider}
 2. Open hello.txt and read it → the intended wording — you check
 
 ## Spec
@@ -200,18 +262,14 @@ Waits for: nothing
 none
 """)
 
-        def status():
-            return json.loads(run("runweld", "status", "--json", "--provider", provider, plan))["workflow"]
+        def assignment_for(role):
+            assignment, = (x["assignment"] for x in actions() if x["kind"] == "work" and x.get("role") == role)
+            return assignment
 
-        def actions():
-            return json.loads(run("runweld", "next", "--json", cwd=tree))["actions"]
-
-        def advertised(*command, role=None):
-            step, = (x for x in actions() if x["kind"] == "run"
-                     and x["argv"][4:4 + len(command)] == list(command) and x.get("role") == role)
-            assert step["argv"][2:4] == ["--release", release]
-            assert str(plan) in step["argv"]
-            return run(*step["argv"], cwd=step["cwd"]).strip()
+        def report(role, command, *extra):
+            record, = (entry for entry in assignment_for(role)["reports"]
+                       if entry["argv"][4:4 + len(command)] == list(command))
+            return follow(record, *extra)
 
         def brief(role, tier, command=None):
             path = Path(advertised("brief", command or role, role=role))
@@ -225,37 +283,36 @@ none
                 assert source_path.is_relative_to(bundle) and source_path.read_text().strip()
             assert fields["Tree"] == str(tree)
             # distribution#system-cli: an unseen coordinator can act from the installed next output.
-            report = json.loads(run("runweld", "next", "--json", cwd=tree))
-            assert report["task"]["goal"] == "Print a provider-specific greeting."
-            assert report["task"]["approvals"]["plan"]["by"] == "Fixture Human"
-            assignment = next(x["assignment"] for x in report["actions"] if x["kind"] == "work" and x.get("role") == role)
+            resumed = view()
+            assert resumed["task"]["goal"] == "Print a provider-specific greeting."
+            assert resumed["task"]["approvals"]["plan"]["by"] == "Fixture Human"
+            assignment = assignment_for(role)
             assert assignment["cwd"] == str(tree) and assignment["reports"], assignment
             assert assignment["brief"]["path"] == str(path) and assignment["brief"]["dispatch"] == "unverified"
-            assert not any(x["kind"] == "run" and x.get("role") == role for x in report["actions"])
+            assert path.parent == plan.parent
+            assert not any(x["kind"] == "run" and x.get("role") == role for x in resumed["actions"])
             for entry in assignment["reports"]:
-                assert entry["argv"][2:4] == ["--release", release]
+                assert entry["argv"][1:4] == [str(cli), "--release", release]
             instruction, = assignment["instructions"]
-            assert Path(fields["Role source"]).read_text().split("---", 2)[-1].strip().splitlines()[0] in run(*instruction, cwd=tree)
-            default = run("runweld", "next", cwd=tree)
+            assert Path(fields["Role source"]).read_text().split("---", 2)[-1].strip().splitlines()[0] in run(*instruction, cwd=assignment["cwd"])
+            default = run(cli, "next", cwd=tree)
             assert "Fixture Human" in default and fields["Role source"] in default and "Return:" in default
-            assert any(step["kind"] == "wait" and step.get("condition") == "after-dispatch" for step in report["actions"])
+            wait, = (step for step in resumed["actions"] if step["kind"] == "wait"
+                     and step.get("waiting_for") == f"{command or role}-report")
+            assert wait["condition"] == "after-dispatch" and wait["records"] == str(plan.with_suffix(".json"))
             return body, fields
 
-        run("runweld", "spec", "check", plan)
-        run("runweld", "approve", plan)
-        seen = {step["id"]: step["state"] for step in status()["stages"]}
-        assert seen["grill"] == recorded_grill and seen["prototype"] == ("done" if prototype else "skipped")
-        assert "plan-unapproved" in run("runweld", "build", "start", plan, ok=False)
-        proposal_command = next(action for action in actions() if action["kind"] == "run")
-        assert proposal_command["argv"][-3:] == ["plan", "review", str(plan)]
-        proposal = json.loads(run(*proposal_command["argv"], "--json", cwd=proposal_command["cwd"]))
-        args = proposal["approval_command"]["argv"]
-        run(*args, "--by", "Fixture Human", "--words", "Fixture plan and run approved")
-        start = next(action for action in actions() if action.get("input") == "start-authorization")
-        selection = ("--provider", provider) if "provider" in start["command"]["options"] else ()
-        run(*start["command"]["argv"], *selection, cwd=start["command"]["cwd"])  # Separate fixture start instruction.
+        advertised("spec", "check")
+        advertised("approve")
+        assert "plan-unapproved" in run(cli, "build", "start", plan, ok=False)
+        requested("plan-approval")
+        proposal = json.loads(advertised("plan", "review", extra=("--json",)))
+        follow(proposal["approval_command"], "--by", "Fixture Human", "--words", "Fixture plan and run approved")
+        start = requested("start-authorization")["command"]
+        selection = ("--provider", provider) if "provider" in start["options"] else ()
+        follow(start, *selection)  # Fixture human authorizes a separate build start.
         assert "Next:" in advertised("phase", "start")
-        if provider == "GPT":
+        if repair:
             # distribution#system-cli: Herdr targets must be live and in the assigned checkout.
             fixture = home / ".local/bin/herdr"
             fixture.write_text('#!/bin/sh\n[ "$*" = "api snapshot" ] && cat "$HERDR_FIXTURE"\n')
@@ -267,7 +324,7 @@ none
             snapshot.write_text(json.dumps({"result": {"snapshot": payload}}))
             env["HERDR_ENV"] = "1"
             env["HERDR_FIXTURE"] = str(snapshot)
-            target = ("runweld", "handoff", "herdr", plan, "--pane", "w1:p1")
+            target = (cli, "handoff", "herdr", plan, "--pane", "w1:p1")
             assert "handoff: Herdr" in run(*target, "--workspace", "w1")
             assert "herdr-target" in run(*target, "--workspace", "w2", ok=False)
             payload["panes"].clear()
@@ -275,97 +332,168 @@ none
             assert "herdr-target" in run(*target, "--workspace", "w1", ok=False)
             env.pop("HERDR_FIXTURE")
             fixture.unlink()
-        implementer, fields = brief("implementer", "secondary")
+        _, fields = brief("implementer", "secondary")
         assert "runweld tdd" in fields["Skills to read first"]
         red = run("grep", "-x", f"hello {provider}", "hello.txt", cwd=tree, ok=False)
         assert not red
         greeting = f"hello {provider}\n"
-        (tree / "hello.txt").write_text(greeting + ("extra line\n" if provider == "GPT" else ""))
+        (tree / "hello.txt").write_text(greeting + ("extra line\n" if repair else ""))
         assert run("grep", "-x", f"hello {provider}", "hello.txt", cwd=tree).strip() == f"hello {provider}"
         run("git", "diff", "--check", cwd=tree)
         run("git", "commit", "-qam", "write the greeting", cwd=tree)
         commit = run("git", "rev-parse", "HEAD", cwd=tree).strip()
 
-        def command_from(body, prefix, stop=None):
-            line = next(line.removeprefix(prefix) for line in body.splitlines() if line.startswith(prefix))
-            return shlex.split(line.split(stop, 1)[0] if stop else line)
-
-        report = command_from(implementer, "- Your report: ", " --became ")
-        run(*report, "--became", "The greeting is printed", "--commit", commit,
-            "--check", "git diff --check", "passed")
+        report("implementer", ("phase", "report"), "--became", "The greeting is printed", "--commit", commit,
+               "--check", "git diff --check", "passed")
         advertised("phase", "done")
         assert "normal" in advertised("gate", "start")
-        reviewer, _ = brief("reviewer", "primary")
+        brief("reviewer", "primary")
         verify, _ = brief("verify", "secondary")
         assert str(bundle / "workflow/browser-test/tab.mjs") in verify
-        if provider == "GPT":
-            assignment = next(x["assignment"] for x in actions() if x["kind"] == "work" and x["role"] == "reviewer")
-            finding = next(entry for entry in assignment["reports"] if entry["argv"][4] == "finding")
-            run(*finding["argv"], "--kind", "defect", "--where", "hello.txt:2", "--source", "Done 1",
-                "--text", "Greeting contains an extra line", cwd=finding["cwd"])
-        run(*command_from(reviewer, "- Complete the review: "))
-        assert not any(x.get("role") == "judge" and x["kind"] == "run" for x in actions())
-        case = run("head", "-n", "1", "hello.txt", cwd=tree).strip()
-        assert case == f"hello {provider}"
-        result = command_from(verify, "- Each case: ", " --outcome ")
-        result[result.index("<n>")] = "1"
-        run(*result, "--outcome", "passed", "--capture", case)
-        if provider == "GPT":
-            assert "Greeting contains an extra line" in run("runweld", "next", cwd=tree)
+        if repair:
+            report("reviewer", ("finding",), "--kind", "defect", "--where", "hello.txt:2", "--source", "Done 1",
+                   "--text", "Greeting contains an extra line")
+        capture = artifacts / "initial.txt"
+        capture.write_text((tree / "hello.txt").read_text())
+        assert capture.read_text().splitlines() == ([greeting.strip(), "extra line"] if repair else [greeting.strip()])
+        report("verify", ("result",), "--case", "1", "--outcome", "failed" if repair else "passed",
+               "--capture", capture, "--detail", "Captured the whole file")
+        assert not any(x.get("role") == "judge" for x in actions())
+        report("reviewer", ("review", "complete"))
+        if repair:
+            # distribution#system-cli: resume a release A repair after the project has selected release B.
+            run(cli, "update", "--project", shared["release"], cwd=project)
+            assert shared["release"] in run(cli, "help", "agents", cwd=project)
+            assert any("Greeting contains an extra line" in fact for fact in view()["evidence"])
+            another = json.loads(run(cli, "task", "start", "release-b-check", "--goal", "Use the new release", "--json", cwd=project))
+            scope = inspect(project)
+            assert {task["id"]: task["release"] for task in scope["tasks"]} == {slug: release, "release-b-check": shared["release"]}
+            resume, = (step for step in scope["actions"] if step.get("argv", [])[-2:] == ["next", slug])
+            assert json.loads(follow(resume, "--json")) == view()
+            second = inspect(another["tree"])
+            new_grill = second["actions"][0]["assignment"]["instructions"][0]
+            assert new_grill[1:4] == [str(cli), "--release", shared["release"]]
+            assert "Global update fixture" in run(*new_grill, cwd=another["tree"])
             assert "Next:" in advertised("fix", "start")
-            fix, _ = brief("implementer", "secondary", "fix")
+            brief("implementer", "secondary", "fix")
             (tree / "hello.txt").write_text(greeting)
             run("git", "commit", "-qam", "remove the extra line", cwd=tree)
             fixed = run("git", "rev-parse", "HEAD", cwd=tree).strip()
-            run(*command_from(fix, "- Your report: ", " --became "), "--became", "Only the greeting remains", "--commit", fixed)
+            report("implementer", ("fix", "report"), "--became", "Only the greeting remains", "--commit", fixed)
             assert "Next:" in advertised("fix", "done")
-            recheck, _ = brief("reviewer", "secondary")
-            run(*command_from(recheck, "- Complete the review: "))
-            if any(step.get("role") == "verify" for step in actions()):
-                verify, _ = brief("verify", "secondary")
-                result = command_from(verify, "- Each case: ", " --outcome ")
-                result[result.index("<n>")] = "1"
-                run(*result, "--outcome", "passed", "--capture", greeting.strip())
+            brief("reviewer", "secondary")
+            brief("verify", "secondary")
+            assert assignment_for("reviewer")["range"].endswith(f"{commit}..{fixed}")
+            report("reviewer", ("review", "complete"))
+            capture = artifacts / "fixed.txt"
+            capture.write_text((tree / "hello.txt").read_text())
+            assert capture.read_text().splitlines() == [greeting.strip()]
+            report("verify", ("result",), "--case", "1", "--outcome", "passed", "--capture", capture)
         _, judge = brief("judge", "primary")
         assert Path(judge["Judge rules"]).is_relative_to(bundle)
         prediction = ("--predicted", "pass", "--engine", judge["Executor model"])
-        if provider == "GPT":
-            run(*shlex.split(judge["CLI"]), "verdict", "question", plan, "--report", "Need the human’s decision",
-                "--question", "Keep this wording?", *prediction)
-            question = next(step for step in actions() if step.get("input") == "judge-answer")
-            wait = next(step for step in actions() if step.get("waiting_for") == "judge-answer")
-            assert question["kind"] == "ask" and question["owner"] == "Human" and wait["kind"] == "wait"
-            assert "Keep this wording?" in run("runweld", "next", cwd=tree)
-            relay = wait["command"]
-            assert "The human's answer: Keep it." in Path(run(*relay["argv"], "--note", "Keep it.", cwd=relay["cwd"]).strip()).read_text()
+        if repair:
+            report("judge", ("verdict", "question"), "--report", "Need the human's decision",
+                   "--question", "Keep this wording?", *prediction)
+            assert "Keep this wording?" in requested("judge-answer")["action"]
+            wait, = (step for step in actions() if step.get("waiting_for") == "judge-answer")
+            assert wait["kind"] == "wait" and not wait.get("condition")
+            relay = Path(follow(wait["command"], "--note", "Keep it."))
+            assert "The human's answer: Keep it." in relay.read_text()
             prediction = ()
-        assert "Next:" in run(*shlex.split(judge["CLI"]), "verdict", "pass", plan, "--report", "Review and CLI evidence agree", *prediction)
-        shape = Path(advertised("land", "draft").removeprefix("land draft: "))
-        shape.write_text(shape.read_text().replace('message = ""', 'message = "feat: greet this provider"')
-                         .replace('walkthrough = ""', 'walkthrough = "Open hello.txt and see its greeting."'))
-        advertised("land")
-        assert actions()[0]["assignment"]["kind"] == "page"
-        human = (f"Open the landed checkout at {tree}. Tell me whether to finish.\n\n"
-                 f"#### What to try\n- **Done 2** Read hello.txt → hello {provider}\n\n"
-                 "#### Decisions\n- —\n")
-        assert run("runweld", "page", plan, "--guide", human) == human
-        assert run("runweld", "page", plan, "--show") == human
-        assert actions()[0]["input"] == "acceptance"
-        assert "current authorized" in run("runweld", "finish", plan, ok=False)
-        assert (project / "hello.txt").read_text() == before
-        run("runweld", "accept", plan, "--by", "Fixture Human", "--words", "Fixture result accepted")
-        advertised("finish")  # Fixture authorization to integrate.
-        assert (project / "hello.txt").read_text() == f"hello {provider}\n"
-        assert not tree.exists() and status()["actions"] == []
+        assert "Next:" in report("judge", ("verdict", "pass"), "--report", "Review and CLI evidence agree", *prediction)
 
-    lifecycle(codex, "GPT", "done", True)
+        def land_and_show(greeting):
+            step, = actions()
+            if step.get("assignment", {}).get("shape"):
+                shape = Path(step["assignment"]["shape"])
+                shape.write_text('since = "Add the requested punctuation"\n' + shape.read_text())
+            else:
+                shape = Path(advertised("land", "draft").removeprefix("land draft: "))
+                shape.write_text(shape.read_text().replace('message = ""', 'message = "feat: greet this provider"')
+                                 .replace('walkthrough = ""', 'walkthrough = "Open hello.txt and see its greeting."'))
+            advertised("land")
+            page, = (step for step in actions() if step.get("assignment", {}).get("kind") == "page")
+            human = (f"Open the landed checkout at {tree}. Tell me whether to finish.\n\n"
+                     f"#### What to try\n- **Done 2** Read hello.txt → {greeting.strip()}\n\n"
+                     "#### Decisions\n- —\n")
+            assert follow(page["command"], "--guide", human) == human.strip()
+            opening, _ = requested("acceptance")["alternatives"]
+            assert follow(opening) == human.strip()
+
+        land_and_show(greeting)
+        assert "current authorized" in run(cli, "finish", plan, ok=False)
+        assert (project / "hello.txt").read_text() == before
+        if repair:
+            _, notes = requested("acceptance")["alternatives"]
+            feedback = "Add an exclamation point to the greeting."
+            follow(notes, "--text", feedback, "--cause", "feel-ui")
+            authorization = requested("round-authorization")
+            assert any(feedback in note for note in authorization["evidence"])
+            assert not any(step["kind"] == "run" for step in actions())
+            follow(authorization["command"])  # Fixture human authorizes the round.
+            body, _ = brief("implementer", "secondary", "round")
+            assert feedback in body
+            greeting = greeting.strip() + "!\n"
+            (tree / "hello.txt").write_text(greeting)
+            run("git", "commit", "-qam", "add the requested punctuation", cwd=tree)
+            revision = run("git", "rev-parse", "HEAD", cwd=tree).strip()
+            report("implementer", ("round", "report"), "--became", feedback, "--commit", revision)
+            sources, = actions()
+            source_command, = sources["alternatives"]
+            follow(source_command, "--source", "missed")
+            advertised("round", "done")
+            brief("reviewer", "secondary")
+            assert assignment_for("reviewer")["range"].endswith(".." + revision)
+            report("reviewer", ("review", "complete"))
+            brief("judge", "primary")
+            report("judge", ("verdict", "pass"), "--report", "The feedback round was reviewed")
+            land_and_show(greeting)
+            # Keep the ff-only target clean without an unrelated release-lock commit on it.
+            run(cli, "update", "--project", release, cwd=project)
+
+        follow(requested("acceptance")["command"], "--words", "Fixture result accepted")
+        accepted = run("git", "rev-parse", "HEAD", cwd=tree).strip()
+        if repair:
+            unknown = tree / ".fixture-unknown"
+            unknown.write_text("keep this")
+            pending = json.loads(advertised("finish", extra=("--json",)))
+            assert pending["cleanup_pending"] and unknown.name in pending["cleanup_pending"]
+            assert pending["integration"]["commit"] == accepted and pending["integration"]["verified"]
+            assert unknown.read_text() == "keep this" and not (tree / ".fixture-setup").exists()
+            assert run("git", "rev-parse", "main", cwd=project).strip() == accepted
+            retry, = pending["actions"]
+            assert retry["cwd"] == str(project)
+            assert inspect(project, slug)["actions"] == pending["actions"]
+            unknown.unlink()
+            assert f"main contains integration commit {accepted}" in follow(retry)
+        else:
+            assert f"main contains integration commit {accepted}" in advertised("finish")
+        assert (project / "hello.txt").read_text() == greeting
+        assert run("git", "rev-parse", "main", cwd=project).strip() == accepted
+        assert not run("git", "status", "--porcelain", cwd=project)
+        terminal = inspect(project, slug)
+        assert terminal["task"]["status"] == "merged" and terminal["actions"] == [] and not tree.exists()
+        assert terminal["task"]["integration"]["commit"] == accepted
+        assert terminal["task"]["acceptance"]["words"] == "Fixture result accepted"
+        assert {p.name for p in plan.parent.iterdir()} >= {
+            plan.name, slug + ".json", slug + ".run.toml", slug + ".judge.md", "artifacts"}
+        assert (artifacts / "initial.txt").is_file() and not (artifacts / "data").exists()
+
+    lifecycle(codex, "GPT", release, True)
+    run(cli, "update", "--project", shared["release"], cwd=codex)
+    run("git", "commit", "-qam", "select release B", cwd=codex)
     run("git", "clone", "-q", codex, claude)
-    run("runweld", "init", "--non-interactive", "--provider", "Claude", "--primary-model", "claude-primary",
+    run(cli, "init", "--non-interactive", "--provider", "Claude", "--primary-model", "claude-primary",
         "--secondary-model", "claude-secondary", cwd=claude)
-    assert json.loads(run("runweld", "status", "--json", cwd=claude)) == []
+    assert json.loads(run(cli, "status", "--json", cwd=claude)) == []
     clone_config = tomllib.loads((claude / ".runweld/config.toml").read_text())
     assert set(clone_config["executors"]) == {"GPT", "Claude"}
     assert clone_config["checks"] == tomllib.loads(initial)["checks"]
     run("git", "commit", "-qam", "add the Claude pair", cwd=claude)
-    lifecycle(claude, "Claude", "skipped", False)
+    lifecycle(claude, "Claude", shared["release"], False)
+
+    cli.write_text("another launcher\n")
+    assert "not a managed Runweld launcher" in run(source / "scripts/install-runweld", "--prefix", prefix, ok=False)
+    assert cli.read_text() == "another launcher\n"
 PY

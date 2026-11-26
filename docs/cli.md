@@ -31,6 +31,9 @@ A change to the shared session protocol affects every stage. A change to
 engine has its own digest. Models and checks live in `.runweld/config.toml`.
 
 Use `runweld update --project RELEASE` to select a specific installed build ID.
+That changes the release for new tasks only. From an older task’s worktree,
+`runweld next` still uses that task’s release for commands, roles and references.
+Keep both builds installed while tasks use them.
 
 In a terminal, `runweld update` asks you to choose `cli` or `project`.
 Scripts must pass a scope explicitly. Outside an initialized project,
@@ -58,6 +61,40 @@ that the original run can read its instructions again.
 ## Run a guide
 
 Run `runweld grill` to print the interview and its rules, or `runweld plan` to print the planning instructions. The bare commands for build, review, land and finish also print instructions. Pass the operational arguments to carry out an action, such as `runweld finish PLAN`. Use `--plan PLAN` to read instructions from a task’s pinned release. Run `runweld browser-test` for browser guidance and `runweld browser-test up URL` to open the browser.
+
+## Start or resume a task
+
+In a clean Git checkout, start with `runweld help agents` and `runweld next`.
+If prompted, run `runweld init`. It previews project defaults without running
+the commands. Commit the shared config, lock and project instructions, and
+make an initial Git commit if the checkout has none.
+
+```sh
+runweld task start report-search --goal "Search reports by title"
+runweld next report-search
+```
+
+From the printed task worktree, use `runweld next` without an ID. From the
+main checkout, use `runweld next ID` or `runweld next --plan "$plan"` with the
+printed plan path. A fresh agent only needs the worktree and the instruction
+to run `runweld next`. It can recover the goal, saved decisions, evidence,
+current owner and what has to happen before work advances.
+
+Follow the available actions through discovery and planning. Save open
+questions if you stop mid-interview. Add `--bug` when starting a task that
+needs a red reproduction. When the draft is ready, `runweld plan review "$plan"`
+shows the full plan, run settings and the revision to approve. Use its
+approval command with the human’s name and words. Approval records the
+decision. A separate instruction authorizes the displayed build-start command.
+
+At the human gate, use the displayed `page --show` command to recover the
+review guide. Feedback does not start a round by itself. When the human
+authorizes one, follow the round action and review the revised result before
+accepting. After current acceptance, the configured finish reports the target
+and integration commit. For local finish, the command runs in the surviving
+project checkout. If it reports an unknown local file, move it somewhere safe
+or resolve it, then follow the cleanup retry. Runweld keeps the dated task
+directory, including the accepted result and evidence.
 
 ## Inspect a stage
 
@@ -91,23 +128,24 @@ use `{data_dir}` in check commands. Setup receives the corresponding
 
 ## Workflow actions
 
-For automation, use `runweld workflow --json` before there is a plan, or
-`runweld status --json <plan>` and `runweld status --current --json` during a run. Read
-`workflow.actions` on a status result, or `actions` on the entry view. Each
-action names its `owner`, has readable `action` text, and supplies a `kind`.
+Use `runweld next --json` for the same guidance in machine-readable form.
+Each entry in `actions` names its `owner`, has readable `action` text, and
+supplies a `kind`.
 
-- `run` carries an `argv` array. Run it directly as a process, with each array
-  item as a separate argument. The interpreter, script and plan paths are absolute.
+- `run` carries `cwd` and an `argv` array. Run the process in that directory
+  with each array item as a separate argument. The command names the installed
+  launcher and the task’s pinned release.
 - `work` names a `role` and its `assignment`, such as a phase number, review
-  range or Done cases. Reuse an existing worker when it owns the assignment.
-  For a new worker, use the brief command with the matching assignment and
-  dispatch the returned brief through the chosen host.
-- `wait` identifies work or authorization to wait for. Read status again when
-  it arrives.
+  range or Done cases. It lists the role instructions, reporting commands and
+  return channel. Recover a prepared brief if one exists. Check the host for a
+  live worker before dispatching a new one or continuing an existing one.
+- `wait` identifies work or authorization to wait for. A worker wait marked
+  `after-dispatch` applies only after you confirm dispatch. Generating a brief
+  is not dispatch. Run `next` again when the expected result arrives.
 - `ask` identifies a decision or missing input. Obtain it from the named owner
-  before proceeding.
+  before running its command, if one is shown.
 
-Pass `--provider NAME` to status for executable brief commands using the
-approved executor snapshot. The ordinary `status` inventory keeps its existing
-shape. The merged workflow has an empty `actions` array. Guidance is a snapshot
-and the CLI still applies each command's own checks.
+If prompted, pass `--provider NAME` to `next` for executable brief commands using
+the approved executor snapshot. For inventory, use `runweld status`. After
+finish and cleanup, `actions` is empty. Guidance is a snapshot and each
+command still checks whether it can run.

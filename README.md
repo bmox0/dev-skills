@@ -33,22 +33,21 @@ export PATH="$HOME/.local/bin:$PATH"
 
 For updates, use `runweld update --cli` to install the latest CLI from `main`. Use `runweld update --project` in a project to select the installed build for new tasks. In a terminal, `runweld update` asks which one you want. [CLI updates](docs/cli.md#update-the-cli)
 
-In your project’s Git checkout, run `runweld init`. Choose your models and project checks. Commit the generated configuration. [Project setup](workflow/run-file/references/project-config.md)
+In your project’s Git checkout, run `runweld help agents` and `runweld next`. On first use, follow the prompt to run `runweld init`. Choose your models and project checks, then commit the shared configuration. [Project setup](workflow/run-file/references/project-config.md)
 
 ### Start a task
 
 Start in the repository:
 
 ```sh
-runweld task start report-search
-runweld grill --plan .runweld/workflow/plans/report-search.md
+runweld task start report-search --goal "Search reports by title and explain when nothing matches"
 ```
 
-In the task worktree, give the coding agent your goal:
+Open the worktree printed by `task start` and run `runweld next`. Or give a fresh coding agent in that worktree this prompt:
 
-> Use Runweld to add search to our reports page. Users should be able to find a report by title and see a clear message when nothing matches.
+> Run `runweld next`. Tell me the goal, what’s been decided, who acts next and what they’re waiting for. Continue within the recorded approvals.
 
-Approve the run settings and plan summary, then ask the agent to build. To pick up the task in a new session, open its worktree and ask **“Continue this task with Runweld.”**
+Approve the complete plan and run settings together, then separately ask the agent to build. To resume from the main checkout, run `runweld next report-search`. [Terminal and agent walkthrough](docs/cli.md#start-or-resume-a-task)
 
 ## How it works
 
@@ -62,7 +61,7 @@ The planner assigns each phase its files, checks and dependencies. The two phase
 
 ## Workflow stages
 
-Run `runweld workflow` to see the stages. During a task, `runweld status --current` shows the current stage, who owns the next action and what they can do.
+Run `runweld workflow` to see the stages. During a task, `runweld next` shows the current stage, who owns the next action and what they can do.
 
 [Grill and prototype](#grill-and-prototype) · [Plan and approvals](#plan) · [Build by phase](#build) · [Verification and judge](#build-verification-and-judge) · [Human review and finish](#human-review-and-finish)
 
@@ -106,9 +105,9 @@ flowchart TD
     base[("Base spec")]:::cli --> check
     check -->|"Invalid change"| plan
     check -->|"Valid"| compile["Compile plan"]:::cli
-    compile --> approve["Approve run settings"]:::human
-    approve -->|"Frozen run"| summary["Approve summary"]:::human
-    summary -->|"Approval recorded"| wait(["Await build request"]):::cli
+    compile --> review["Show full plan and run settings"]:::cli
+    review --> approve["Approve displayed revision"]:::human
+    approve -->|"Approval recorded"| wait(["Await build request"]):::cli
     wait -->|"Explicit start"| coordinator["Build coordinator"]:::primary
     classDef primary fill:#e5eaff,stroke:#596eb0,color:#182951
     classDef cli fill:#e6ebf1,stroke:#667588,color:#1c2b3a
@@ -117,7 +116,7 @@ flowchart TD
 
 1. **Set the terms of the run.** The planner starts from the project defaults in the task’s `.run.toml`. You settle the model settings, phase and full-project checks, fixtures or accounts needed for verification, and how the branch will be integrated. [Example run file](workflow/run-file/references/example.run.toml)
 2. **Write the plan and its spec changes.** Each phase names the files it may change, the existing spec areas it must respect, the checks to run and which phases it depends on. A secondary researcher identifies the relevant code and project instructions. In the plan’s `## Spec`, the planner records lasting rules to add (`+`), change (`~`) or remove (`-`), or writes `none`. The numbered **Done** cases describe an action and the result someone can observe.
-3. **Validate, approve and hand off.** The planner runs `runweld spec check` against the base revision. You approve the run settings, then a linked summary of at most 350 words. Its approval covers the plan, spec changes and summary text for that run. If the planner edits an acceptance criterion afterward, `runweld` requires renewed summary approval. Your separate instruction to build starts the handoff. [Example approval summary](workflow/plan/references/resume.example.md)
+3. **Validate, approve and hand off.** The planner runs `runweld spec check` against the base revision. `runweld plan review` displays the complete plan and run settings together. You approve that revision once. A change to an acceptance criterion or a run setting needs new approval, but preserves recorded progress. Your separate instruction to build starts the handoff.
 
 For example, the keyboard-shortcuts plan adds `settings#taken-blocks`. It gives the reason a duplicate binding must be rejected and links the rule to Done case 2. That case tells the verifier to record an occupied shortcut, check that the UI names the conflicting action and confirm that Save is disabled. [Worked plan and spec](workflow/plan/references/example.md)
 
@@ -238,11 +237,11 @@ flowchart TD
 
 ### What survives a handoff
 
-`runweld task start` records the branch, worktree and workflow release. When the planner compiles the plan, `runweld` writes a JSON state file beside it under `.runweld/workflow/plans/`. Approvals, phase reports, commits, check outcomes, review findings, verdicts and acceptance accumulate against that task. The CLI uses those records to render the review page and issue the next worker’s brief.
+`runweld task start` records the branch, worktree and workflow release. The plan, run settings, state, briefs and evidence stay together in a dated task directory under `.runweld/workflow/plans/`. The CLI uses those records to render the review page and issue the next worker’s brief. The directory survives removal of the worktree.
 
 If a session closes during a full test run, the next coordinator can ask `runweld` about that run. While its test processes are alive, `runweld` tells the coordinator to wait. Once they stop, it can retry the interrupted check or reuse a completed result from the same cycle for the same commit and check commands. If it cannot determine whether the original processes are still running, it asks for that fact before starting another run.
 
-Run `runweld status --current` in the worktree to see the next action and its owner. For automation, add `--json`. The result distinguishes a command to run, work to assign, a decision to request and a reason to wait. [CLI actions](docs/cli.md#workflow-actions)
+Run `runweld next` in the worktree to see the next action and its owner. For automation, add `--json`. The result distinguishes a command to run, work to assign, a decision to request and a reason to wait. [CLI actions](docs/cli.md#workflow-actions)
 
 ## Features
 
@@ -279,7 +278,7 @@ runweld task resume export-csv    # Show this task's worktree and next step
 
 ### Read a plan or review guide
 
-- **Keyboard shortcuts.** Read the summary you would approve, then open the full plan to see why the Settings panel and live rebinding can be built in parallel. [Approval summary](workflow/plan/references/resume.example.md) · [Full plan](workflow/plan/references/example.md)
+- **Keyboard shortcuts.** Open the full plan to see why the Settings panel and live rebinding can be built in parallel. [Full plan](workflow/plan/references/example.md)
 - [CSV export review guide](workflow/build/references/example.guide.md) — see what to download, what to expect for an empty date range and how an unresolved defect appears for your decision.
 - [Project configuration](workflow/run-file/references/project-config.md) — initialize from a script and configure per-task setup.
 - [CLI reference](docs/cli.md) — update or repair a release, or read the next actions as JSON.

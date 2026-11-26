@@ -182,7 +182,7 @@ def check_r2(path, lineno, line, findings):
         name = m.group(1)
         skill_file = SKILLS_DIR / name / "GUIDE.md"
         agent_file = AGENTS_DIR / f"{name}.md"
-        if name in {"init", "workflow", "status", "update", "build-verification", "human-review"}:
+        if name in {"init", "next", "workflow", "status", "update", "build-verification", "human-review"}:
             continue
         if not skill_file.is_file() and not agent_file.is_file():
             findings["R2"].append(

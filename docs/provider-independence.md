@@ -11,14 +11,28 @@ user's request.
 ## Scope and existing constraints
 
 Keep the shared stages: planning, build and acceptance. Primary and secondary
-remain executor presets. Grill is an interview; run approval precedes approval
-of a linked summary of at most 350 words. Planning then stops until the user
+remain executor presets. Grill is an interview. A human approves the displayed
+plan and run settings together. Planning then stops until the user
 chooses where build starts. The user or designated orchestrator directs the
 same build writer within granted authority.
 
 The earlier portability run removed fixed role models and the engine allowlist.
 That makes names configurable; it does not prove that every host can apply the
 same model identifier, effort, child-session or messaging operation.
+
+## Resume from the installed CLI
+
+Run `runweld next` in the task worktree, or `runweld next ID` from the project
+checkout. The saved assignment names the task’s release, role instructions,
+executor, working directory and reporting commands. Use your host to check
+whether the worker is still live before dispatch or continuation. The CLI
+cannot infer dispatch from a prepared brief or an idle session.
+
+The installed journey fixture uses fresh CLI processes and two releases
+in a custom prefix. It drives a finding, fix, recheck, human decision and
+local finish, then a second checkout’s happy path. Its GPT and Claude
+executor names are fixture profiles, not live host compatibility evidence.
+[CLI walkthrough](cli.md#start-or-resume-a-task)
 
 ## Research trail
 
