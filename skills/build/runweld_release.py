@@ -321,9 +321,11 @@ def release_pin(values, path):
     if "workflow" not in values:
         return None
     workflow = values["workflow"]
-    if not isinstance(workflow, dict) or set(workflow) != {"release"} or not valid_release(workflow["release"]):
-        raise ReleaseError(f"{path} needs one exact release ID at [workflow].release; restore the run file or snapshot")
-    return workflow["release"]
+    if isinstance(workflow, dict) and set(workflow) == {"version", "digest"}:
+        version, digest = workflow["version"], workflow["digest"]
+        if isinstance(version, str) and isinstance(digest, str) and valid_release(f"{version}@{digest}"):
+            return f"{version}@{digest}"
+    raise ReleaseError(f"{path} needs [workflow].version and a 64-character SHA-256 digest; restore the run file or snapshot")
 
 
 def read_task_record(path):
@@ -351,8 +353,7 @@ def task_pin(pin, task, path):
     if task is not None:
         recorded = task["release"]
         if pin != recorded:
-            expected = f" {recorded}"
-            raise ReleaseError(f"{path} must retain the task's original [workflow].release{expected}; restore the run file or snapshot")
+            raise ReleaseError(f"{path} must retain the task's original [workflow] version and digest for {recorded}; restore the run file or snapshot")
     elif pin is not None:
         raise ReleaseError(f"{path} pins a release without a registered task; use `runweld task start ID` and the returned plan path")
     return pin

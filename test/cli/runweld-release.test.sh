@@ -109,12 +109,12 @@ release_task_run="$project/.runweld/workflow/plans/release-task.run.toml"
 cp "$release_task_run" "$sandbox/task-a.toml"
 
 # run#starts-from-last: a draft cannot remove its registered release before compilation or approval.
-sed '/^\[workflow\]$/{N;d;}' "$sandbox/task-a.toml" > "$release_task_run"
+sed '/^\[workflow\]$/{N;N;d;}' "$sandbox/task-a.toml" > "$release_task_run"
 if out=$(runweld run check "${release_task_run%.run.toml}.md" 2>&1); then
   echo 'run#starts-from-last: a task without its entry pin cannot validate' >&2
   exit 1
 fi
-assert_contains "$out" '[workflow].release' 'run#starts-from-last: a missing entry pin identifies the field to restore'
+assert_contains "$out" '[workflow]' 'run#starts-from-last: a missing entry pin identifies the field to restore'
 cp "$sandbox/task-a.toml" "$release_task_run"
 
 # distribution#project-lock: a project update keeps an existing task on its release.
@@ -190,15 +190,15 @@ assert_contains "$(runweld help agents)" "$engine_b/agents/implementer.md" 'dist
 assert_contains "$(runweld --help)" 'terminal help from release B' 'distribution#project-lock: terminal help uses B after update'
 assert_contains "$(runweld task resume previous-record --json)" "$a" 'distribution#project-lock: a pinned task still resumes on A'
 assert_eq "$project/.runweld/workflow/artifacts/previous-record/browser-test" "$(runweld task path previous-record browser-test)" 'distribution#project-lock: pinned task paths still resolve'
-assert_contains "$(runweld run show .runweld/workflow/plans/previous-record.md --json)" "$a" 'distribution#project-lock: a pinned run still shows A'
+assert_contains "$(runweld run show .runweld/workflow/plans/previous-record.md --json)" "${a#*@}" 'distribution#project-lock: a pinned run still shows A'
 assert_contains "$(runweld status --json)" 'previous-record' 'distribution#project-lock: project inventory finds pinned tasks'
 cmp "$previous" "$sandbox/previous-record.json"
 assert_contains "$(runweld task start interrupted --json)" "$a" 'distribution#project-lock: retry retains the entry release after update'
 assert_contains "$(cat .runweld/workflow/plans/interrupted.run.toml)" 'how = "merge-request"' 'run#starts-from-last: retry retains the finish choice'
 fresh="$project/.runweld/workflow/plans/run-b.md"
 runweld task start run-b --finish-how ff-only --finish-target main >/dev/null
-assert_contains "$(runweld run show "$fresh" --json)" "$b" 'run#starts-from-last: a new run snapshots the newly locked release B'
-assert_contains "$(cd "$release_task_tree" && runweld run show .runweld/workflow/plans/release-task.md --json)" "$a" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
+assert_contains "$(runweld run show "$fresh" --json)" "${b#*@}" 'run#starts-from-last: a new run snapshots the newly locked release B'
+assert_contains "$(cd "$release_task_tree" && runweld run show .runweld/workflow/plans/release-task.md --json)" "${a#*@}" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
 assert_contains "$(cd "$release_task_tree" && runweld task resume release-task --json)" "$a" 'distribution#project-lock: resume reports the release captured at task entry'
 runweld status --current --json | python3 -c '
 import json, sys
@@ -207,7 +207,7 @@ assert rows["release-task"]["workflow"]["actions"][0]["action"] == "Continue in 
 assert rows["previous-record"]["release"] == rows["release-task"]["release"]
 assert rows["run-b"]["workflow"]["actions"][0]["action"] == "Continue using release B."
 '
-sed "s/$a/$b/" "$sandbox/task-a.toml" > "$release_task_run"
+sed -e "s/^version = .*/version = \"${b%%@*}\"/" -e "s/${a#*@}/${b#*@}/" "$sandbox/task-a.toml" > "$release_task_run"
 if out=$(runweld task resume release-task 2>&1); then
   echo 'run#starts-from-last: an edited draft cannot move a registered task to the current project release' >&2
   exit 1
@@ -216,15 +216,15 @@ assert_contains "$out" "$a" 'run#starts-from-last: replacing the draft pin ident
 cp "$sandbox/task-a.toml" "$release_task_run"
 
 # Approved snapshots take priority over edited run files and the new project lock.
-sed "s/$a/$b/" "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
-assert_contains "$(cd "$sandbox" && runweld run show "$plan" --json)" "$a" 'distribution#project-lock: an approved run retains A'
+sed -e "s/^version = .*/version = \"${b%%@*}\"/" -e "s/${a#*@}/${b#*@}/" "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
+assert_contains "$(cd "$sandbox" && runweld run show "$plan" --json)" "${a#*@}" 'distribution#project-lock: an approved run retains A'
 assert_contains "$(cd "$sandbox" && runweld help agents --plan "$plan")" "$engine_a/agents/implementer.md" 'distribution#project-lock: help can follow the run from another directory'
-sed '/^\[workflow\]$/{N;d;}' "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
+sed '/^\[workflow\]$/{N;N;d;}' "$sandbox/run-a.toml" > "${plan%.md}.run.toml"
 if out=$(cd "$sandbox" && runweld run approve "$plan" --by user --words 'Accept edited checks' 2>&1); then
   echo 'run#changes-through-approve: approving other edits cannot unpin an active run' >&2
   exit 1
 fi
-assert_contains "$out" '[workflow].release' 'run#changes-through-approve: the refusal identifies the removed pin'
+assert_contains "$out" '[workflow]' 'run#changes-through-approve: the refusal identifies the removed pin'
 cp "$sandbox/run-a.toml" "${plan%.md}.run.toml"
 (cd "$sandbox" && runweld phase start "$plan" 1) >/dev/null
 brief=$(cd "$sandbox" && runweld brief implementer "$plan" 1 --provider Test)

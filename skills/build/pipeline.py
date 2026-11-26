@@ -1320,9 +1320,9 @@ CHOICES = {("finish", "how"): ["merge-request", "ff-only", "no-ff"]}
 RUN_SECTIONS = {
     "finish": {"how": "str", "target": "str", "delete_backups": "bool"},
     "checks": {"phase": "list", "full": "list", "dev": "str", "url": "str"},
-    "isolation": {"worktree": "bool", "port": "bool", "data_dir": "bool"},
+    "isolation": {"port": "bool", "data_dir": "bool"},
 }
-RUN_OPTIONAL = {("checks", "dev"), ("checks", "url")}
+RUN_OPTIONAL = {("checks", "dev"), ("checks", "url"), ("isolation", "port"), ("isolation", "data_dir")}
 PLACEHOLDER = re.compile(r"\{(port|data_dir)\}")
 EXAMPLE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "run-file", "references", "example.run.toml")
 
@@ -1495,19 +1495,30 @@ def executor_toml(values):
 
 
 def settings_toml(values):
-    return "\n".join(executor_toml(table) if sec == "executors" else
-                     f"[{sec}]\n" + "".join(f"{key} = {toml_value(value)}\n" for key, value in table.items())
-                     for sec, table in values.items())
+    sections = []
+    for name in ("workflow", "finish", "checks", "setup", "isolation", "executors", "run"):
+        if name not in values:
+            continue
+        table = values[name]
+        if name == "isolation":
+            table = {key: enabled for key, enabled in table.items() if enabled}
+            if not table:
+                continue
+        if name == "executors":
+            sections.append(executor_toml(table))
+        else:
+            sections.append(f"[{name}]\n" + "".join(f"{key} = {toml_value(value)}\n" for key, value in table.items()))
+    return "\n".join(sections)
 
 
 def read_run(plan, *, draft=False):
     """-> (values, []) or (None, [(code, message, fix)]); the file is read as written."""
-    from runweld_release import ReleaseError, registered_task, task_pin
+    from runweld_release import ReleaseError, registered_task, release_pin, task_pin
     path = run_path(plan)
     try:
         task = registered_task(Path(plan_paths(plan)[0]))
         _, values = read_run_file(path, pending_finish=draft and task is not None)
-        task_pin(values.get("workflow", {}).get("release"), task, path)
+        task_pin(release_pin(values, path), task, path)
     except Refuse as error:
         return None, error.diags
     except ReleaseError as error:
@@ -1539,7 +1550,7 @@ def run_diags(v, *, project=False, pending_finish=False):
         try:
             release_pin(v, "the run file")
         except ReleaseError:
-            out.append(("run-bad-release", "[workflow] must contain only an exact release ID at release", "use the release recorded by runweld when it created the run"))
+            out.append(("run-bad-release", "[workflow] requires a version and its SHA-256 digest", "use the release recorded by runweld when it created the run"))
     if project or "executors" in v:
         out += executor_diags(v.get("executors"))
     if "setup" in v:
@@ -1573,13 +1584,11 @@ def run_diags(v, *, project=False, pending_finish=False):
         for k, x in r.items():
             if not isinstance(x, (str, int, float, bool)):
                 out.append(("run-bad-type", f"[run] {k} must be a string, number or boolean", f"write {k} as a plain value"))
-    checks, iso = v.get("checks", {}), v.get("isolation", {})
+    checks, resources = v.get("checks", {}), v.get("isolation", {})
     finish = v.get("finish", {})
     if not project and isinstance(finish, dict) and "target" in finish and not single_line(finish["target"]):
         out.append(("run-bad-target", "[finish] target must be a nonblank single-line branch", "set a target branch"))
-    if project and isinstance(iso, dict) and iso.get("worktree") is not True:
-        out.append(("run-worktree-required", "[isolation] worktree must be true for runweld tasks", "set worktree = true"))
-    if isinstance(checks, dict) and isinstance(iso, dict):
+    if isinstance(checks, dict) and isinstance(resources, dict):
         for k, x in checks.items():
             if project and type_ok(x, RUN_SECTIONS["checks"].get(k, "str")) and any(
                 not s.strip() for s in (x if isinstance(x, list) else [x])
@@ -1588,7 +1597,7 @@ def run_diags(v, *, project=False, pending_finish=False):
                             "remove the blank entry or use a nonblank check"))
             for s in x if isinstance(x, list) else [x]:
                 for ph in sorted(set(PLACEHOLDER.findall(s)) if isinstance(s, str) else []):
-                    if iso.get(ph) is not True:
+                    if resources.get(ph) is not True:
                         out.append(("run-bad-placeholder", f"[checks] {k} uses {{{ph}}}, but [isolation] {ph} is not true", f"set `{ph} = true` in [isolation], or drop the placeholder"))
     return out
 
@@ -1660,10 +1669,10 @@ def port_lock(md):
 
 def allocate(plan, md, st, have=None):
     """What [isolation] asks for and `have` lacks: {"port": n, "data_dir": path}."""
-    iso, new = st.get("run", {}).get("isolation", {}), {}
-    if iso.get("port") and "port" not in (have or {}):
+    resources, new = st.get("run", {}).get("isolation", {}), {}
+    if resources.get("port") and "port" not in (have or {}):
         new["port"] = free_port(plan, md)
-    if iso.get("data_dir") and "data_dir" not in (have or {}):
+    if resources.get("data_dir") and "data_dir" not in (have or {}):
         if task := task_for(plan):
             new["data_dir"] = str(Path(task["artifacts"]) / "data")
         else:
@@ -1776,17 +1785,17 @@ def init_settings(project, text, current, a, interactive):
         ("checks", "url", a.url, "Dev URL", None),
         ("setup", "command", a.setup, "Existing worktree setup command (never run during init)", setup_hint),
     )
-    settings = {"checks": {}, "isolation": {"worktree": True}}
+    settings = {"checks": {}}
     for sec, key, supplied, label, default in fields:
         if current is not None:
-            value = current.get(sec, {}).get(key)
+            value = current.get(sec, {}).get(key, False if sec == "isolation" else None)
             if supplied is not None and supplied != value:
                 raise Refuse("project-default-exists", f"[{sec}] {key} is already configured",
                              f"edit {project / '.runweld/config.toml'} to change project defaults")
         elif supplied is not None:
             value = supplied
         elif interactive:
-            if (sec, key) in RUN_OPTIONAL or sec == "setup":
+            if (sec == "checks" and (sec, key) in RUN_OPTIONAL) or sec == "setup":
                 value = init_optional(label, default)
             elif isinstance(default, list):
                 value = init_checks(label, default)
@@ -1796,7 +1805,7 @@ def init_settings(project, text, current, a, interactive):
                 value = init_answer(label, default)
         else:
             value = default
-        if value is not None:
+        if value is not None and (sec != "isolation" or value):
             settings.setdefault(sec, {})[key] = value
     return settings
 
@@ -1946,7 +1955,9 @@ def snapshot_run(bundle, project, path, finish):
     from runweld_release import atomic_write
     src = project / ".runweld/config.toml"
     _, settings = read_project_config(src)
-    values = {**settings, "finish": {"delete_backups": True, **finish}, "workflow": {"release": bundle.name}, "run": {}}
+    version, digest = bundle.name.split("@")
+    ending = {**finish, "delete_backups": finish.get("delete_backups", True)}
+    values = {"workflow": {"version": version, "digest": digest}, "finish": ending, **settings, "run": {}}
     if problems := run_diags(values, pending_finish=True):
         raise refuse_all(problems)
     text = settings_toml(values)
@@ -2184,7 +2195,7 @@ def cmd_run(command, plan, as_json):
             task = task_for(plan, project)
             if task is None or task["ready"]:
                 raise Refuse("task-required", "standalone runs are created at task entry", "use `runweld task start ID`; restore an existing task's run file from its saved copy")
-            src = snapshot_run(bundle, project, Path(path))
+            src = snapshot_run(bundle, project, Path(path), task.get("finish", {}))
             print(f"run new: {path} (snapshot from {src})")
             return 0
         runs = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".run.toml")] if os.path.isdir(d) else []
@@ -2370,11 +2381,12 @@ def cmd_consent(plan, kind, a):
             values, problems = read_run(plan)
             if problems:
                 raise refuse_all(problems)
-            recorded = st.get("run", {}).get("workflow", {}).get("release")
-            proposed = values.get("workflow", {}).get("release")
+            from runweld_release import release_pin
+            recorded = release_pin(st.get("run", {}), plan)
+            proposed = release_pin(values, plan)
             bundle = standalone_bundle()
             if (recorded and proposed != recorded) or (bundle and proposed and proposed != bundle.name):
-                raise Refuse("run-release", "the proposed release differs from the run's selected release", "restore [workflow].release; `runweld update --project` only selects the release for new runs")
+                raise Refuse("run-release", "the proposed release differs from the run's selected release", "restore the [workflow] version and digest; `runweld update --project` only selects the release for new runs")
             if "run" in st and (changes := run_changes(st["run"], values)):
                 record(plan, st, "run file", None, "changed", ", ".join(f"{x} {k}" for x, k in changes))
             st["run"] = values
@@ -3284,10 +3296,6 @@ def cmd_build_start(plan, base, worktree, branch, note):
         else:
             if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False, cwd=root).returncode == 0:
                 raise Refuse("branch-exists", f"branch {branch} already exists", "delete it, or name another with `build start --branch NAME`")
-            iso = st.get("run", {}).get("isolation", {})
-            if iso.get("worktree") and not worktree and not note:
-                raise Refuse("worktree-required", "the run file asks for a worktree and --worktree was not given",
-                             "pass --worktree PATH, or --note with the reason to build here")
             was = git("branch", "--show-current", cwd=root).stdout.strip() or "(detached)"
             dirty = len(git("status", "--porcelain", cwd=root).stdout.splitlines())
             if worktree:

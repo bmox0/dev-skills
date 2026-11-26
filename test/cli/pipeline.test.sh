@@ -541,7 +541,6 @@ delete_backups = true
 phase = []
 dev = "serve {port}"
 [isolation]
-worktree = false
 port = false
 data_dir = false
 [deploy]

@@ -73,7 +73,6 @@ none
 phase = []
 full = ["false"]
 [isolation]
-worktree = false
 port = false
 data_dir = false
 [finish]

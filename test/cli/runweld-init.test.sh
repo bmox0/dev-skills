@@ -71,7 +71,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'finish' not in read(config)
     assert read(config)['executors'] == profiles
     assert read(config)['checks'] == {'phase': ['scripts/lint'], 'full': ['scripts/lint', 'scripts/test old']}
-    assert read(config)['isolation']['worktree'] is True
+    assert 'isolation' not in read(config)
     assert read(config)['setup'] == {'command': 'touch must-not-run-at-init'}
     pins = read(lock)
     assert pins['lock_version'] == 2 and pins['release'] == release
@@ -211,9 +211,11 @@ none
     assert '[finish] how is missing' in runweld('run', 'check', second, ok=False)
     assert snapshot['checks']['full'] == ['scripts/lint', 'scripts/test new']
     assert snapshot['executors'] == profiles and snapshot['setup'] == read(config)['setup']
-    assert snapshot['workflow'] == {'release': release} and snapshot['run'] == {}
+    version, digest = release.split('@')
+    assert list(snapshot) == ['workflow', 'finish', 'checks', 'setup', 'executors', 'run']
+    assert snapshot['workflow'] == {'version': version, 'digest': digest} and snapshot['run'] == {}
     shown = json.loads(runweld('run', 'show', first, '--json'))
-    assert shown['approved'] and shown['run']['workflow'] == {'release': release}
+    assert shown['approved'] and shown['run']['workflow'] == snapshot['workflow']
     assert shown['run']['checks']['full'] == ['scripts/lint', 'scripts/test old']
     assert shown['run']['run'] == {'credential': 'keychain:example/private'}
     assert json.loads(runweld('executor', 'show', '--provider', 'Claude', '--json', cwd=clone))['source'] == str(clone_config)
@@ -249,7 +251,7 @@ none
     assert read(runs / 'request.run.toml')['finish']['how'] == 'merge-request'
     assert 'already has a run file' in runweld('task', 'start', 'local', '--finish-how', 'merge-request', cwd=explicit, ok=False)
     assert 'finish' not in read(explicit / '.runweld/config.toml')
-    assert direct['isolation'] == {'worktree': True, 'port': True, 'data_dir': True}
+    assert direct['isolation'] == {'port': True, 'data_dir': True}
     assert 'setup' not in direct
     git('check-ignore', '.runweld/config.toml', cwd=explicit, ok=False)
     git('check-ignore', '.runweld/runweld.lock', cwd=explicit, ok=False)

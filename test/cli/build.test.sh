@@ -420,18 +420,6 @@ assert_contains "$out" "data dir " "approve prints the new allocation: $out" || 
 [ -d "${pa%.md}.data" ] || fail "approve made the data directory"
 assert_contains "$(cli run show "$pa")" "--data $(cd "$(dirname "$pa")" && pwd -P)/2026-11-16-ia.data" "run show fills in {data_dir}" || exit 1
 git worktree remove --force "$wa"
-# a plan with worktree = true needs --worktree, or a note
-pw=$repo/.runweld/workflow/plans/2026-11-16-wt.md
-mkplan "$pw" '' wt
-sed -i.bak 's/^worktree = false/worktree = true/' "${pw%.md}.run.toml"
-approve_plan "$pw" >/dev/null || fail "approve wt"
-out=$(cli build start "$pw" --base v0); rc=$?
-assert_eq 1 "$rc" "worktree = true without --worktree is refused" || exit 1
-assert_contains "$out" "--worktree" "the fix names the flag: $out" || exit 1
-cli build start "$pw" --base v0 --note "no room for a tree" >/dev/null || fail "build start with a note"
-assert_contains "$(cli status "$pw")" "no room for a tree" "status shows the note" || exit 1
-git switch -q mg
-
 # run#secrets-as-written, build#brief-carries-spec
 ps=$repo/.runweld/workflow/plans/2026-11-16-sp.md
 mkplan "$ps" '' sp

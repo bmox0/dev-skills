@@ -1,6 +1,6 @@
-# The run file: what this run may do, how it checks and ends. Every key of the
-# fixed sections is required, except `dev` and `url`. Standalone runweld takes
-# project settings from .runweld/config.toml. Choose [finish] for this run.
+# Runweld writes [workflow] version and digest from the selected release.
+# Shared checks and executors come from .runweld/config.toml. Choose [finish]
+# per run. The dev command, URL and isolation resources are optional.
 # Each provider has this shape:
 # [executors."PROVIDER".primary]
 # model = "model identifier"
@@ -20,7 +20,6 @@ dev = "npm run dev -- --port {port}"   # optional; {port} and {data_dir} stand f
 url = "http://localhost:{port}"        # optional
 
 [isolation]
-worktree = false
 port = true
 data_dir = true
 

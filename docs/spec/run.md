@@ -35,7 +35,7 @@ Why: a project update or another contributor’s configuration cannot silently c
 
 Why: runs of one project go side by side
 
-- Two plans in one repo both have `port = true` and `data_dir = true`. Run `build start` on each while something listens on the first port of the range → two different ports, neither of them the busy one, and two directories that exist, all among the printed facts; `run show` prints `dev` with them filled in. With `worktree = true`, `build start` without `--worktree` → refused; with `--note` → built here, the note in `status`.
+- Two plans in one repo both have `port = true` and `data_dir = true`. Run `build start` on each while something listens on the first port of the range → two different ports, neither of them the busy one, and two directories that exist, all among the printed facts; `run show` prints `dev` with them filled in. Task entry creates a dedicated worktree independently of these settings.
 
 ### secrets-as-written — Code hands `[run]` values on as written and never resolves a keychain pointer
 

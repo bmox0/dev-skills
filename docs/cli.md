@@ -79,6 +79,13 @@ If the ending is open, use `runweld task start ID`. Before approving the plan,
 record the agreed `how` and `target` in the companion run file's `[finish]`
 table. Approval requires both.
 
+The run file starts with `[workflow]`: `version` names the release and `digest`
+pins its exact build with a 64-character SHA-256. Every task uses a worktree.
+The optional `[isolation]` table requests a port or data directory for a task.
+Enable `port` to use `{port}` in the dev command and URL; enable `data_dir` to
+use `{data_dir}` in check commands. Setup receives the corresponding
+`RUNWELD_PORT` and `RUNWELD_DATA_DIR` environment variables.
+
 ## Workflow actions
 
 For automation, use `runweld workflow --json` before there is a plan, or
