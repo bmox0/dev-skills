@@ -91,17 +91,23 @@ json() { cli status --json "$plan" | python3 -c "import json,sys; c=json.load(sy
 commit() { echo "$1" >> src/a.txt; git commit -q -m "$1" -- src/a.txt; git rev-parse HEAD; }
 
 # build#checks-by-code: the checks run outside the plan lock and each result is recorded as it ends
-mark=$(mktemp_dir)/go
-newrepo "\"echo first\", \"test -e $mark || sleep 23\""
-cli gate start "$plan" >"$repo/gate.out" 2>&1 &
+check_dir=$(mktemp_dir)
+mark="$check_dir/go"
+child="$check_dir/child"
+newrepo "\"echo first\", \"test -e $mark || { echo \$\$ > $child; exec sleep 23; }\""
+python3 -B "$pipeline" gate start "$plan" >"$repo/gate.out" 2>&1 &
 pid=$!
-for _ in $(seq 100); do json 'sys.exit(0 if c["cycles"] and len(c["cycles"][0]["runs"][-1]["commands"]) == 1 else 1)' 2>/dev/null && break; sleep 0.1; done
+for _ in $(seq 100); do [ -s "$child" ] && break; sleep 0.1; done
+[ -s "$child" ] || fail "the second check did not start"
+json 'assert len(c["cycles"][0]["runs"][-1]["commands"]) == 1' || fail "the first check is recorded"
 out=$(perl -e 'alarm 10; exec @ARGV' python3 -B "$pipeline" note add "$plan" --text n --cause bug 2>&1); rc=$?
 assert_eq 0 "$rc" "note add succeeds while the checks run: $out" || exit 1
 out=$(cli gate start "$plan"); rc=$?
 assert_eq 1 "$rc" "a second gate start refuses while the first one runs" || exit 1
 assert_contains "$out" "checks-running" "the refusal's code" || exit 1
-disown "$pid"; pkill -9 -P "$pid"; kill -9 "$pid"; pkill -9 -f "sleep 23"; sleep 0.3
+kill -KILL "$pid"
+kill -KILL -- "-$(cat "$child")"
+wait "$pid" 2>/dev/null || :
 out=$(cli status "$plan")
 assert_contains "$out" "unfinished, 1 of 2 ran" "status shows the run unfinished" || exit 1
 out=$(cli brief reviewer "$plan"); rc=$?

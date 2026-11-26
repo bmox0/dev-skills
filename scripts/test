@@ -1,80 +1,43 @@
-#!/usr/bin/env bash
-# The behavioural net's runner. No external dependency, to match
-# scripts/check: bash and python3 standard library only.
-#
-# Plain mode discovers and runs every test/**/*.test.sh (executed as its own
-# process, so one file's `set -e` cannot end the run), prints one line per
-# file, and exits 0 only if every file passed.
-#
-# Given a PATH instead, runs only that one file and prints only its line. A PATH that isn't a discovered test file is a loud failure naming it,
-# never a silent fallback to the whole suite.
-#
-# Usage: scripts/test [PATH]
-# Exit:  0 everything held (or the one named file passed)
-#        1 something didn't (a failing file, an unrecognised PATH, ...)
-set -uo pipefail
+#!/usr/bin/env python3
+"""Run every shell test, or just one discovered path."""
+from concurrent.futures import ThreadPoolExecutor
+import os
+from pathlib import Path
+import subprocess
+import sys
+import textwrap
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/.." && pwd)"
-cd "$repo_root"
 
-status=0
+def run(path):
+    try:
+        result = subprocess.run([path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, errors="replace")
+    except OSError as error:
+        return False, str(error)
+    return result.returncode == 0, result.stdout
 
-discover_sh() {
-  find test -type f -name '*.test.sh' 2>/dev/null | LC_ALL=C sort
-}
 
-report_result() {
-  local f="$1" rc="$2" out="$3"
-  if [ "$rc" -eq 0 ]; then
-    echo "ok    $f"
-  else
-    echo "FAIL  $f"
-    printf '%s\n' "$out" | sed 's/^/      /'
-    status=1
-  fi
-}
+def main():
+    os.chdir(Path(__file__).resolve().parents[1])
+    files = sorted(p.as_posix() for p in Path("test").rglob("*.test.sh") if p.is_file() and not p.is_symlink())
+    if len(sys.argv) > 1:
+        target = sys.argv[1]
+        if target not in files:
+            print(f"scripts/test: not a test file: {target}", file=sys.stderr)
+            return 1
+        files = [target]
+    workers = min(8, os.cpu_count() or 1)
+    failed = False
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        jobs = {path: pool.submit(run, path) for path in sorted(files, key=lambda path: -Path(path).stat().st_size)}
+        for path in files:
+            passed, output = jobs[path].result()
+            print(f"{'ok  ' if passed else 'FAIL'}  {path}", flush=True)
+            if not passed:
+                failed = True
+                print(textwrap.indent(output.rstrip(), "      "), flush=True)
+    return int(failed)
 
-run_sh_file() {
-  local f="$1" out rc
-  out=$("$f" 2>&1)
-  rc=$?
-  report_result "$f" "$rc" "$out"
-}
 
-run_all() {
-  local f
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    run_sh_file "$f"
-  done < <(discover_sh)
-}
-
-# run_one PATH — the single-file mode: PATH must equal (exactly, as printed
-# by discover_sh) one of the discovered test files. Anything else
-# is an unrecognised PATH — reported and non-zero, never a fallback to
-# run_all, which is the exact bug this mode exists to fix.
-run_one() {
-  local target="$1" f found=0
-
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    if [ "$f" = "$target" ]; then
-      found=1
-      run_sh_file "$f"
-    fi
-  done < <(discover_sh)
-
-  if [ "$found" -eq 0 ]; then
-    echo "scripts/test: not a test file: $target" >&2
-    status=1
-  fi
-}
-
-if [ -n "${1:-}" ]; then
-  run_one "$1"
-else
-  run_all
-fi
-
-exit "$status"
+if __name__ == "__main__":
+    sys.exit(main())
