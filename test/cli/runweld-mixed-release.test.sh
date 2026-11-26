@@ -10,31 +10,11 @@ export PATH="$sandbox/bin:$PATH"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 cli() { "$launcher" "$@"; }
 
-# distribution#project-lock: use a preceding source or model its strict three-field contract without Git history.
-preceding=${RUNWELD_TEST_PRECEDING:-$sandbox/preceding}
-mkdir "$sandbox/project with spaces"
-if [[ -z ${RUNWELD_TEST_PRECEDING:-} ]]; then
-  mkdir "$preceding"
-  cp -R "$repo_root/." "$preceding/"
-  python3 - "$preceding/skills/build" <<'PY'
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1])
-for name, replacements in {
-    'runweld_release.py': [('set(value) not in (fields, fields | {"release"})', 'set(value) != fields')],
-    'pipeline.py': [(', "ready": False, "release": bundle.name}', ', "ready": False}'),
-                    ('("base", "ready", "branch", "release")', '("base", "ready", "branch")'),
-                    ('def main(*, current_task=None):', 'def main():\n    current_task = None')],
-}.items():
-    path = root / name
-    code = path.read_text()
-    for before, after in replacements:
-        assert code.count(before) == 1, before
-        code = code.replace(before, after)
-    path.write_text(code)
-PY
-fi
+# Two releases share the store; each task executes its pinned engine.
+preceding="$sandbox/release-a"
+mkdir "$sandbox/project with spaces" "$preceding"
+cp -R "$repo_root/." "$preceding/"
+printf '\nRelease A fixture.\n' >> "$preceding/README.md"
 launcher="$sandbox/bin/runweld"
 "$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 a=$(cat "$sandbox/lib/dev-skills/default")
@@ -45,7 +25,7 @@ git commit --allow-empty -qm base
 cli init --non-interactive --provider Test --primary-model main --secondary-model helper >/dev/null
 previous=(previous-draft previous-active previous-plan previous-repair previous-adopt)
 for id in "${previous[@]}"; do
-  cli task start "$id" >/dev/null
+  cli task start "$id" --finish-how ff-only --finish-target main >/dev/null
 done
 plan="$PWD/.runweld/workflow/plans/previous-active.md"
 base=$(git rev-parse HEAD)
@@ -140,7 +120,7 @@ launcher="$sandbox/bin/runweld"
 cli update --project >/dev/null
 b=$(cat "$sandbox/lib/dev-skills/default")
 [[ "$a" != "$b" ]]
-cli task start current >/dev/null
+cli task start current --finish-how ff-only --finish-target main >/dev/null
 cp .runweld/runweld.lock "$sandbox/lock"
 
 cli status --json > "$sandbox/inventory"

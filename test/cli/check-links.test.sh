@@ -47,7 +47,7 @@ printf 'skills/demo/SKILL.md 40\n' > "$tree/scripts/word-budgets.txt"
 printf -- '---\nname: demo\ndescription: a demo\n---\n\nDispatch gate-a after the build.\n' > "$tree/skills/demo/SKILL.md"
 run_check
 assert_eq 1 "$rc" "TC-5: a retired name fails" || fail "TC-5: $out"
-assert_contains "$out" "R3 legacy token 'gate-a'" "TC-5: the finding names the token" || fail "TC-5"
+assert_contains "$out" "R3 retired token 'gate-a'" "TC-5: the finding names the token" || fail "TC-5"
 
 printf -- '---\nname: demo\ndescription: a demo\n---\n\nSee [the notes](references/NOTES.md).\n' > "$tree/skills/demo/SKILL.md"
 run_check

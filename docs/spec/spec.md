@@ -15,5 +15,5 @@ Why: the plan's Done and Spec become the project's lasting rules and archive, re
 
 Why: two parsers of one plan drift apart (GSD ADR-3524)
 
-- Run `scripts/check` and `scripts/test` → both exit 0. `skills/spec/spec.py` is gone, and nothing outside `.ai-workflow/` and `docs/spec/` names it. `git diff a0a41ac -- test/cli/spec.test.sh` touches only the entry and the program's name in one message.
+- Run `scripts/check` and `scripts/test` → both exit 0. `skills/spec/spec.py` is gone, and nothing outside `.runweld/workflow/` and `docs/spec/` names it. `git diff a0a41ac -- test/cli/spec.test.sh` touches only the entry and the program's name in one message.
 - In a throwaway repo, run `spec list`, `show`, `check` and `write` through `pipeline.py`, and through `spec.py` from `a0a41ac` → both give the same output, exit codes and files.

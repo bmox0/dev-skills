@@ -1,11 +1,12 @@
 # The run file
 
-`.ai-workflow/plans/<slug>.run.toml`, written before the plan: what a run may do, its checks, its isolation and how it ends.
+`.runweld/workflow/plans/<slug>.run.toml`, written before the plan: what a run may do, its checks, its isolation and how it ends.
 
 ### starts-from-last — Every new run takes its defaults from current project configuration and records its exact Runweld release
 
 Why: local history must not override shared project decisions and retro needs the release actually used.
 
+- Initialize once, then start one local run and one merge-request run → the project has no finish method, and each run approves its own method and target. An undecided task may start planning; it must choose both before approval.
 - Change the shared test command and create a run with an older run present → the new run config records the current checks, profiles and exact release. Resume the older run → it uses its approved snapshot.
 - Install releases A and B, start a run on A and call `runweld update --project` → the project lock moves to B, new work uses B, and the active run and its briefs still use A. An unavailable or damaged release gives an actionable error and leaves the prior lock or run intact.
 
@@ -29,7 +30,6 @@ Why: a project update or another contributor’s configuration cannot silently c
 
 - Change the shared test command and create a run with an older run present → the new run config records the current checks, profiles and exact release. Resume the older run → it uses its approved snapshot.
 - Install releases A and B, start a run on A and call `runweld update --project` → the project lock moves to B, new work uses B, and the active run and its briefs still use A. An unavailable or damaged release gives an actionable error and leaves the prior lock or run intact.
-- Adopt a legacy checkout with historical and active runs, compiled approvals, an issued command and a linked worktree → the command still works, inventory finds each run once, recorded approvals and evidence survive, and retrying migration preserves all files. New plans, evidence and scratch files stay ignored while config, lock and specs appear in Git.
 
 ### isolated — Plans of one project being built get a port and an app data directory of their own from code
 

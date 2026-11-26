@@ -34,10 +34,10 @@ repo=$(pwd -P)
 git init -q
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 git commit -q --allow-empty -m base
-mkdir -p .ai-workflow/plans docs/spec
+mkdir -p .runweld/workflow/plans docs/spec
 touch docs/spec/build.md
 example="$repo_root/skills/run-file/references/example.run.toml"
-plans=.ai-workflow/plans
+plans=.runweld/workflow/plans
 
 mkplan() { # slug
   cat > "$plans/$1.md" <<P
@@ -146,7 +146,7 @@ fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"Sessio
 assert_contains "$(ctx)" "2026-11-17-b — " "Codex compact from a subdirectory" || exit 1
 assert_eq "$(cli status "$b")" "$(ctx)" "hooks#status-at-start: native compact selects the linked plan" || exit 1
 
-# hooks#status-at-start: a live plan with no state file (pre-5.1) is handed over with the CLI's fix line; a draft stays out
+# hooks#status-at-start: a live plan with no state file is handed over with the CLI's fix line; a draft stays out
 mkplan 2026-11-01-old; edit "$plans/2026-11-01-old.md" 'Status: draft' 'Status: building'
 mkplan 2026-11-01-new
 fire "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"SessionStart","source":"compact","cwd":sys.argv[1]}))' "$repo")"
@@ -175,10 +175,10 @@ fire "$(claude_edit Edit "$b" "$repo")"
 assert_eq "" "$out" "no drift: nothing" || exit 1
 
 # hooks#edit-names-command: normalized paths are relative to the event's cwd.
-out=$(python3 -c 'import json,sys; print(json.dumps({"event":"edit","cwd":sys.argv[1],"paths":[".ai-workflow/plans/2026-11-17-b.notes.md"]}))' "$repo" | python3 -B "$advice")
+out=$(python3 -c 'import json,sys; print(json.dumps({"event":"edit","cwd":sys.argv[1],"paths":[".runweld/workflow/plans/2026-11-17-b.notes.md"]}))' "$repo" | python3 -B "$advice")
 assert_contains "$out" "note add|edit|drop" "normalized relative edit" || exit 1
 # hooks#advise-only: an unrelated event cannot interpret otherwise valid edit paths.
-out=$(python3 -c 'import json,sys; print(json.dumps({"event":"unknown","cwd":sys.argv[1],"paths":[".ai-workflow/plans/2026-11-17-b.notes.md"]}))' "$repo" | python3 -B "$advice")
+out=$(python3 -c 'import json,sys; print(json.dumps({"event":"unknown","cwd":sys.argv[1],"paths":[".runweld/workflow/plans/2026-11-17-b.notes.md"]}))' "$repo" | python3 -B "$advice")
 assert_eq "" "$out" "unrelated normalized event is quiet" || exit 1
 # hooks#advise-only: unrelated native tools cannot become edit advice.
 fire "$(claude_edit Bash "$repo/$plans/2026-11-17-b.json" "$repo")"
@@ -243,7 +243,7 @@ for host, variable in zip(('claude', 'codex', 'qoder'), variables):
     assert hooks['PostToolUse'][0]['matcher'].split('|') == ['Write', 'Edit', 'MultiEdit', 'apply_patch']
     payloads = [
         ({'hook_event_name': 'PostToolUse', 'tool_name': 'Write', 'cwd': str(cwd),
-          'tool_input': {'file_path': '.ai-workflow/plans/2026-11-17-b.notes.md'}}, 'note add|edit|drop'),
+          'tool_input': {'file_path': '.runweld/workflow/plans/2026-11-17-b.notes.md'}}, 'note add|edit|drop'),
         ({'hook_event_name': 'SessionStart', 'source': 'startup', 'cwd': str(cwd)}, '2026-11-17-b'),
     ]
     for payload, expected in payloads:

@@ -17,12 +17,12 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q
-  mkdir -p .ai-workflow/plans skills/tdd src
+  mkdir -p .runweld/workflow/plans skills/tdd src
   touch skills/tdd/SKILL.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
   git tag v0
-  plan=$repo/.ai-workflow/plans/2026-11-16-r.md
+  plan=$repo/.runweld/workflow/plans/2026-11-16-r.md
   cat > "$plan" <<'P'
 # Plan: r
 
@@ -121,7 +121,7 @@ assert_contains "$out" "C1" "the refusal names the Convention" || exit 1
 assert_contains "$out" "D1" "the refusal names the Open entry" || exit 1
 cli verdict pass "$plan" --report "let through" --decide D1 let-through "minor" --decide C1 let-through "style" \
   --predicted round --predict "first note" feel-ui --predict "second" code-taste --engine claude | grep -q "verdict 1" || fail "verdict pass"
-judge=$repo/.ai-workflow/plans/2026-11-16-r.judge.md
+judge=$repo/.runweld/workflow/plans/2026-11-16-r.judge.md
 grep -q '^# Judge: r$' "$judge" || fail "judge file title"
 grep -Eq "^Plan: \`2026-11-16-r\` · head \`$(git rev-parse --short HEAD)\` · [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z · engine claude$" "$judge" || fail "judge file header: $(sed -n 3p "$judge")"
 grep -q "^P2\. second — code-taste$" "$judge" || fail "the Prediction"
@@ -134,7 +134,7 @@ cli note add "$plan" --text "make the header bigger" --cause feel-ui >/dev/null 
 cli note add "$plan" --text "the label is wrong
 second line" --cause bug >/dev/null || fail "note 2"
 cli note add "$plan" --text "rework the approach" --cause task >/dev/null || fail "note 3"
-notes=$repo/.ai-workflow/plans/2026-11-16-r.notes.md
+notes=$repo/.runweld/workflow/plans/2026-11-16-r.notes.md
 python3 - "$notes" <<'PY' || fail "notes before a round: $(cat "$notes")"
 import sys
 t = open(sys.argv[1]).read()
@@ -213,7 +213,7 @@ out=$(cli verdict round "$plan" --report r --note d1 bug) || fail "a stopped ver
 assert_contains "$out" "past the cap" "the cap stops the fourth"  || exit 1
 assert_contains "$(cli status "$plan")" "Stopped: judge rounds are past the cap" "status shows the reason" || exit 1
 json "assert c['rounds'] == [], c['rounds']" || fail "a stopped verdict opens no round"
-grep -q "d1" "$repo/.ai-workflow/plans/2026-11-16-r.notes.md" && fail "build#caps-in-code: a stopped verdict's notes are not the user's open notes"
+grep -q "d1" "$repo/.runweld/workflow/plans/2026-11-16-r.notes.md" && fail "build#caps-in-code: a stopped verdict's notes are not the user's open notes"
 assert_contains "$(cli status "$plan")" "d1" "the stopped verdict's notes stay visible in status" || exit 1
 cli land draft "$plan" >/dev/null || fail "stopped-round land draft"
 python3 - "${plan%.md}.shape.toml" <<'PYSHAPE'
@@ -288,7 +288,7 @@ newrepo
 cli note add "$plan" --text u1 --cause bug >/dev/null; cli note add "$plan" --text u2 --cause bug >/dev/null
 cli note drop "$plan" 1 >/dev/null
 cli verdict round "$plan" --report r --note "judge says" bug "${vfirst[@]}" >/dev/null || fail "build#judge-file-by-code: a round verdict after a dropped note"
-grep -q "judge says" "$repo/.ai-workflow/plans/2026-11-16-r.judge.md" || fail "build#judge-file-by-code: the judge file holds the verdict"
+grep -q "judge says" "$repo/.runweld/workflow/plans/2026-11-16-r.judge.md" || fail "build#judge-file-by-code: the judge file holds the verdict"
 
 # build#findings-recorded, build#survivor-to-open: a check fixed and red again stays open
 newrepo red

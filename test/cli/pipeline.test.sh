@@ -40,19 +40,19 @@ assert step.get("kind") == "work" and step.get("role") == "planner" and "argv" n
 ' || fail "build#typed-workflow-actions: explicit entry describes planning work across the eight-stage route"
 assert_contains "$(cli workflow)" "Grill (optional)" "build#workflow-progress: text entry names optional grill" || exit 1
 assert_contains "$(cli workflow)" "Prototype (optional)" "build#workflow-progress: text entry names optional prototype" || exit 1
-[ ! -e .ai-workflow ] || fail "build#workflow-progress: entry creates no workflow files"
+[ ! -e .runweld/workflow ] || fail "build#workflow-progress: entry creates no workflow files"
 
-mkdir -p .ai-workflow/plans .ai-workflow/epics docs/spec skills/tdd
+mkdir -p .runweld/workflow/plans .runweld/workflow/epics docs/spec skills/tdd
 touch skills/tdd/SKILL.md docs/spec/build.md
-printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n| 2 | Two | 1 | |\n' > .ai-workflow/epics/e.md
-epic_before=$(sed -n 1,7p .ai-workflow/epics/e.md)
+printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n| 2 | Two | 1 | |\n' > .runweld/workflow/epics/e.md
+epic_before=$(sed -n 1,7p .runweld/workflow/epics/e.md)
 
-plan=.ai-workflow/plans/2026-11-16-x.md
+plan=.runweld/workflow/plans/2026-11-16-x.md
 cat > "$plan" <<'P'
 # Plan: x
 
 Status: draft · branch `x` · base `<sha>`
-Epic: `.ai-workflow/epics/e.md` · row 1
+Epic: `.runweld/workflow/epics/e.md` · row 1
 Prototype: none
 Grill: done
 
@@ -197,9 +197,9 @@ changed=$(diff <(printf '%s\n' "$draft") "$plan" | sed -nE '
   }
 ')
 assert_eq "$(printf '< Status: draft ·\n> Status: approved ·\n> Rendered from `')" "$changed" "the render touches only Status and its line: $changed" || exit 1
-assert_eq "approved · \`.ai-workflow/plans/2026-11-16-x.md\`" "$(sed -n 7p .ai-workflow/epics/e.md | awk -F'|' '{gsub(/^ +| +$/,"",$5); print $5}')" "the epic row follows approve" || exit 1
-assert_eq "$(sed -n 1,6p .ai-workflow/epics/e.md)" "$(printf '%s\n' "$epic_before" | sed -n 1,6p)" "the epic is otherwise untouched" || exit 1
-assert_eq "| 2 | Two | 1 | |" "$(sed -n 8p .ai-workflow/epics/e.md)" "the other row is untouched" || exit 1
+assert_eq "approved · \`.runweld/workflow/plans/2026-11-16-x.md\`" "$(sed -n 7p .runweld/workflow/epics/e.md | awk -F'|' '{gsub(/^ +| +$/,"",$5); print $5}')" "the epic row follows approve" || exit 1
+assert_eq "$(sed -n 1,6p .runweld/workflow/epics/e.md)" "$(printf '%s\n' "$epic_before" | sed -n 1,6p)" "the epic is otherwise untouched" || exit 1
+assert_eq "| 2 | Two | 1 | |" "$(sed -n 8p .runweld/workflow/epics/e.md)" "the other row is untouched" || exit 1
 assert_contains "$(cli status "$plan")" 'separate start instruction' "build#workflow-progress: summary approval awaits a start instruction" || exit 1
 typed_action "$plan" plan wait Coordinator 'separate start instruction'
 [ "$(git branch --show-current)" != x ] || fail "build#workflow-progress: summary consent does not start the build"
@@ -209,7 +209,7 @@ cli build start "$plan" --base HEAD --note "start" >/dev/null || fail "plan stat
 cli plan base "$plan" HEAD >/dev/null || fail "plan base"
 sha=$(git rev-parse HEAD)
 grep -q "^Status: building · branch \`x\` · base \`$sha\`$" "$plan" || fail "the Status line follows the commands"
-assert_contains "$(sed -n 7p .ai-workflow/epics/e.md)" "building ·" "the epic row follows" || exit 1
+assert_contains "$(sed -n 7p .runweld/workflow/epics/e.md)" "building ·" "the epic row follows" || exit 1
 out=$(cli status "$plan")
 assert_contains "$out" "Ready: 1" "phase 1 is ready" || exit 1
 assert_contains "$out" "start" "the note shows" || exit 1
@@ -286,8 +286,8 @@ assert_contains "$out" 'Implementer for phase 3' "build#workflow-progress: phase
 typed_action "$plan" build work 'Implementer for phase 2' 'Work from the phase brief' '{"role":"implementer","assignment":{"phase":2,"kind":"phase"}}'
 typed_action "$plan" build work 'Implementer for phase 3' 'Work from the phase brief' '{"role":"implementer","assignment":{"phase":3,"kind":"phase"}}'
 
-# build#pre-5-1-adopted: a plan with no state is adopted as its file stands
-old=.ai-workflow/plans/2026-11-10-old.md
+# build#recover-plan-state: a plan with no state is adopted as its file stands
+old=.runweld/workflow/plans/2026-11-10-old.md
 cat > "$old" <<'P'
 # Plan: old
 
@@ -350,8 +350,8 @@ grep -q '^### 1. First — `done`$' "$old" || fail "phase 1 stays done"
 grep -q '^Status: building · branch `old` · base `abc1234`$' "$old" || fail "status is kept"
 out=$(cli status "$old")
 assert_contains "$out" "Ready: none" "phase 3 waits for phase 2" || exit 1
-assert_contains "$out" 'Grill (optional) — unknown' "build#workflow-progress: a legacy plan has unknown grill history" || exit 1
-assert_contains "$out" 'Prototype (optional) — unknown' "build#workflow-progress: a legacy plan has unknown prototype history" || exit 1
+assert_contains "$out" 'Grill (optional) — unknown' "build#workflow-progress: a plan without stage history has unknown grill history" || exit 1
+assert_contains "$out" 'Prototype (optional) — unknown' "build#workflow-progress: a plan without stage history has unknown prototype history" || exit 1
 case "$out" in *None*) fail "an unset previous value prints as a dash: $out";; esac
 assert_contains "$out" "phase 2 — → in progress" "an unset previous value prints as a dash" || exit 1
 cli status | grep -q "2026-11-10-old — building" || fail "status of all plans"
@@ -359,12 +359,12 @@ cli status | grep -q "2026-11-10-old — building" || fail "status of all plans"
 # the Human gate part of the file is not touched
 printf '\n## Human gate\n\nwritten by hand\n' >> "$old"
 out=$(cli plan status "$old" "at the human gate"); rc=$?
-assert_eq 1 "$rc" "legacy adoption does not infer approval" || exit 1
+assert_eq 1 "$rc" "compilation does not infer approval" || exit 1
 assert_contains "$out" "run-unapproved" "a handwritten gate supplies no approval" || exit 1
 tail -2 "$old" | grep -q 'written by hand' || fail "the gate stays as written"
 
 # status lists plans only: no briefs or gate logs, and no approve fix for a merged plan without state
-plans=.ai-workflow/plans
+plans=.runweld/workflow/plans
 printf 'x\n' > "$plans/2026-11-16-x.brief-judge.md"
 printf 'x\n' > "$plans/2026-11-16-x.brief-implementer-1.md"
 printf 'x\n' > "$plans/2026-11-10-old.gate-log.md"
@@ -441,7 +441,7 @@ assert_contains "$(cli status "$plans/2026-11-04-ap.md")" "approved" "a named pl
 assert_contains "$(cli status --help)" "building" "--help says which plans" || exit 1
 
 # build#epic-row-follows: the row sits in the Plans table, keeps its cell format, and parallel plans of one epic both land
-cat > .ai-workflow/epics/e2.md <<'E'
+cat > .runweld/workflow/epics/e2.md <<'E'
 # Epic
 
 | # | Note |
@@ -453,17 +453,17 @@ cat > .ai-workflow/epics/e2.md <<'E'
 | # | Plan | Waits for | Status |
 |---|---|---|---|
 | 1 | One | — | |
-| 2 | Two | 1 | building · `.ai-workflow/plans/old.md` |
+| 2 | Two | 1 | building · `.runweld/workflow/plans/old.md` |
 | 3 | Three | 2 | |
 E
-e2=.ai-workflow/epics/e2.md
-mkp "$plans/2026-11-05-p1.md" p1 'Epic: `.ai-workflow/epics/e2.md` · row 1'
-mkp "$plans/2026-11-05-p2.md" p2 'Epic: `.ai-workflow/epics/e2.md` · row 2'
+e2=.runweld/workflow/epics/e2.md
+mkp "$plans/2026-11-05-p1.md" p1 'Epic: `.runweld/workflow/epics/e2.md` · row 1'
+mkp "$plans/2026-11-05-p2.md" p2 'Epic: `.runweld/workflow/epics/e2.md` · row 2'
 approve_plan "$plans/2026-11-05-p1.md" >/dev/null || fail "approve p1"
 approve_plan "$plans/2026-11-05-p2.md" >/dev/null || fail "approve p2"
 assert_contains "$(cat $e2)" '| 1 | not the plans table |' "a row outside the Plans table is untouched" || exit 1
-assert_contains "$(cat $e2)" '| 1 | One | — | approved · `.ai-workflow/plans/2026-11-05-p1.md` |' "an empty cell gets the epic's shape" || exit 1
-assert_contains "$(cat $e2)" '| 2 | Two | 1 | approved · `.ai-workflow/plans/2026-11-05-p2.md` |' "a filled cell keeps its shape" || exit 1
+assert_contains "$(cat $e2)" '| 1 | One | — | approved · `.runweld/workflow/plans/2026-11-05-p1.md` |' "an empty cell gets the epic's shape" || exit 1
+assert_contains "$(cat $e2)" '| 2 | Two | 1 | approved · `.runweld/workflow/plans/2026-11-05-p2.md` |' "a filled cell keeps its shape" || exit 1
 cli build start "$plans/2026-11-05-p1.md" --base HEAD >/dev/null || fail "build p1"
 cli build start "$plans/2026-11-05-p2.md" --base HEAD >/dev/null || fail "build p2"
 for s in building approved building approved building; do
@@ -477,9 +477,9 @@ done
 # the row names the plan relative to the tree, also through a symlinked path
 link=$(mktemp_dir)/link
 ln -s "$(pwd -P)" "$link"
-mkp "$plans/2026-11-05-p3.md" p3 'Epic: `.ai-workflow/epics/e2.md` · row 3'
-approve_plan "$link/.ai-workflow/plans/2026-11-05-p3.md" >/dev/null || fail "approve p3 through a link"
-assert_contains "$(cat $e2)" '| 3 | Three | 2 | approved · `.ai-workflow/plans/2026-11-05-p3.md` |' "the row path is relative through a symlink" || exit 1
+mkp "$plans/2026-11-05-p3.md" p3 'Epic: `.runweld/workflow/epics/e2.md` · row 3'
+approve_plan "$link/.runweld/workflow/plans/2026-11-05-p3.md" >/dev/null || fail "approve p3 through a link"
+assert_contains "$(cat $e2)" '| 3 | Three | 2 | approved · `.runweld/workflow/plans/2026-11-05-p3.md` |' "the row path is relative through a symlink" || exit 1
 
 # fenced blocks are text: a heading or Status line in one is neither parsed nor rewritten
 fence='
@@ -507,7 +507,7 @@ assert_contains "$out" "pipeline.py approve" "the fix is approve" || exit 1
 
 # run#starts-from-last: run new copies the newest run file, else the example, and never overwrites
 r=$(mktemp_dir)
-cd "$r" && git init -q && cp "$repo_root/AGENTS.md" AGENTS.md && mkdir -p .ai-workflow/plans && cd .ai-workflow/plans || exit 1
+cd "$r" && git init -q && cp "$repo_root/AGENTS.md" AGENTS.md && mkdir -p .runweld/workflow/plans && cd .runweld/workflow/plans || exit 1
 out=$(cli run new 2026-11-20-a.md); rc=$?
 assert_eq 0 "$rc" "run new: $out" || exit 1
 assert_contains "$out" "2026-11-20-a.run.toml" "run new names the file" || exit 1
@@ -600,7 +600,7 @@ out=$(approve_plan "$pr"); rc=$?
 assert_eq 1 "$rc" "approve refuses a bad run file" || exit 1
 assert_contains "$out" "run-bad-value: [finish] how" "run check's line" || exit 1
 
-# run#required-to-approve: a pre-5.1 plan at building with no run file is adopted
+# run#required-to-approve: a plan at building with no run file is adopted
 po="$plans/2026-11-02-pre.md"
 mkp "$po" pre ''
 rm "${po%.md}.run.toml"
@@ -631,7 +631,7 @@ echo route > src/a
 git commit -q -m route -- src/a || fail "commit route"
 cli phase report "$route" 1 --became route --commit "$(git rev-parse HEAD)" >/dev/null || fail "report route phase"
 out=$(cli phase done "$route" 1); rc=$?
-assert_eq 1 "$rc" "build#phase-check-outcomes: a configured check with only the legacy report field holds the phase" || exit 1
+assert_eq 1 "$rc" "build#phase-check-outcomes: a configured check with only a report field holds the phase" || exit 1
 assert_contains "$out" 'scripts/check' "build#phase-check-outcomes: the refusal names the unchecked command" || exit 1
 assert_contains "$(cli status "$route")" 'Implementer for phase 1 — Record the outcomes for scripts/check' "build#phase-check-outcomes: the implementer owns the missing report" || exit 1
 assert_contains "$(cat "$brief")" 'Red before green' "build#phase-check-outcomes: the brief gives the TDD requirement" || exit 1
@@ -872,9 +872,9 @@ failed=0
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'record first case'
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'record second case'
   assert_contains "$(next_actions)" 'brief judge --provider PROVIDER <plan>' 'build#workflow-progress: ready judge includes a provider' || exit 1
-  typed_action "$route" build-verification ask Coordinator 'provider'
-  typed_action "$route" build-verification run Coordinator 'brief judge' '{}' run --provider fixture
-  typed_action "$route" build-verification ask Coordinator 'approved run snapshot' '{}' inspect --provider missing
+  typed_action "$route" judge ask Coordinator 'provider'
+  typed_action "$route" judge run Coordinator 'brief judge' '{}' run --provider fixture
+  typed_action "$route" judge ask Coordinator 'approved run snapshot' '{}' inspect --provider missing
   cli verdict question "$route" --predicted pass --engine fixture --report 'need input' --question 'Is this right?' >/dev/null || fail 'ask fixture question'
   assert_contains "$(next_actions)" 'brief judge --provider PROVIDER <plan> --note ANSWER' 'build#workflow-progress: judge question includes a provider' || exit 1
 ) || failed=1
@@ -893,13 +893,13 @@ failed=0
   assert_eq 1 "$rc" 'build#workflow-progress: earlier captures do not satisfy a requested recapture' || exit 1
   assert_contains "$out" 'Done 1 lacks current E2E evidence' 'build#workflow-progress: the refused brief identifies the owed case' || exit 1
   cli result "$route" --case 1 --outcome passed --capture relevant >/dev/null || fail 'record owed capture'
-  route_step build-verification Coordinator 'brief judge'
+  route_step judge Coordinator 'brief judge'
   if next_actions | grep -q 'Capture Done 1 again'; then fail 'build#workflow-progress: fulfilled recapture no longer needs action'; fi
   cli verdict evidence-owed "$route" --owed reviewer --report 'Review the range again' >/dev/null || fail 'record review request'
   cli result "$route" --case 1 --outcome passed --capture unrelated >/dev/null || fail 'record unrelated result'
   route_step build-verification Reviewer 'Review the range again'
   complete_review "$route" --provider fixture || fail 'record owed review'
-  route_step build-verification Coordinator 'brief judge'
+  route_step judge Coordinator 'brief judge'
   cli verdict evidence-owed "$route" --owed verify --case 2 --report 'New screenshot requested' >/dev/null || fail 'scope evidence request explicitly'
   route_step build-verification Verify 'brief verify --provider PROVIDER <plan> --cases 2'
   cli verdict pass "$route" --predicted pass --engine fixture --report 'Existing case reviewed' --evidence-note 'Second capture unavailable in the fixture' >/dev/null || fail 'record explicit resolution'
@@ -978,7 +978,7 @@ failed=0
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'recapture second assigned case'
   out=$(cli brief judge "$route" --provider fixture); rc=$?
   assert_eq 0 "$rc" "build#workflow-progress: fresh captures fulfill the unscoped small-gate request ($out)" || exit 1
-  route_step build-verification Coordinator 'Issue `brief judge'
+  route_step judge Coordinator 'Issue `brief judge'
   if next_actions | grep -q 'Recapture all assigned cases'; then fail 'build#workflow-progress: the fulfilled request leaves no work for Verify'; fi
 ) || failed=1
 (

@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory() as directory:
     (root / 'src/a').write_text('base\n')
     git('add', '.')
     git('commit', '-qm', 'base')
-    plans = root / '.ai-workflow/plans'
+    plans = root / '.runweld/workflow/plans'
     plans.mkdir(parents=True)
     plan = plans / '2026-11-17-executors.md'
     # run#starts-from-last: all current providers replace copied presets; task scalars stay as written.
@@ -159,15 +159,15 @@ none
     assert selected['source'] == 'approved run snapshot'
     refused = cli('executor', 'show', plan, '--provider', 'Missing', ok=False, code='executors."Missing"')
     assert 'explicitly approve the changed run' in refused
-    # An approved legacy snapshot is readable, but cannot invent executor assignments.
+    # An approved snapshot without profiles is readable, but cannot invent executor assignments.
     state_file = plan.with_suffix('.json')
     saved_state = state_file.read_bytes()
-    legacy = json.loads(saved_state)
-    del legacy['run']['executors']
-    state_file.write_text(json.dumps(legacy))
+    without_profiles = json.loads(saved_state)
+    del without_profiles['run']['executors']
+    state_file.write_text(json.dumps(without_profiles))
     cli('executor', 'show', plan, '--provider', 'GPT', ok=False, code='executors."GPT"')
-    legacy_brief = pathlib.Path(cli('brief', 'implementer', plan, '1').strip()).read_text()
-    assert 'Executor model:' not in legacy_brief
+    brief_without_profile = pathlib.Path(cli('brief', 'implementer', plan, '1').strip()).read_text()
+    assert 'Executor model:' not in brief_without_profile
     state_file.write_bytes(saved_state)
     summary = plan.with_suffix('.summary.md')
     summary.write_text(f'Build [the plan]({plan.name}) and check the CLI.\n')

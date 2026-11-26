@@ -45,18 +45,18 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q -b main
-  mkdir -p .ai-workflow/plans .ai-workflow/epics skills/tdd src
+  mkdir -p .runweld/workflow/plans .runweld/workflow/epics skills/tdd src
   touch skills/tdd/SKILL.md
-  printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n' > .ai-workflow/epics/e.md
+  printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n' > .runweld/workflow/epics/e.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
   git tag v0
-  plan=$repo/.ai-workflow/plans/2026-11-16-l.md
+  plan=$repo/.runweld/workflow/plans/2026-11-16-l.md
   cat > "$plan" <<'P'
 # Plan: l
 
 Status: draft · branch `l` · base `<sha>`
-Epic: `.ai-workflow/epics/e.md` · row 1
+Epic: `.runweld/workflow/epics/e.md` · row 1
 Prototype: none
 
 ## Result
@@ -163,7 +163,7 @@ git -C "$repo" update-ref refs/heads/main v0
 out=$(cli finish "$plan") || fail "finish ff-only: $out"
 assert_eq "$(git -C "$repo" rev-parse l)" "$(git -C "$repo" rev-parse main)" "main at the tip" || exit 1
 status_is merged "Status merged" || exit 1
-assert_contains "$(sed -n 7p "$repo/.ai-workflow/epics/e.md")" "merged ·" "the epic row follows" || exit 1
+assert_contains "$(sed -n 7p "$repo/.runweld/workflow/epics/e.md")" "merged ·" "the epic row follows" || exit 1
 assert_contains "$out" "nothing was pushed" "says nothing was pushed" || exit 1
 assert_contains "$(backups)" "backup/l-1 backup/l-2" "both backups kept" || exit 1
 git -C "$repo" rev-parse --verify -q l >/dev/null || fail "the branch is kept"
@@ -179,7 +179,7 @@ echo other > "$repo/src/a.txt"; git -C "$repo" commit -q -m other -- src/a.txt
 out=$(cli finish "$plan"); rc=$?
 assert_eq 1 "$rc" "a conflicting main is refused" || exit 1
 assert_contains "$out" "src/a.txt" "the conflicting path is printed" || exit 1
-assert_eq "" "$(git -C "$repo" status --porcelain -- . ':(exclude).ai-workflow')" "the target tree is clean" || exit 1
+assert_eq "" "$(git -C "$repo" status --porcelain -- . ':(exclude).runweld/workflow')" "the target tree is clean" || exit 1
 [ -d "$wtdir" ] || fail "the worktree stays after a refusal"
 status_is passed "Status stays passed" || exit 1
 git -C "$repo" reset -q --hard v0

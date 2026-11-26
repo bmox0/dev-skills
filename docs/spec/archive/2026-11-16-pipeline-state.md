@@ -25,7 +25,7 @@ The epic's Interfaces are the contract. The parser leaves `spec.py` first, so `a
 - `brief` writes a file beside the plan, and the dispatch prompt is the file's path. A phase's brief carries the reports of the phases it waits for and the CLI's absolute command. The judge's brief carries the absolute path of `judge.md`, with its case and inputs in the note until plan 3.
 - The `Epic:` line names the plan's row. The row's Status cell follows every status change, and nothing else in the epic is touched — the row was forgotten in 3 of 5 runs.
 - Problems in the plan file keep `spec check`'s form, `<plan>:<line>: <message>`, and `approve`'s shape check uses it too. `<code>: … — fix: …` is for arguments and state, so an unchanged `spec.test.sh` proves nothing broke.
-- A plan with no JSON, approved before 5.1, is adopted by `approve` as its file stands. Its status, branch, base and phase statuses become the first records, so a plan mid-build goes on where it is. Every command except `spec` refuses such a plan, with that fix.
+- A plan with no JSON is adopted by `approve` as its file stands. Its status, branch, base and phase statuses become the first records, so a plan mid-build goes on where it is. Every command except `spec` refuses such a plan, with that fix.
 - Prose a command replaces is deleted, and word budgets follow the new counts.
 
 ## Out of scope
@@ -38,7 +38,7 @@ The epic's Interfaces are the contract. The parser leaves `spec.py` first, so `a
 ```text
 ## Done
 
-1. Run `scripts/check` and `scripts/test` → both exit 0. `skills/spec/spec.py` is gone, and nothing outside `.ai-workflow/` and `docs/spec/` names it. `git diff a0a41ac -- test/cli/spec.test.sh` touches only the entry and the program's name in one message.
+1. Run `scripts/check` and `scripts/test` → both exit 0. `skills/spec/spec.py` is gone, and nothing outside `.runweld/workflow/` and `docs/spec/` names it. `git diff a0a41ac -- test/cli/spec.test.sh` touches only the entry and the program's name in one message.
 2. In a throwaway repo, run `spec list`, `show`, `check` and `write` through `pipeline.py`, and through `spec.py` from `a0a41ac` → both give the same output, exit codes and files.
 3. Approve a plan whose phase 3 waits for a phase 9, which has two unordered phases sharing a directory, and which names a missing Skills path → exit 1, with one `<plan>:<line>:` line per problem and no JSON. Fix the problems and approve again → the JSON exists, and the file differs from the draft only in Status and the rendered line. The output ends with the graph, the level and the word count.
 4. Under a throwaway epic, run `build start --base <tag>` → the branch starts at the tag, and Status reads `building` with the tag's SHA. The epic's row reads `building`, and `status` shows phase 1 as ready.
@@ -47,7 +47,7 @@ The epic's Interfaces are the contract. The parser leaves `spec.py` first, so `a
 7. Run `phase start 3` before phase 2 is done → refused; with `--note` → started, and `status` shows the note. Run `phase start 1` on the done phase with a note → back to `in progress`, with the note and HEAD's SHA.
 8. Write two records at the same moment → both are in the JSON, and it parses. A recorded ruling → `status` lists its question, answer, why and cost.
 9. Run `brief implementer 2 --note "<text>"` → it prints a path. The file holds the absolute paths of the plan, the tree and the CLI. It also holds the branch, the base, HEAD, phase 2's territory and Skills, phase 1's report, and the note. `brief judge` → the file holds the absolute path of an existing `judge.md`.
-10. Take a pre-5.1 plan at `building` with phase 1 `done` and no JSON, and run `phase start 2` → refused, with a fix naming `approve`. Run `approve` → phase 1 is still `done`, and phase 2 is ready.
+10. Take a plan at `building` with phase 1 `done` and no JSON, and run `phase start 2` → refused, with a fix naming `approve`. Run `approve` → phase 1 is still `done`, and phase 2 is ready.
 11. In a throwaway repo, run `dev-skills:plan`, then `dev-skills:build`, from this checkout on a two-phase plan → every status, the base and the epic's row change through the CLI, nobody edits the plan file by hand, and each report is a record — you check
 
 ## Spec
@@ -70,7 +70,7 @@ The epic's Interfaces are the contract. The parser leaves `spec.py` first, so `a
 + build#epic-row-follows — Under an epic, the plan's row shows the plan's status after every change
   Why: the row was forgotten in 3 of 5 runs
   Done: 4
-+ build#pre-5-1-adopted — A plan without state is adopted by `approve` as its file stands; no other command but `spec` runs on it
-  Why: no migration step to remember, and a plan mid-build goes on where it is
++ build#recover-plan-state — A plan without state is adopted by `approve` as its file stands; no other command but `spec` runs on it
+  Why: a plan mid-build keeps its recorded progress
   Done: 10
 ```

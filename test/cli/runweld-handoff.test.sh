@@ -80,21 +80,18 @@ with tempfile.TemporaryDirectory() as folder:
     run(cli, "init", "--non-interactive", "--provider", "Test", "--primary-model", "p", "--secondary-model", "s", cwd=locked)
     lock = locked / ".runweld/runweld.lock"
     before = lock.read_bytes()
-    lock.write_text(f'release = "{release}"\n')
-    old_format = lock.read_bytes()
-    assert "update --project" in run(cli, "--version", "--verbose", cwd=locked, ok=False)
-    with (upstream / "agents/reviewer.md").open("a") as f:
+    with (upstream / "skills/grill/references/INTERVIEW.md").open("a") as f:
         f.write("\nGlobal update fixture\n")
     run("git", "commit", "-qam", "second build", cwd=upstream)
     subprocess.run([cli, "update", "--cli"], cwd=locked, env=bootstrap_env, check=True, timeout=30)
     latest = (prefix / "lib/dev-skills/default").read_text().strip()
-    assert latest != release and lock.read_bytes() == old_format
+    assert latest != release and lock.read_bytes() == before
     assert (home / ".local/lib/dev-skills/default").read_text().strip() == release
     bare = subprocess.run([cli, "update"], cwd=locked, env=env, stdin=subprocess.DEVNULL, capture_output=True)
     assert bare.returncode and b"--cli or --project" in bare.stderr
     assert "--project" in run(cli, "update", "--cli", "--project", cwd=locked, ok=False)
     assert "release ID" in run(cli, "update", "--cli", release, cwd=locked, ok=False)
-    assert lock.read_bytes() == old_format
+    assert lock.read_bytes() == before
     master, slave = pty.openpty()
     try:
         for answer, ok in ((b"\n", False), (b"project\n", True)):
@@ -102,16 +99,31 @@ with tempfile.TemporaryDirectory() as folder:
             choice = subprocess.run([cli, "update"], cwd=locked, env=env, stdin=slave,
                                     capture_output=True, timeout=30)
             assert (choice.returncode == 0) == ok and b"cli or project" in choice.stdout
-            assert (lock.read_bytes() != old_format) == ok
+            assert (lock.read_bytes() != before) == ok
     finally:
         os.close(master)
         os.close(slave)
     updated = tomllib.loads(lock.read_text())
     original = tomllib.loads(before.decode())
-    assert updated['release'] == latest and updated['roles']['reviewer'] != original['roles']['reviewer']
-    updated['release'] = release
-    updated['roles']['reviewer'] = original['roles']['reviewer']
-    assert updated == original
+    assert updated['release'] == latest
+    assert updated['skills']['grill'] != original['skills']['grill']
+    grill, previous = updated['stages']['grill'], original['stages']['grill']
+    assert grill['digest'] != previous['digest']
+    assert [path for path in grill['inputs'] if grill['inputs'][path] != previous['inputs'][path]] == ['skills/grill/references/INTERVIEW.md']
+    assert all(updated['stages'][key] == stage for key, stage in original['stages'].items() if key != 'grill')
+    assert updated['roles'] == original['roles']
+    assert 'skills/browser-test/tab.mjs' in updated['stages']['build-verification']['when']['web-or-electron']['inputs']
+    shared_path = 'references/SESSIONS.md'
+    with (upstream / shared_path).open('a') as f:
+        f.write('\nShared protocol fixture\n')
+    run("git", "commit", "-qam", "change session protocol", cwd=upstream)
+    subprocess.run([cli, "update", "--cli"], cwd=locked, env=bootstrap_env, check=True, timeout=30)
+    run(cli, "update", "--project", cwd=locked)
+    shared = tomllib.loads(lock.read_text())
+    for key, stage in updated['stages'].items():
+        changed = shared['stages'][key]
+        assert stage['digest'] != changed['digest']
+        assert [p for p in stage['inputs'] if stage['inputs'][p] != changed['inputs'][p]] == [shared_path]
     nested = locked / "src"
     nested.mkdir()
     run(cli, "update", "--project", release, cwd=nested)
@@ -144,9 +156,12 @@ with tempfile.TemporaryDirectory() as folder:
         before = (project / "hello.txt").read_text()
         assert release in run("runweld", "help", "agents", cwd=project)
         entry = json.loads(run("runweld", "workflow", "--json", cwd=project))
+        definition = json.loads(run("runweld", "workflow", "--stage", "build-verification", "--json", cwd=project))
+        assert definition["when"]["web-or-electron"]["role"] == "verify"
+        assert definition["when"] == updated["stages"]["build-verification"]["when"]
         assert entry["actions"][0]["assignment"]["kind"] == "task-entry"
         slug = provider.lower() + "-message"
-        task = json.loads(run("runweld", "task", "start", slug, "--json", cwd=project))
+        task = json.loads(run("runweld", "task", "start", slug, "--finish-how", "ff-only", "--finish-target", "main", "--json", cwd=project))
         plan, tree = map(Path, (task["plan"], task["tree"]))
         assert task["tree"] in run("runweld", "task", "resume", slug, cwd=project)
         assert task["release"] == release
@@ -253,6 +268,7 @@ none
         assert "normal" in advertised("gate", "start")
         reviewer, _ = brief("reviewer", "primary")
         verify, _ = brief("verify", "secondary")
+        assert str(bundle / "skills/browser-test/tab.mjs") in verify
         run(*command_from(reviewer, "- Complete the review: "))
         assert not any(x.get("role") == "judge" and x["kind"] == "run" for x in actions())
         case = run("cat", "hello.txt", cwd=tree).strip()

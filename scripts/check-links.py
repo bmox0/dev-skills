@@ -3,14 +3,14 @@
 
 Walks the standalone skill, skills/, agents/ and references/ plus the
 repository root's own *.md files (root only, not recursive — this does not
-descend into .ai-workflow/ or other root-level directories), reads every .md
+descend into .runweld/workflow/ or other root-level directories), reads every .md
 file, and checks three things line by line (skipping anything inside a fenced
 code block):
 
   R1 file links      - [text](target) resolves to a file that exists
   R2 namespace        - dev-skills:<name> names a skill under skills/ or an
                         agent under agents/
-  R3 legacy tokens     - retired skill, agent and hook names are
+  R3 retired tokens     - retired skill, agent and hook names are
                         findings unless allowlisted
 
 and two things per file:
@@ -26,7 +26,7 @@ and two things per file:
 An R3 finding is suppressed by scripts/link-allow.txt, one
 `path:line:token` entry per line: suppression applies only when the named
 token is the one found at that exact path and line, so a different token on
-the same line — or a second legacy token sharing the line with an
+the same line — or a second retired token sharing the line with an
 allowlisted one — is still reported. An allowlist entry that matches
 nothing in the tree today, because the line moved, the token isn't there
 anymore, or the file is gone, is itself a finding, reported as ALLOWLIST.
@@ -56,7 +56,7 @@ FENCE_RE = re.compile(r"^\s*`{3,}")
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 NAMESPACE_RE = re.compile(r"\bdev-skills:([A-Za-z0-9][A-Za-z0-9-]*)")
-LEGACY_WORDS = (
+RETIRED_WORDS = (
     "diagnose",
     "brainstorming",
     "test-driven-development",
@@ -81,8 +81,8 @@ LEGACY_WORDS = (
     "find-polluter",
     "writing-great-skills",
 )
-LEGACY_WORD_RE = re.compile(
-    r"\b(" + "|".join(re.escape(w) for w in LEGACY_WORDS) + r")\b"
+RETIRED_WORD_RE = re.compile(
+    r"\b(" + "|".join(re.escape(w) for w in RETIRED_WORDS) + r")\b"
 )
 
 # path:line:token — path has no colons in this tree, line is digits, token
@@ -191,14 +191,14 @@ def check_r2(path, lineno, line, findings):
 def check_r3(path, lineno, line, findings, allow_index, allow_matched):
     path_key = rel(path)
     key = f"{path_key}:{lineno}"
-    for match in LEGACY_WORD_RE.finditer(line):
+    for match in RETIRED_WORD_RE.finditer(line):
         token = match.group(0)
         idxs = allow_index.get((path_key, lineno, token))
         if idxs:
             for i in idxs:
                 allow_matched[i] = True
             continue
-        findings["R3"].append(f"{key}: R3 legacy token '{token}'")
+        findings["R3"].append(f"{key}: R3 retired token '{token}'")
 
 
 def check_budgets(findings):

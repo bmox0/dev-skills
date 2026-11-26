@@ -16,9 +16,9 @@ repo=$(cd "$(mktemp_dir)" && pwd -P)
 cd "$repo" || exit 1
 git init -q
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-mkdir -p .ai-workflow/plans .ai-workflow/epics docs/spec skills/tdd src lib other
+mkdir -p .runweld/workflow/plans .runweld/workflow/epics docs/spec skills/tdd src lib other
 touch skills/tdd/SKILL.md docs/spec/build.md
-printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n' > .ai-workflow/epics/e.md
+printf '# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | One | — | |\n' > .runweld/workflow/epics/e.md
 git commit -q --allow-empty -m base
 git tag v0
 v0=$(git rev-parse v0)
@@ -84,8 +84,8 @@ P
   cp "$repo_root/skills/run-file/references/example.run.toml" "${1%.md}.run.toml"
 }
 
-plan=$repo/.ai-workflow/plans/2026-11-16-x.md
-mkplan "$plan" 'Epic: `.ai-workflow/epics/e.md` · row 1' x
+plan=$repo/.runweld/workflow/plans/2026-11-16-x.md
+mkplan "$plan" 'Epic: `.runweld/workflow/epics/e.md` · row 1' x
 approve_plan "$plan" >/dev/null || fail "approve"
 
 # build#base-is-named: build start refuses to run without --base
@@ -99,13 +99,13 @@ assert_contains "$out" "dirty" "reports the dirty tree" || exit 1
 assert_eq "$v0" "$(git rev-parse x)" "the branch starts at the tag" || exit 1
 assert_eq x "$(git branch --show-current)" "the branch is checked out" || exit 1
 grep -q "^Status: building · branch \`x\` · base \`$v0\`$" "$plan" || fail "Status line: $(grep ^Status "$plan")"
-assert_contains "$(sed -n 7p .ai-workflow/epics/e.md)" "building ·" "the epic row follows" || exit 1
+assert_contains "$(sed -n 7p .runweld/workflow/epics/e.md)" "building ·" "the epic row follows" || exit 1
 assert_contains "$(cli status "$plan")" "Ready: 1" "phase 1 is ready" || exit 1
 cli build start "$plan" --base v0 >/dev/null; rc=$?
 assert_eq 1 "$rc" "a second build start is refused" || exit 1
 
 # --worktree
-planw=$repo/.ai-workflow/plans/2026-11-16-w.md
+planw=$repo/.runweld/workflow/plans/2026-11-16-w.md
 mkplan "$planw" '' w
 approve_plan "$planw" >/dev/null || fail "approve w"
 wt=$(dirname "$repo")/$(basename "$repo")-wt
@@ -196,8 +196,8 @@ out=$(cli brief judge "$plan"); rc=$?
 assert_eq 1 "$rc" "brief judge takes its case from a cycle, and none is open: $out" || exit 1
 assert_contains "$out" "no-cycle" "the refusal's code" || exit 1
 
-# build#pre-5-1-adopted: no command but approve runs on a plan with no state
-old=$repo/.ai-workflow/plans/2026-11-10-old.md
+# build#recover-plan-state: no command but approve runs on a plan with no state
+old=$repo/.runweld/workflow/plans/2026-11-10-old.md
 mkplan "$old" '' old
 sed -i.bak 's/^Status: draft · branch `old` · base `<sha>`/Status: building · branch `old` · base `abc1234`/; s/^### 1. One — `waiting`/### 1. One — `done`/' "$old"; rm "$old.bak"
 out=$(cli phase start "$old" 2); rc=$?
@@ -208,7 +208,7 @@ grep -q '^### 1. One — `done`$' "$old" || fail "phase 1 stays done"
 assert_contains "$(cli status "$old")" "Ready: 2" "phase 2 is ready" || exit 1
 
 # build#base-is-named: the branch has a command when its name is taken
-plany=$repo/.ai-workflow/plans/2026-11-16-y.md
+plany=$repo/.runweld/workflow/plans/2026-11-16-y.md
 mkplan "$plany" '' x
 approve_plan "$plany" >/dev/null || fail "approve y"
 out=$(cli build start "$plany" --base v0); rc=$?
@@ -219,7 +219,7 @@ grep -q "^Status: building · branch \`y\` · base \`$v0\`$" "$plany" || fail "S
 git switch -q x
 
 # build#act-with-a-reason: an approved plan has no branch; phase start needs a note
-planw2=$repo/.ai-workflow/plans/2026-11-16-w2.md
+planw2=$repo/.runweld/workflow/plans/2026-11-16-w2.md
 mkplan "$planw2" '' w2
 approve_plan "$planw2" >/dev/null || fail "approve w2"
 out=$(cli phase start "$planw2" 1); rc=$?
@@ -231,7 +231,7 @@ cli phase start "$planw2" 1 --note "no branch yet" >/dev/null || fail "phase sta
 git branch adopt v0
 wta=$(dirname "$repo")/$(basename "$repo")-adopt
 git worktree add -q "$wta" adopt
-plana=$repo/.ai-workflow/plans/2026-11-16-a.md
+plana=$repo/.runweld/workflow/plans/2026-11-16-a.md
 mkplan "$plana" '' adopt
 sed -i.bak 's/^Status: draft · branch `adopt` · base `<sha>`/Status: building · branch `adopt` · base `'"$v0"'`/' "$plana"; rm "$plana.bak"
 approve_plan "$plana" >/dev/null || fail "adopt a"
@@ -252,7 +252,7 @@ case "$out" in *Traceback*) fail "no traceback: $out";; esac
 git worktree remove --force "$wta"
 
 # a recorded tree that is gone: refuse cleanly, and the closing writes keep working
-planz=$repo/.ai-workflow/plans/2026-11-16-z.md
+planz=$repo/.runweld/workflow/plans/2026-11-16-z.md
 mkplan "$planz" '' z
 approve_plan "$planz" >/dev/null || fail "approve z"
 wtz=$(dirname "$repo")/$(basename "$repo")-z
@@ -270,7 +270,7 @@ cli plan status "$planz" "at the human gate" >/dev/null && fail "a missing tree 
 cli plan status "$planz" merged >/dev/null && fail "a missing tree cannot be marked merged"
 
 # phase done: a base that is not a commit is an error
-planb=$repo/.ai-workflow/plans/2026-11-16-b.md
+planb=$repo/.runweld/workflow/plans/2026-11-16-b.md
 mkplan "$planb" '' b
 approve_plan "$planb" >/dev/null || fail "approve b"
 cli build start "$planb" --base v0 >/dev/null || fail "build start b"
@@ -287,7 +287,7 @@ out=$(cli phase done "$planb" 1); rc=$?
 assert_eq 1 "$rc" "phase done refuses a base that is no commit" || exit 1
 assert_contains "$out" "bad-base:" "names the base: $out" || exit 1
 # build#phase-done-checked: a merge commit counts by what it brought into the branch
-planm=$repo/.ai-workflow/plans/2026-11-16-m.md
+planm=$repo/.runweld/workflow/plans/2026-11-16-m.md
 mkplan "$planm" '' mg
 approve_plan "$planm" >/dev/null || fail "approve m"
 cli build start "$planm" --base v0 >/dev/null || fail "build start m"
@@ -323,7 +323,7 @@ busy=$!
 sleep 1
 ports=""
 for k in i1 i2; do
-  pk=$repo/.ai-workflow/plans/2026-11-16-$k.md
+  pk=$repo/.runweld/workflow/plans/2026-11-16-$k.md
   mkplan "$pk" '' $k
   approve_plan "$pk" >/dev/null || fail "approve $k"
   wk=$(dirname "$repo")/$(basename "$repo")-$k
@@ -348,7 +348,7 @@ kill $busy 2>/dev/null
 python3 -c 'import socket,sys,time; s=socket.socket(socket.AF_INET6); s.bind(("::1", int(sys.argv[1]))); s.listen(); time.sleep(60)' "$first" &
 busy6=$!
 sleep 1
-p6=$repo/.ai-workflow/plans/2026-11-16-v6.md
+p6=$repo/.runweld/workflow/plans/2026-11-16-v6.md
 mkplan "$p6" '' v6
 sed -i.bak 's/^data_dir = true/data_dir = false/; s/ --data {data_dir}//' "${p6%.md}.run.toml"
 grep -q '^data_dir = false' "${p6%.md}.run.toml" || fail "v6 run file edited"
@@ -382,7 +382,7 @@ m.free_port(None, sys.argv[2])
 PY
 
 # run#isolated: a data directory without a port
-pd=$repo/.ai-workflow/plans/2026-11-16-d1.md
+pd=$repo/.runweld/workflow/plans/2026-11-16-d1.md
 mkplan "$pd" '' d1
 sed -i.bak 's/^port = true/port = false/; s/ --port {port}//; s/{port}/1/' "${pd%.md}.run.toml"
 approve_plan "$pd" >/dev/null || fail "approve d1"
@@ -395,7 +395,7 @@ case "$out" in *"Run: port"*|*" port "*) fail "status invents a port: $out";; es
 git worktree remove --force "$wd"
 
 # run#changes-through-approve: build start shows a changed run file, and keeps the approved values
-pc=$repo/.ai-workflow/plans/2026-11-16-bd.md
+pc=$repo/.runweld/workflow/plans/2026-11-16-bd.md
 mkplan "$pc" '' bd
 approve_plan "$pc" >/dev/null || fail "approve bd"
 edit "${pc%.md}.run.toml" 'delete_backups = true' 'delete_backups = false'
@@ -406,7 +406,7 @@ assert_contains "$out" "run-stale" "build start names stale consent: $out" || ex
 [ ! -d "$wc" ] || fail "stale consent creates no worktree"
 
 # run#changes-through-approve: approve after build start allocates what isolation now asks for
-pa=$repo/.ai-workflow/plans/2026-11-16-ia.md
+pa=$repo/.runweld/workflow/plans/2026-11-16-ia.md
 mkplan "$pa" '' ia
 sed -i.bak 's/^data_dir = true/data_dir = false/; s/ --data {data_dir}//' "${pa%.md}.run.toml"
 approve_plan "$pa" >/dev/null || fail "approve ia"
@@ -421,7 +421,7 @@ assert_contains "$out" "data dir " "approve prints the new allocation: $out" || 
 assert_contains "$(cli run show "$pa")" "--data $(cd "$(dirname "$pa")" && pwd -P)/2026-11-16-ia.data" "run show fills in {data_dir}" || exit 1
 git worktree remove --force "$wa"
 # a plan with worktree = true needs --worktree, or a note
-pw=$repo/.ai-workflow/plans/2026-11-16-wt.md
+pw=$repo/.runweld/workflow/plans/2026-11-16-wt.md
 mkplan "$pw" '' wt
 sed -i.bak 's/^worktree = false/worktree = true/' "${pw%.md}.run.toml"
 approve_plan "$pw" >/dev/null || fail "approve wt"
@@ -433,7 +433,7 @@ assert_contains "$(cli status "$pw")" "no room for a tree" "status shows the not
 git switch -q mg
 
 # run#secrets-as-written, build#brief-carries-spec
-ps=$repo/.ai-workflow/plans/2026-11-16-sp.md
+ps=$repo/.runweld/workflow/plans/2026-11-16-sp.md
 mkplan "$ps" '' sp
 python3 - "$ps" <<'PY'
 import sys
@@ -451,13 +451,13 @@ assert_eq 1 "$(printf '%s\n' "$b" | grep -c '^Territory:')" "Territory prints on
 assert_contains "$b" "carries its ID" "the brief says a test guarding a Spec entry carries its ID" || exit 1
 
 # an epic that is gone is a fact, not a traceback
-pe=$repo/.ai-workflow/plans/2026-11-16-ep.md
-mkplan "$pe" 'Epic: `.ai-workflow/epics/gone/e.md` · row 1' ep
+pe=$repo/.runweld/workflow/plans/2026-11-16-ep.md
+mkplan "$pe" 'Epic: `.runweld/workflow/epics/gone/e.md` · row 1' ep
 approve_plan "$pe" >/dev/null 2>&1
-mkdir -p .ai-workflow/epics/gone && printf '## Plans\n\n| # | P | W | S |\n|---|---|---|---|\n| 1 | One | — | |\n' > .ai-workflow/epics/gone/e.md
+mkdir -p .runweld/workflow/epics/gone && printf '## Plans\n\n| # | P | W | S |\n|---|---|---|---|\n| 1 | One | — | |\n' > .runweld/workflow/epics/gone/e.md
 approve_plan "$pe" >/dev/null || fail "approve ep"
 cli build start "$pe" --base v0 >/dev/null || fail "build start ep"
-rm -rf .ai-workflow/epics/gone
+rm -rf .runweld/workflow/epics/gone
 out=$(cli phase start "$pe" 1 2>&1); rc=$?
 assert_eq 0 "$rc" "phase start with the epic gone: $out" || exit 1
 assert_contains "$out" "epic" "a line says the epic is missing" || exit 1

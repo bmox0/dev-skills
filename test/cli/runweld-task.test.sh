@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory() as folder:
         return p.stdout.strip() if ok else p.stdout + p.stderr
 
     def start(name):
-        return subprocess.Popen([runweld, "task", "start", name, "--json"], cwd=project, env=env,
+        return subprocess.Popen([runweld, "task", "start", name, "--finish-how", "ff-only", "--finish-target", "main", "--json"], cwd=project, env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     def task(p):
@@ -220,8 +220,8 @@ Waits for: nothing
     config = project / ".runweld/config.toml"
     before = config.read_text()
     adjusted = re.sub(r"(?ms)^\[setup\]\n.*?(?=^\[|\Z)", "", before)
-    config.write_text(adjusted.replace('how = "ff-only"', 'how = "merge-request"').replace(json.dumps(full), '"true"'))
-    c = json.loads(run(runweld, "task", "start", "request", "--json"))
+    config.write_text(adjusted.replace(json.dumps(full), '"true"'))
+    c = json.loads(run(runweld, "task", "start", "request", "--finish-how", "merge-request", "--finish-target", "main", "--json"))
     config.write_text(before)
     assert "setup" not in tomllib.loads(Path(c["plan"]).with_suffix(".run.toml").read_text())
     c_plan = make_plan(c, spec=False)

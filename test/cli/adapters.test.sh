@@ -42,7 +42,7 @@ python3 -B - "$repo_root" "$tmp" <<'PYRELOCATED'
 import hashlib, json, os, pathlib, shutil, subprocess, sys
 source, tmp = (pathlib.Path(p).resolve() for p in sys.argv[1:])
 package = tmp / 'relocated package $'
-shutil.copytree(source, package, ignore=shutil.ignore_patterns('.git', '.ai-workflow', '__pycache__'))
+shutil.copytree(source, package, ignore=shutil.ignore_patterns('.git', '.runweld/workflow', '__pycache__'))
 project = tmp / 'target'
 project.mkdir()
 subprocess.run(['git', 'init', '-q', str(project)], check=True)
@@ -61,14 +61,14 @@ assert run.returncode == 0, run
 run = subprocess.run([sys.executable, '-B', str(package / 'skills/build/pipeline.py'),
                       'executor', 'show', '--provider', 'Fixture'], cwd=project, capture_output=True, text=True)
 assert run.returncode == 0 and 'project-primary' in run.stdout and str(project / 'AGENTS.md') in run.stdout, run
-assert not (project / 'skills').exists() and not (package / '.ai-workflow').exists()
+assert not (project / 'skills').exists() and not (package / '.runweld/workflow').exists()
 for folder in ('agents', 'references', 'skills', 'hooks', 'scripts', 'adapters'):
     for original in (source / folder).rglob('*'):
         if original.is_file() and '__pycache__' not in original.parts:
             copied = package / original.relative_to(source)
             assert hashlib.sha256(original.read_bytes()).digest() == hashlib.sha256(copied.read_bytes()).digest(), copied
             assert original.stat().st_mode & 0o111 == copied.stat().st_mode & 0o111, copied
-plans = project / '.ai-workflow/plans'
+plans = project / '.runweld/workflow/plans'
 plans.mkdir(parents=True)
 (plans / 'fixture.json').write_text('{}')
 variables = ('CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT', 'QODER_PLUGIN_ROOT')

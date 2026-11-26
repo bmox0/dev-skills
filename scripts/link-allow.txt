@@ -1,7 +1,7 @@
 # check-links.py allowlist — one `path:line:token` per line, `#` comments
 # allowed. Suppresses an R3 finding only when the named token is the one
 # found at that exact path and line; a different token on the same line, or
-# a second legacy token sharing the line with an allowlisted one, is still
+# a second retired token sharing the line with an allowlisted one, is still
 # reported. An entry that matches nothing today — the line moved, the token
 # isn't there, the file is gone — is itself reported, as ALLOWLIST, and
 # fails the check.

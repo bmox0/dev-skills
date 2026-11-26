@@ -9,7 +9,7 @@ The build writer runs finish after current authorized acceptance
 ([SESSIONS.md](../../references/SESSIONS.md)). If missing, record
 `CLI accept <plan> --by <name> --words "<unchanged approval>"`.
 Use the approved ending when instructed; do not ask again.
-Use the run's installed `runweld` or legacy CLI from its brief.
+Use the run's CLI from its brief.
 
 ## 1. Merge it
 

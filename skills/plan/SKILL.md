@@ -10,9 +10,7 @@ Read shared `AGENTS.md` and the executor contract:
 
 Planning uses primary; research helpers use secondary. This session plans and never edits code.
 
-Use `runweld` as `CLI` for installed workflows, or
-`python3 "<this skill's directory>/../build/pipeline.py"` for legacy plugin runs.
-For runweld, [enter or resume the task](../../references/WORKFLOW-PATHS.md)
+Use `runweld` as `CLI`. [Enter or resume the task](../../references/WORKFLOW-PATHS.md)
 before planning. Use `CLI status <plan>` once its plan exists.
 
 A plan is always a file, about 1000 words. It holds only what an
@@ -36,16 +34,14 @@ propose it with the reason, and the user decides (`dev-skills:epic`).
   `CLI spec list` areas by description.
 - The task's run file exists beside the plan (`dev-skills:run-file`); if not,
   write it first. `approve` validates without recording consent.
-- Get Checks from `CLI run show <plan>`. For a legacy example, fill missing
-  checks from the [Environment block](references/environment-contract.md).
+- Get Checks from `CLI run show <plan>`.
 - Write the plan in the project's document language from
   [environment-contract.md](references/environment-contract.md). Use the original
   conversation language for user messages and the gate guide, per [SESSIONS.md](../../references/SESSIONS.md).
 
 ## The file
 
-Use the run file's name with `.md`, written with Status `draft`. For a runweld
-task, use its branch and base. For legacy only, the base is `—` until build.
+Use the run file's name with `.md`, written with Status `draft`. Use the task’s branch and base.
 A worked example: [example.md](references/example.md).
 
 ```markdown

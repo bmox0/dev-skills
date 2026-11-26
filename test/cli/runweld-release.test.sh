@@ -29,7 +29,7 @@ assert_contains "$(cd "$sandbox" && runweld help agents)" "$engine_a/references/
 assert_contains "$(node "$engine_a/skills/browser-test/tab.mjs" --help)" "one persistent tab" 'distribution#system-cli: the installed browser helper runs'
 [[ -r "$engine_a/agents/implementer.md" ]] || { echo 'distribution#system-cli: the release includes role instructions' >&2; exit 1; }
 
-mkdir -p "$project/.runweld" "$project/.ai-workflow/plans"
+mkdir -p "$project/.runweld"
 cd "$project"
 git init -q -b main
 git commit --allow-empty -qm base
@@ -41,7 +41,7 @@ fi
 assert_contains "$out" 'runweld task start' 'run#task-worktree: standalone run new tells the user how to start a task'
 [[ ! -e docs/solo.run.toml && $(git branch --show-current) == main ]]
 base=$(git rev-parse HEAD)
-entry=$(runweld task start run-a --json)
+entry=$(runweld task start run-a --finish-how ff-only --finish-target main --json)
 plan="$project/.runweld/workflow/plans/run-a.md"
 repo_worktree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$entry")
 cat > "$plan" <<PLAN
@@ -103,7 +103,7 @@ refuse_solo build start --base main --note 'Fixture override'
 rm docs/solo.md docs/solo.run.toml
 approve_plan "$plan" >/dev/null
 runweld build start "$plan" >/dev/null
-release_task=$(runweld task start release-task --json)
+release_task=$(runweld task start release-task --finish-how ff-only --finish-target main --json)
 release_task_tree=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tree"])' <<< "$release_task")
 release_task_run="$project/.runweld/workflow/plans/release-task.run.toml"
 cp "$release_task_run" "$sandbox/task-a.toml"
@@ -117,20 +117,13 @@ fi
 assert_contains "$out" '[workflow].release' 'run#starts-from-last: a missing entry pin identifies the field to restore'
 cp "$sandbox/task-a.toml" "$release_task_run"
 
-# distribution#project-lock: the preceding release stored only base, ready and branch.
-runweld task start previous-record >/dev/null
+# distribution#project-lock: a project update keeps an existing task on its release.
+runweld task start previous-record --finish-how ff-only --finish-target main >/dev/null
 previous="$project/.runweld/workflow/tasks/previous-record.json"
-python3 - "$previous" <<'PY'
-import json, sys
-from pathlib import Path
-path = Path(sys.argv[1])
-row = json.loads(path.read_text())
-path.write_text(json.dumps({k: row[k] for k in ('base', 'ready', 'branch')}))
-PY
 cp "$previous" "$sandbox/previous-record.json"
 
 # distribution#project-lock: an interrupted entry retains A even if the project lock moves before retry.
-runweld task start interrupted >/dev/null
+runweld task start interrupted --finish-how ff-only --finish-target main >/dev/null
 rm .runweld/workflow/plans/interrupted.run.toml
 python3 - <<'PY'
 import json
@@ -138,6 +131,7 @@ from pathlib import Path
 record = Path('.runweld/workflow/tasks/interrupted.json')
 value = json.loads(record.read_text())
 value['ready'] = False
+value['finish'] = {'how': 'merge-request', 'target': 'main'}
 record.write_text(json.dumps(value))
 PY
 
@@ -159,6 +153,15 @@ assert old in code
 engine.write_text(code.replace(old, 'show terminal help from release B', 1)
                   .replace('Continue in the task worktree with a grill or plan.', 'Continue using release B.'))
 PY
+cp "$source_b/references/workflow.toml" "$sandbox/workflow.toml"
+sed 's|skills/browser-test/tab.mjs|skills/browser-test/missing.mjs|' "$sandbox/workflow.toml" > "$source_b/references/workflow.toml"
+if out=$("$source_b/scripts/install-runweld" --prefix "$prefix" 2>&1); then
+  echo 'installer accepted a missing conditional tool' >&2
+  exit 1
+fi
+assert_contains "$out" 'missing stage inputs: skills/browser-test/missing.mjs' 'distribution#project-lock: invalid stage input identifies the missing file'
+cp "$sandbox/workflow.toml" "$source_b/references/workflow.toml"
+
 # distribution#system-cli: neither advertised guides nor the instructions they link to are optional.
 for missing in references/WORKFLOW-PATHS.md skills/plan/references/environment-contract.md; do
   mv "$source_b/$missing" "$sandbox/removed-resource"
@@ -185,14 +188,15 @@ assert_contains "$(cd "$repo_worktree" && runweld --help)" 'installed agent work
 assert_eq "$(project_versions "$b" "$b")" "$(runweld --version)" 'distribution#project-lock: update changes the main checkout selection'
 assert_contains "$(runweld help agents)" "$engine_b/agents/implementer.md" 'distribution#project-lock: project help now uses B'
 assert_contains "$(runweld --help)" 'terminal help from release B' 'distribution#project-lock: terminal help uses B after update'
-assert_contains "$(runweld task resume previous-record --json)" "$a" 'distribution#project-lock: a previous-format task still resumes on A'
-assert_eq "$project/.runweld/workflow/artifacts/previous-record/browser-test" "$(runweld task path previous-record browser-test)" 'distribution#project-lock: previous-format task paths still resolve'
-assert_contains "$(runweld run show .runweld/workflow/plans/previous-record.md --json)" "$a" 'distribution#project-lock: a previous-format run still shows A'
-assert_contains "$(runweld status --json)" 'previous-record' 'distribution#project-lock: project inventory finds previous-format tasks'
+assert_contains "$(runweld task resume previous-record --json)" "$a" 'distribution#project-lock: a pinned task still resumes on A'
+assert_eq "$project/.runweld/workflow/artifacts/previous-record/browser-test" "$(runweld task path previous-record browser-test)" 'distribution#project-lock: pinned task paths still resolve'
+assert_contains "$(runweld run show .runweld/workflow/plans/previous-record.md --json)" "$a" 'distribution#project-lock: a pinned run still shows A'
+assert_contains "$(runweld status --json)" 'previous-record' 'distribution#project-lock: project inventory finds pinned tasks'
 cmp "$previous" "$sandbox/previous-record.json"
 assert_contains "$(runweld task start interrupted --json)" "$a" 'distribution#project-lock: retry retains the entry release after update'
+assert_contains "$(cat .runweld/workflow/plans/interrupted.run.toml)" 'how = "merge-request"' 'run#starts-from-last: retry retains the finish choice'
 fresh="$project/.runweld/workflow/plans/run-b.md"
-runweld task start run-b >/dev/null
+runweld task start run-b --finish-how ff-only --finish-target main >/dev/null
 assert_contains "$(runweld run show "$fresh" --json)" "$b" 'run#starts-from-last: a new run snapshots the newly locked release B'
 assert_contains "$(cd "$release_task_tree" && runweld run show .runweld/workflow/plans/release-task.md --json)" "$a" 'distribution#project-lock: relative plan commands in a task tree use its earlier release'
 assert_contains "$(cd "$release_task_tree" && runweld task resume release-task --json)" "$a" 'distribution#project-lock: resume reports the release captured at task entry'

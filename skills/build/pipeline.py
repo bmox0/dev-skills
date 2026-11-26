@@ -55,7 +55,7 @@ stops runs the whole suite, or reuses matching completed checks before closure.
 build start, compilation and run approval pick a port under one project-wide lock.
 
 Standalone task entry snapshots project defaults and the selected release.
-Legacy run new copies the latest local run (else its example). Run check prints
+Run new copies the latest local run (else its example). Run check prints
 problems as `<code>: … — fix: …`; run show prints approved values and any drift.
 Executor show selects the current project pair before run approval and the
 frozen snapshot afterward. Briefs require --provider and
@@ -90,6 +90,7 @@ import contextlib
 import datetime
 import errno
 import fcntl
+from functools import cache
 import hashlib
 import io
 import json
@@ -517,7 +518,6 @@ def run(command, plan, given_base, cwd=None):
     mine = record is not None and next((l for l in record.splitlines() if l.startswith("# ")), None) == title
     if mine:
         rdone, rspec = record_parts(record.splitlines())
-        # a record without Done is an old format: the plan's own Done stands in
         done = sections(plan_lines).get("Done", (0, []))[1] if rdone is None else rdone
         old, probs = apply(["## Done", *done, "## Spec", *rspec], base)
         if old is not None and not probs:
@@ -669,7 +669,6 @@ def is_plan_file(fn):
 
 
 WORKFLOW_DIR = ".runweld/workflow"
-LEGACY_DIR = ".ai-workflow"
 
 
 def workflow_dir(project):
@@ -695,13 +694,6 @@ def plan_root(md):
 
 def plan_checkout(md):
     directory = Path(md).parent
-    backing = directory.parent
-    if backing.parent.parts[-3:] == (".runweld", "workflow", "legacy"):
-        from runweld_release import worktrees
-        for checkout, _ in worktrees(backing.parent.parents[2]):
-            alias = checkout / LEGACY_DIR
-            if alias.is_symlink() and alias.readlink() == backing:
-                return str(checkout)
     while not directory.is_dir() and directory != directory.parent:
         directory = directory.parent
     r = git("rev-parse", "--show-toplevel", check=False, cwd=directory)
@@ -710,70 +702,9 @@ def plan_checkout(md):
     return r.stdout.rstrip("\n")
 
 
-def legacy_workflows(root):
-    from runweld_release import worktrees
-    return [path / LEGACY_DIR for path, _ in worktrees(root) if (path / LEGACY_DIR).is_dir()]
-
-
-def legacy_key(project, checkout):
-    return "main" if checkout == project else digest(str(checkout))[:16]
-
-
-def adopt_legacy(project):
-    from runweld_release import worktrees
-    aliases = workflow_subdir(workflow_dir(project) / "legacy")
-    collision = lambda path: Refuse("migration-collision", f"{path} already exists", "move the conflicting item aside and rerun runweld init")
-    for checkout, _ in worktrees(project):
-        if not checkout.is_dir():
-            continue
-        source = checkout / LEGACY_DIR
-        dest = aliases / legacy_key(project, checkout)
-        if checkout == project:
-            if not source.is_dir():
-                continue
-            aliases.mkdir(parents=True, exist_ok=True)
-            if not os.path.lexists(dest):
-                dest.symlink_to(source, target_is_directory=True)
-            elif not dest.is_symlink() or dest.readlink() != source:
-                raise collision(dest)
-            continue
-        if source.is_symlink():
-            if source.readlink() != dest or dest.is_symlink() or not dest.is_dir():
-                raise collision(source)
-            continue
-        if not os.path.lexists(source):
-            if dest.is_dir() and not dest.is_symlink():
-                source.symlink_to(dest, target_is_directory=True)
-            continue
-        if not source.is_dir():
-            if os.path.lexists(dest):
-                raise collision(source)
-            continue
-        if git("ls-files", "--", LEGACY_DIR, cwd=checkout).stdout:
-            raise Refuse("migration-tracked", f"{source} contains tracked files", "untrack private workflow files before retrying runweld init")
-        aliases.mkdir(parents=True, exist_ok=True)
-        with contextlib.ExitStack() as locks:
-            # Rename preserves the lock inodes held by previously issued legacy commands.
-            for lock in sorted((source / "plans").glob("*.json.lock")):
-                fd = locks.enter_context(lock.open("a"))
-                fcntl.flock(fd, fcntl.LOCK_EX)
-            if source.stat().st_dev != aliases.stat().st_dev:
-                raise Refuse("migration-filesystem", f"cannot move {source} to {dest} across filesystems",
-                             "keep the original history and put the project and its linked worktree on one filesystem before retrying runweld init")
-            if dest.is_symlink() and dest.readlink() == source:
-                dest.unlink()
-            elif os.path.lexists(dest):
-                raise collision(dest)
-            source.rename(dest)
-            source.symlink_to(dest, target_is_directory=True)
-
-
 def plan_directories(root, own=None):
     canonical = workflow_subdir(workflow_dir(root) / "plans")
-    paths = [canonical, *(p / "plans" for p in legacy_workflows(root))]
-    archive = workflow_subdir(workflow_dir(root) / "legacy")
-    if archive.is_dir():
-        paths.extend(p / "plans" for p in archive.iterdir() if re.fullmatch(r"main|[0-9a-f]{16}", p.name))
+    paths = [canonical]
     if own is not None:
         paths.append(Path(own).parent)
     return sorted({p.resolve() for p in paths if p.is_dir()})
@@ -1569,13 +1500,14 @@ def settings_toml(values):
                      for sec, table in values.items())
 
 
-def read_run(plan):
+def read_run(plan, *, draft=False):
     """-> (values, []) or (None, [(code, message, fix)]); the file is read as written."""
     from runweld_release import ReleaseError, registered_task, task_pin
     path = run_path(plan)
     try:
-        _, values = read_run_file(path)
-        task_pin(values.get("workflow", {}).get("release"), registered_task(Path(plan_paths(plan)[0])), path)
+        task = registered_task(Path(plan_paths(plan)[0]))
+        _, values = read_run_file(path, pending_finish=draft and task is not None)
+        task_pin(values.get("workflow", {}).get("release"), task, path)
     except Refuse as error:
         return None, error.diags
     except ReleaseError as error:
@@ -1583,20 +1515,21 @@ def read_run(plan):
     return values, []
 
 
-def read_run_file(path):
+def read_run_file(path, *, pending_finish=False):
     fix = "repair the run file with `dev-skills:run-file`, or create it with `pipeline.py run new`"
     text = read_required(path, "no-run-file", fix, newline="")
     try:
         values = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise Refuse("run-bad-toml", f"{path} is not valid TOML ({e})", "fix the TOML syntax in the run file")
-    if problems := run_diags(values):
+    if problems := run_diags(values, pending_finish=pending_finish):
         raise refuse_all([(code, f"{message} ({path})", fix) for code, message, fix in problems])
     return text, values
 
 
-def run_diags(v, *, project=False):
-    allowed = (*RUN_SECTIONS, "executors", "setup") + (() if project else ("workflow", "run"))
+def run_diags(v, *, project=False, pending_finish=False):
+    sections = {k: v for k, v in RUN_SECTIONS.items() if not project or k != "finish"}
+    allowed = (*sections, "executors", "setup") + (() if project else ("workflow", "run"))
     out = []
     for sec in v:
         if sec not in allowed:
@@ -1614,7 +1547,7 @@ def run_diags(v, *, project=False):
         if not isinstance(setup, dict) or set(setup) != {"command"} or not single_line(setup["command"]):
             out.append(("run-bad-setup", "[setup] must contain only a nonblank single-line command",
                         'write `command = "your project setup command"` in [setup], or omit [setup]'))
-    for sec, keys in RUN_SECTIONS.items():
+    for sec, keys in sections.items():
         t = v.get(sec, {})
         if not isinstance(t, dict):
             out.append(("run-bad-type", f"[{sec}] must be a table", f"write [{sec}] as a section"))
@@ -1624,6 +1557,8 @@ def run_diags(v, *, project=False):
                 out.append(("run-unknown-key", f"[{sec}] {k} is not a key of the section", "use only: " + ", ".join(keys)))
         for k, kind in keys.items():
             if k not in t:
+                if pending_finish and sec == "finish" and k in ("how", "target"):
+                    continue
                 if (sec, k) not in RUN_OPTIONAL:
                     out.append(("run-missing-key", f"[{sec}] {k} is missing", f"add `{k}` to [{sec}]"))
             elif not type_ok(t[k], kind):
@@ -1640,7 +1575,7 @@ def run_diags(v, *, project=False):
                 out.append(("run-bad-type", f"[run] {k} must be a string, number or boolean", f"write {k} as a plain value"))
     checks, iso = v.get("checks", {}), v.get("isolation", {})
     finish = v.get("finish", {})
-    if project and isinstance(finish, dict) and "target" in finish and not single_line(finish["target"]):
+    if not project and isinstance(finish, dict) and "target" in finish and not single_line(finish["target"]):
         out.append(("run-bad-target", "[finish] target must be a nonblank single-line branch", "set a target branch"))
     if project and isinstance(iso, dict) and iso.get("worktree") is not True:
         out.append(("run-worktree-required", "[isolation] worktree must be true for runweld tasks", "set worktree = true"))
@@ -1684,8 +1619,6 @@ def run_drift(plan, st):
 
 
 PORTS = range(4300, 4400)
-# A running legacy executable only knows how to reserve ports in its own directory.
-TASK_PORTS = range(4400, 4500)
 
 
 def fill(values, alloc):
@@ -1756,7 +1689,7 @@ def free_port(plan, md):
             o = load_state(path)
             if o and o["status"] != "merged":
                 held.add(o.get("alloc", {}).get("port"))
-    ports = TASK_PORTS if plan and task_for(plan) else PORTS
+    ports = PORTS
     for p in ports:
         if p in held:
             continue
@@ -1781,6 +1714,8 @@ def read_project_config(path, *, optional=False):
         values = tomllib.loads(text)
     except tomllib.TOMLDecodeError as error:
         raise Refuse("project-bad-toml", f"{path} is not valid TOML ({error})", "fix the TOML syntax") from None
+    if "finish" in values:
+        raise Refuse("project-finish", f"{path} contains a run-specific [finish] table", "remove [finish] from project config and choose the ending in each task")
     validate_project_config(path, values)
     return text, values
 
@@ -1832,20 +1767,16 @@ def init_settings(project, text, current, a, interactive):
     setup_hint = hints.get("Worktree setup") or hints.get("Setup")
     if interactive and current is None and not setup_hint and (script := project / "scripts/setup").is_file() and os.access(script, os.X_OK):
         setup_hint = "scripts/setup"
-    default_target = git("symbolic-ref", "--quiet", "--short", "HEAD", check=False, cwd=project).stdout.strip() or "main"
     fields = (
         ("checks", "phase", a.phase_check, "Phase checks", checks),
         ("checks", "full", a.full_check, "Full checks", list(dict.fromkeys(checks + ([hints["Tests"]] if "Tests" in hints else [])))),
-        ("finish", "how", a.finish_how, "Finish method (ff-only, no-ff, merge-request)", "ff-only"),
-        ("finish", "target", a.finish_target, "Finish target branch", default_target),
-        ("finish", "delete_backups", a.delete_backups, "Delete backups on finish", True),
         ("isolation", "port", a.port, "Allocate a port per task", False),
         ("isolation", "data_dir", a.data_dir, "Allocate a data directory per task", False),
         ("checks", "dev", a.dev, "Dev command", hints.get("Dev server")),
         ("checks", "url", a.url, "Dev URL", None),
         ("setup", "command", a.setup, "Existing worktree setup command (never run during init)", setup_hint),
     )
-    settings = {"finish": {}, "checks": {}, "isolation": {"worktree": True}}
+    settings = {"checks": {}, "isolation": {"worktree": True}}
     for sec, key, supplied, label, default in fields:
         if current is not None:
             value = current.get(sec, {}).get(key)
@@ -1918,9 +1849,6 @@ def init_ignore(project, text):
         rules += ["!/.runweld/config.toml", "!/.runweld/runweld.lock"]
     if rules or private not in text.splitlines() or not ignored(WORKFLOW_DIR + "/"):
         rules.append(private)
-    legacy = "/" + LEGACY_DIR + "/"
-    if legacy not in text.splitlines() and not ignored(LEGACY_DIR + "/"):
-        rules.append(legacy)
     if not rules:
         return text
     nl = "\r\n" if "\r\n" in text else "\n"
@@ -2002,25 +1930,26 @@ def cmd_init(bundle, a):
         # Linked checkouts can be based on a commit made before the shared ignore entry.
         local_exclude = common / "info/exclude"
         excluded = read_data(local_exclude, str)
-        private = [f"/{WORKFLOW_DIR}/", f"/{LEGACY_DIR}"]
-        missing = [rule for rule in private if rule not in (excluded or "").splitlines()]
-        if missing:
+        private = f"/{WORKFLOW_DIR}/"
+        if private not in (excluded or "").splitlines():
             if local_exclude.is_symlink():
                 raise Refuse("project-init-path", f"{local_exclude} is a symbolic link", "add the private ignore entries there or use a regular file")
             workflow_subdir(local_exclude.parent).mkdir(exist_ok=True)
-            write_init_text(local_exclude, excluded, (excluded or "").rstrip("\n") + "\n" + "\n".join(missing) + "\n")
-        adopt_legacy(project)
+            write_init_text(local_exclude, excluded, (excluded or "").rstrip("\n") + "\n" + private + "\n")
         if locked_release is None:
             write_lock(project, bundle)
     print(f"Initialized {project} for {provider} on {bundle.name}. Run `runweld help agents` for next steps.")
     return 0
 
 
-def snapshot_run(bundle, project, path):
+def snapshot_run(bundle, project, path, finish):
     from runweld_release import atomic_write
     src = project / ".runweld/config.toml"
     _, settings = read_project_config(src)
-    text = settings_toml({**settings, "workflow": {"release": bundle.name}, "run": {}})
+    values = {**settings, "finish": {"delete_backups": True, **finish}, "workflow": {"release": bundle.name}, "run": {}}
+    if problems := run_diags(values, pending_finish=True):
+        raise refuse_all(problems)
+    text = settings_toml(values)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Write the complete file before publishing its name, without replacing a concurrent draft.
     with tempfile.TemporaryDirectory(dir=path.parent) as scratch:
@@ -2140,30 +2069,45 @@ def cmd_task(bundle, a):
         branch = "runweld/" + name
         branch_tip = r("rev-parse", "--verify", "-q", f"refs/heads/{branch}").stdout.strip()
         run_file = Path(run_path(plan))
+        finish = {key: value for key, value in (("how", a.finish_how), ("target", a.finish_target),
+                                                 ("delete_backups", a.delete_backups)) if value is not None}
+        target = finish.get("target")
+        if target is not None and (not single_line(target) or target.startswith("-") or r("check-ref-format", "refs/heads/" + target).returncode):
+            raise Refuse("run-bad-target", "invalid finish target branch", "choose a Git branch name")
         if row is None:
             if read_lock(project, bundle.parent.parent) != bundle.name:
                 raise ReleaseError(f"{project} does not lock {bundle.name}; run `runweld init` or use `runweld` without a release override")
-            _, config = read_project_config(project / ".runweld/config.toml")
-            base = a.base or config["finish"]["target"]
+            read_project_config(project / ".runweld/config.toml")
+            base = a.base or "HEAD"
             commit = r("rev-parse", "--verify", "-q", "--end-of-options", f"{base}^{{commit}}")
             if commit.returncode:
                 raise Refuse("unknown-ref", f"{base} is not a commit", "name a project base with --base")
             if branch_tip or any(os.path.lexists(p) for p in (plan, run_file, tree, artifacts)) or any(p.stem == name for p in inventory(project)):
                 raise Refuse("task-collision", f"task {name} conflicts with an existing plan, branch, or path", "choose a different task ID")
             row = {"base": commit.stdout.strip(), "branch": branch, "ready": False, "release": bundle.name}
+            row["finish"] = finish
             atomic_write(record_path, json.dumps(row).encode(), 0o600)
             row = task_lookup(project, name)
         elif (release := plan_release(plan) or read_lock(project, bundle.parent.parent)) != bundle.name:
             raise ReleaseError(f"this run selects {release}, not {bundle.name}; use `runweld` without a release override")
         elif a.base and r("rev-parse", "--verify", "-q", "--end-of-options", f"{a.base}^{{commit}}").stdout.strip() != row["base"]:
             raise Refuse("task-base", f"task {name} already started at {row['base']}", "omit --base to resume this task")
+        if "finish" in row and not run_file.exists():
+            if any(row["finish"].get(key) != value for key, value in finish.items()):
+                raise Refuse("task-finish", "the interrupted task has a reserved ending", "retry without finish flags, then edit the run file")
+            finish = row["finish"]
+        if finish and run_file.exists():
+            from runweld_release import read_data
+            recorded = read_data(run_file, tomllib.loads).get("finish", {})
+            if not isinstance(recorded, dict) or any(recorded.get(key) != value for key, value in finish.items()):
+                raise Refuse("task-finish", "this task already has a run file", f"edit [finish] in {run_file} and approve the run")
         if row["ready"]:
             state = load_state(plan)
             if not state or state["status"] != "merged":
                 ensure_task_tree(row, project)
         else:
             if not os.path.lexists(run_file):
-                snapshot_run(bundle, project, run_file)
+                snapshot_run(bundle, project, run_file, finish)
             plan_dir = plan.parent
             plan_dir.mkdir(parents=True, exist_ok=True)
             tree.parent.mkdir(parents=True, exist_ok=True)
@@ -2176,6 +2120,7 @@ def cmd_task(bundle, a):
                 add = r("worktree", "add", *(("-b", branch, str(tree), row["base"]) if not branch_tip else (str(tree), branch)))
                 if add.returncode:
                     raise Refuse("task-worktree", add.stderr.strip(), f"fix the Git error and retry `runweld task start {name}`")
+            row.pop("finish", None)
             row.update(ready=True, release=bundle.name)
             atomic_write(record_path, json.dumps({k: row[k] for k in ("base", "ready", "branch", "release")}).encode(), 0o600)
     if plan.is_file():
@@ -2200,7 +2145,7 @@ def cmd_task_setup(plan, *, implicit=False):
     if task is None:
         if implicit:
             return 0
-        raise Refuse("no-task", f"{md} is not a registered task plan", "use the legacy run's existing setup instructions")
+        raise Refuse("no-task", f"{md} is not a registered task plan", "start the task with `runweld task start ID`")
     artifacts = workflow_subdir(Path(task["artifacts"]))
     artifacts.mkdir(exist_ok=True, parents=True)
     with (artifacts / ".setup.lock").open("a") as lock:
@@ -2266,7 +2211,7 @@ def cmd_run(command, plan, as_json):
             f.write(text)
         print(f"run new: {path} (copied from {src})")
         return 0
-    v, probs = read_run(plan)
+    v, probs = read_run(plan, draft=command == "show")
     if command == "check":
         if probs:
             raise refuse_all(probs)
@@ -2358,7 +2303,7 @@ def summary_destinations(text):
 
 def read_summary(plan, path):
     fix = "write and present a summary of at most 350 words with a visible link such as `[Plan](<path to plan.md>)`"
-    source = archived_legacy_path(plan, path)
+    source = path
     text = read_required(source, "no-summary", fix)
     expected = os.path.realpath(plan_paths(plan)[0])
     if len(text.split()) > 350:
@@ -2370,94 +2315,11 @@ def read_summary(plan, path):
         if local and "\0" not in local:
             # Relative links start at the recorded summary pathname, not its symlink target.
             try:
-                if os.path.realpath(archived_legacy_path(plan, os.path.join(os.path.dirname(path), local)), strict=True) == expected:
+                if os.path.realpath(os.path.join(os.path.dirname(path), local), strict=True) == expected:
                     return text
             except OSError:
                 continue
     raise Refuse("bad-summary", f"{source} must link this plan and contain at most 350 words", fix)
-
-
-def archived_legacy_path(plan, path):
-    original = os.fspath(path)
-    if not os.path.isabs(original):
-        original = os.path.join(os.getcwd(), original)
-    md = project = archive = main = None
-    main_adopted = False
-
-    def owner_for(checkout):
-        nonlocal md, project, archive, main, main_adopted
-        if archive is None:
-            md = Path(plan_paths(plan)[0])
-            project = Path(plan_root(md))
-            archive = workflow_dir(project) / "legacy"
-            main = archive / "main"
-            main_adopted = main.is_symlink() and main.readlink() == project / LEGACY_DIR
-        owner = archive / legacy_key(project, checkout)
-        if owner == main:
-            return owner if main_adopted and not (project / LEGACY_DIR).is_symlink() else None
-        if not owner.is_symlink() and owner.is_dir():
-            return owner
-
-    # The retained directory acts as a mount at its old pathname, including on ascent through "..".
-    root = Path(os.sep)
-    directories = [(root, root, False)]
-    parts = original.split(os.sep)[::-1]
-    links = 0
-    traversed_history = False
-    while parts:
-        part = parts.pop()
-        logical, physical, retained = directories[-1]
-        if part in ("", "."):
-            continue
-        if part == "..":
-            if len(directories) > 1:
-                directories.pop()
-            continue
-        child = logical / part
-        if part == LEGACY_DIR and (owner := owner_for(logical)):
-            directories.append((child, owner, True))
-            traversed_history = True
-            continue
-        physical /= part
-        if physical.is_symlink() and not owner_for(child):
-            links += 1
-            if links > 40:
-                break
-            target = os.readlink(physical)
-            if os.path.isabs(target):
-                del directories[1:]
-            parts.extend(reversed(target.split(os.sep)))
-            continue
-        directories.append((child, physical, retained))
-        if traversed_history and parts and not physical.is_dir() and not owner_for(child):
-            physical = str(physical) + os.sep + os.sep.join(reversed(parts))
-            break
-    else:
-        _, physical, retained = directories[-1]
-
-    in_history = retained or (archive is not None and Path(physical).is_relative_to(archive))
-    if traversed_history or in_history:
-        def plan_from(workflow):
-            return md.is_relative_to(workflow) and LEGACY_DIR not in md.relative_to(workflow).parts
-
-        # The main archive alias resolves to the original directory for its plan and lock.
-        if (plan_from(archive) or (main_adopted and plan_from(Path(os.path.realpath(main))))
-                or (in_history and not os.path.exists(original) and os.path.isfile(physical))):
-            return str(physical)
-    return path
-
-
-def display_capture(plan, capture):
-    if capture and Path(capture).is_absolute():
-        try:
-            return archived_legacy_path(plan, capture)
-        except OSError:
-            pass  # A capture may be inline command output, not a pathname.
-    return capture
-
-
-def display_cycle(plan, cycle):
-    return {**cycle, "results": [{**r, "capture": display_capture(plan, r["capture"])} for r in cycle["results"]]}
 
 
 def consent_diags(plan, st, *, check_summary=True):
@@ -2707,25 +2569,26 @@ def stale_evidence(plan, st):
     return []
 
 
-WORKFLOW_STAGES = (
-    ("grill", "Grill (optional)"),
-    ("prototype", "Prototype (optional)"),
-    ("plan", "Plan"),
-    ("build", "Build"),
-    ("build-verification", "Build verification"),
-    ("judge", "Judge"),
-    ("human-review", "Human review"),
-    ("finish", "Finish"),
-)
+@cache
+def workflow_catalog():
+    from runweld_release import read_workflow
+    return read_workflow(Path(PACKAGE))
+
+
+def stage_after(stage, event):
+    return workflow_catalog()["stages"][stage]["next"][event]
 
 
 def workflow_view(plan, stage, actions, optional=None):
-    current = next(i for i, (key, _) in enumerate(WORKFLOW_STAGES) if key == stage)
-    states = [(optional or {}).get(key, "complete" if i < current or (i == current and not actions) else "current" if i == current else "upcoming")
-              for i, (key, _) in enumerate(WORKFLOW_STAGES)]
-    return {"plan": plan, "stage": stage,
-            "stages": [{"id": key, "label": label, "state": state} for (key, label), state in zip(WORKFLOW_STAGES, states)],
-            "actions": actions}
+    catalog = workflow_catalog()
+    stages = catalog["stages"]
+    current = catalog["order"].index(stage)
+    rows = []
+    for i, key in enumerate(catalog["order"]):
+        definition = stages[key]
+        state = (optional or {}).get(key, "complete" if i < current or (i == current and not actions) else "current" if i == current else "upcoming")
+        rows.append({"id": key, **definition, "state": state})
+    return {"plan": plan, "stage": stage, "stages": rows, "shared": catalog["shared"], "actions": actions}
 
 
 def workflow_action(owner, kind, action, **context):
@@ -2772,7 +2635,25 @@ def show_next(actions):
                 print(f"    {shlex.join(step['argv'])}")
 
 
-def cmd_workflow(as_json):
+def cmd_workflow(as_json, stage=None):
+    if stage is not None:
+        catalog = workflow_catalog()
+        if stage not in catalog["stages"]:
+            raise Refuse("unknown-stage", f"unknown workflow stage {stage!r}", "choose from " + ", ".join(catalog["stages"]))
+        definition = catalog["stages"][stage]
+        if as_json:
+            print(json.dumps({"id": stage, "shared": catalog["shared"], **definition}))
+        else:
+            print(definition["label"])
+            for path in catalog["shared"] + definition["inputs"]:
+                print(f"  {path}")
+            for role, path in definition.get("roles", {}).items():
+                print(f"  {role}: {path}")
+            for condition, dependency in definition.get("when", {}).items():
+                print(f"  {dependency['role']} for {condition}: {', '.join(dependency['inputs'])}")
+            for event, target in definition["next"].items():
+                print(f"  {event} -> {target}")
+        return 0
     action = (work_action("Planner", "Run `runweld task start ID` for new work, or `runweld status --current` to resume.", "planner", "task-entry")
               if standalone_bundle() else work_action(
                   "user and planner", "Discuss open decisions in a grill, or continue to planning. Offer an optional prototype before writing the plan.",
@@ -2920,6 +2801,7 @@ def verification_workflow(plan, st, c, tree, provider):
                                            input="evidence-exception"))
         else:
             add_brief_actions(actions, plan, st, provider, "judge", work_action("Coordinator", f"Issue `{judge}`.", "judge", "judge", cycle=label))
+            return stage_after("build-verification", "evidence_ready"), actions
     return "build-verification", actions
 
 
@@ -2941,7 +2823,7 @@ def finish_workflow(plan, st, tip):
     fin = st["run"]["finish"]
     if fin["how"] == "merge-request" and not remote_url(plan_root(plan_paths(plan)[0])):
         return "finish", [work_action("Coordinator", "Configure the request's `origin` remote before running `finish <plan>`.", "coordinator", "finish")]
-    return "finish", [run_action(plan, "Coordinator", f"Use `finish <plan>` for the approved ending, {fin['how']} into {fin['target']}.", "finish")]
+    return stage_after("human-review", "accepted"), [run_action(plan, "Coordinator", f"Use `finish <plan>` for the approved ending, {fin['how']} into {fin['target']}.", "finish")]
 
 
 def land_workflow(plan, st, tree, c, verdict, provider):
@@ -2989,7 +2871,7 @@ def land_workflow(plan, st, tree, c, verdict, provider):
                                                "plan status", "at the human gate")]
         acceptor = st["approvals"]["summary"]["acceptor"]
         page_path = plan_paths(plan)[0] + "#human-gate"
-        return "human-review", [workflow_action(acceptor, "ask", f"Review the current page at {page_path}. Record authorized approval with `accept <plan>`.",
+        return stage_after("judge", "landed"), [workflow_action(acceptor, "ask", f"Review the current page at {page_path}. Record authorized approval with `accept <plan>`.",
                                                 input="acceptance", page=page_path)]
     return finish_workflow(plan, st, land["tip"])
 
@@ -3024,8 +2906,8 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
         return "build-verification", [step]
     if not st.get("cycles"):
         if actions := build_actions(plan, st, ready, provider):
-            return "build", actions
-        return "build-verification", [run_action(plan, "Coordinator", "Open build verification with `gate start <plan>`.", "gate start")]
+            return stage_after("plan", "start_authorized"), actions
+        return stage_after("build", "phases_complete"), [run_action(plan, "Coordinator", "Open build verification with `gate start <plan>`.", "gate start")]
     c = cycle_of(st)
     round_ = (st.get("rounds") or [None])[-1]
     if round_ and not round_["done"]:
@@ -3044,8 +2926,8 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
             actions = []
             add_brief_actions(actions, plan, st, provider, "fix", work_action("Fix implementer",
                 f"Work from the fix {fix['n']} brief and record `fix report <plan>`.", "implementer", "fix", cycle=cycle_label(c), fix=fix["n"], items=fix["items"]))
-            return "build-verification", actions
-        return "build-verification", [run_action(plan, "Coordinator", f"Check fix {fix['n']}'s report and run `fix done <plan>`.", "fix done")]
+            return stage_after("build-verification", "repair"), actions
+        return stage_after("build-verification", "repair"), [run_action(plan, "Coordinator", f"Check fix {fix['n']}'s report and run `fix done <plan>`.", "fix done")]
     v = (st.get("verdicts") or [None])[-1]
     if not v or v["cycle"] != cycle_label(c):
         return verification_workflow(plan, st, c, tree, provider)
@@ -3095,8 +2977,7 @@ def summary(plan, st, head, tail=None, *, workflow=False, provider=None):
     consent = [] if st["status"] == "merged" else consent_diags(plan, st)
     cycles = []
     for c in st.get("cycles", []):
-        view = display_cycle(plan, c)
-        cycles.append({**view, "list": items(view)})
+        cycles.append({**c, "list": items(c)})
     out = {**{k: st.get(k) for k in ("title", "status", "branch", "base", "epic", "level", "phases", "history", "decisions")},
            "done": st.get("done", []), "verdicts": st.get("verdicts", []), "rounds": st.get("rounds", []), "notes": st.get("notes", []), "lands": st.get("lands", []), "land_stops": land_stops(st), "cycles": cycles, "plan": plan_slug(st), "ready": ready_phases(st), "tree": tree_fact(plan, st), "alloc": st.get("alloc"),
            "stale": stale_evidence(plan, st), "page": st.get("page"), "approvals": st.get("approvals", {}), "acceptance": st.get("acceptance"),
@@ -3234,7 +3115,7 @@ def show_status(s, st):
     print(f"{plan_slug(st)} — {st['title']}")
     print(f"Status: {st['status']} · branch `{st['branch']}` · base `{st['base']}`")
     if "release" in s:
-        print("Release: " + (s["release"] or "unversioned legacy run"))
+        print("Release: " + (s["release"] or "unversioned run"))
     t = s["tree"]
     print(f"Tree: {t}" + ("" if os.path.isdir(t) else " (gone)"))
     show_workflow(s["workflow"])
@@ -3609,7 +3490,9 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
            "Rules: " + (", ".join(x for x in (os.path.join(tree, "docs", "spec"), os.path.join(tree, "AGENTS.md")) if os.path.exists(x)) or "none"), ""]
     package = PACKAGE
     role = "implementer" if kind in ("implementer", "fix", "round") else kind
-    source = os.path.join(package, "skills", "verify", "SKILL.md") if role == "verify" else os.path.join(package, "agents", role + ".md")
+    stages = workflow_catalog()["stages"]
+    definition = next(stage for stage in stages.values() if role in stage.get("roles", {}))
+    source = os.path.join(package, definition["roles"][role])
     out += [f"Role: {role}", f"Role source: {source}", f"Protocol: {os.path.join(package, 'references', 'SESSIONS.md')}",
             f"Assignment: {kind}" + (f" phase {n}" if n is not None else ""),
             "Return contact: dispatching build coordinator; use native messages or the agreed result/artifact channel.", "",
@@ -3620,6 +3503,9 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
             "Read current CLI reports and Git facts before resuming; do not replay completed commands or duplicate reports. "
             "A replacement requires the old attempt and its write-capable jobs confirmed stopped; unknown or still-writing attempts block replacement. "
             "Only the coordinator advances phase/build/gate transitions; retain this role's prescribed reporting, verdict and land commands. Follow the protocol for questions, recovery and approval.", ""]
+    for condition, dependency in definition.get("when", {}).items():
+        if dependency["role"] == role:
+            out.append(f"For {condition}: " + ", ".join(os.path.join(package, path) for path in dependency["inputs"]))
     if provider is None and "executors" in st.get("run", {}):
         raise Refuse("provider-required", "a brief with executor presets requires --provider", "supply the current provider; no provider is inferred from a model")
     if provider is not None:
@@ -3696,7 +3582,7 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
             with writing(plan) as w:
                 w["verdicts"][-1]["answer"] = note
     if standalone_bundle() is not None:
-        out += ["", f"Run release: {plan_release(plan) or 'unversioned legacy run'}"]
+        out += ["", f"Run release: {plan_release(plan) or 'unversioned run'}"]
     if task := task_for(plan, root):
         out += [f"Task artifacts: {task['artifacts']}"]
     out += ["## Orchestrator's note", "", note or "none", ""]
@@ -3780,7 +3666,7 @@ def pending_check(st):
         return pending
     for c in reversed(st.get("cycles", [])):
         if (r := selected_run(c)) and not r.get("done", True):
-            return {"cycle": cycle_label(c), "legacy_pid": r.get("pid")}
+            return {"cycle": cycle_label(c), "coordinator_pid": r.get("pid")}
     return None
 
 
@@ -3796,7 +3682,7 @@ def check_ownership(plan, pending, *, claiming=False):
         except OSError:
             return "unknown", f"cannot inspect {check_lock_path(plan)}"
     if "id" not in pending:
-        return "unknown", f"legacy check record (coordinator PID {pending.get('legacy_pid') or 'unknown'}) lacks child ownership evidence"
+        return "unknown", f"incomplete check record (coordinator PID {pending.get('coordinator_pid') or 'unknown'}) lacks child ownership evidence"
     host = pending.get("host")
     if not host or host != check_host():
         return "unknown", f"the recorded process scope ({host or 'unknown'}) cannot be observed here"
@@ -4440,7 +4326,7 @@ def brief_cycle(st, kind, cli, md, tree, cases, review):
         sk = sorted({x for p in st["phases"] for x in p["skills"] if x != "none"})
         out += [f"## Fix {f['n']} takes", ""]
         for i in items_of(c, f["items"]):
-            capture = display_capture(md, i.get("capture"))
+            capture = i.get("capture")
             out.append(f"- {i['id']} " + (f"{i['where']} — " if i.get("where") else "") + i["text"] + (f" (capture: {capture})" if capture else ""))
             out += [f"    {l}" for l in i.get("tail", "").splitlines()]
         out += ["", "Skills to read first: " + (", ".join(skill_path(tree, x) for x in sk) or "none"), ""] + spec_entry_lines(md) + ["## Record", "", AS_PRINTED, "",
@@ -4858,7 +4744,7 @@ def brief_judge(plan, st, cli, md, note):
             out += show_run(run_, True)
         if asked:
             out += [f"Question asked: {asked['question']}", f"The user's answer: {answer}", ""]
-        out += show_cycle(display_cycle(plan, c), st)
+        out += show_cycle(c, st)
         out += ["Open:"] + [f"  {i['id']} " + (f"{i['where']} — " if i.get("where") else "") + i["text"] for i in items(c) if fate(c, i["id"]).startswith("open")]
         out += [f"Conventions: {', '.join(f['id'] for f in c['findings'] if f['kind'] == 'convention') or 'none'}",
                 "You check: " + (", ".join(str(d["n"]) for d in st.get("done", []) if human_case(c, d)) or "none")]
@@ -4871,7 +4757,7 @@ def brief_judge(plan, st, cli, md, note):
             out += [f"Question asked: {asked['question']}", f"The user's answer: {answer}", ""]
         if run_ := selected_run(c):
             out += show_run(run_, True)
-        out += show_cycle(display_cycle(plan, c), st)
+        out += show_cycle(c, st)
         out += ["Re-check verify: " + (e2e_text(st, r["n"]) or "no case to drive")]
     return out + [""], f"{slug}.brief-judge-{cycle_label(c)}.md"
 
@@ -4895,7 +4781,7 @@ def brief_round(plan, st, cli, md, tree):
 # -- land: the shape file, the rewrite, the tree check, the record
 
 LAND_STOPS = 2
-NOT_MINE = tuple(f":(exclude){name}" for name in (LEGACY_DIR, WORKFLOW_DIR))
+NOT_MINE = (f":(exclude){WORKFLOW_DIR}",)
 
 
 def shape_path(plan):
@@ -5040,7 +4926,7 @@ def do_land(plan, st, tree):
         tip = done[-1]["sha"]
         held = set(map(norm, (p for c in shape["commit"] for p in c["paths"])))
         dirty = dirty_lines(tree)
-        diff = {p for p in g("diff", "--name-only", "-z", backup, "HEAD").stdout.split("\0") if p and (p in held or not inside(p, [LEGACY_DIR, WORKFLOW_DIR]))} | {l[3:] for l in dirty}
+        diff = {p for p in g("diff", "--name-only", "-z", backup, "HEAD").stdout.split("\0") if p and (p in held or not inside(p, [WORKFLOW_DIR]))} | {l[3:] for l in dirty}
         stat = g("diff", "--stat", backup, "HEAD").stdout.rstrip() if diff else None
         new_stash = g("stash", "list").stdout.splitlines()
         left = new_stash[:len(new_stash) - len(stash)]
@@ -5242,7 +5128,7 @@ def gate_e2e(plan, st, flag):
             if r is None:
                 out.append(f"- {d['n']}. {d['text']} — " + ("you check" if mine else "no result"))
                 continue
-            capture = display_capture(plan, r["capture"])
+            capture = r["capture"]
             out.append(f"- {d['n']}. {r['do']} → {r['see']} — {r['outcome']}" + (f": {r['detail']}" if r["detail"] else "") + f" — {capture or '-'} — at `{(r.get('commit') or '-')[:7]}`{flag(r.get('commit'))}"
                        + (" — you check" if mine else ""))
     return out + [""]
@@ -5615,9 +5501,6 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
             init.add_argument(f"--{tier}-effort", help=f"{tier} effort identifier (optional)")
         init.add_argument("--phase-check", action="append", help="phase check command (repeatable)")
         init.add_argument("--full-check", action="append", help="full check command (repeatable)")
-        init.add_argument("--finish-how", help="ff-only, no-ff, or merge-request (default: ff-only)")
-        init.add_argument("--finish-target", help="integration branch (default: the source checkout's branch)")
-        init.add_argument("--delete-backups", action=argparse.BooleanOptionalAction, help="delete backups after finish (default: true)")
         init.add_argument("--port", action=argparse.BooleanOptionalAction, help="allocate a port per task (default: false)")
         init.add_argument("--data-dir", action=argparse.BooleanOptionalAction, help="allocate a data directory per task (default: false)")
         init.add_argument("--dev", help="optional development server command")
@@ -5644,7 +5527,10 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
             else:
                 task.add_argument("--json", action="store_true")
             if name == "start":
-                task.add_argument("--base", help="project base ref (defaults to the configured finish target)")
+                task.add_argument("--base", help="project base ref (default: source checkout HEAD)")
+                task.add_argument("--finish-how", choices=CHOICES["finish", "how"], help="agreed ending for this run")
+                task.add_argument("--finish-target", help="integration branch for this run")
+                task.add_argument("--delete-backups", action=argparse.BooleanOptionalAction, help="delete backups after this run finishes")
             if name == "resume":
                 task.add_argument("--provider", help="the current provider for executable brief commands")
     sp = top.add_parser("spec", prog=f"{p.prog} spec")
@@ -5666,6 +5552,7 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
                               "the plan file, any status; omit to list plans from building through passed")
     status_scope.add_argument("--current", action="store_true", help="show the steps for relevant plans from the current checkout")
     s = top.add_parser("workflow", help="show the workflow before there is a plan")
+    s.add_argument("--stage", help="show a stage's inputs, roles and transitions")
     s.add_argument("--json", action="store_true", help="print the workflow as JSON")
     pp = top.add_parser("plan", help="the plan's own status and base")
     psub = pp.add_subparsers(dest="command", required=True)
@@ -5679,7 +5566,7 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     bp = top.add_parser("build", help="the build as a whole")
     s = bp.add_subparsers(dest="command", required=True).add_parser(
         "start", help="cut the plan's branch at --base and set the plan to building")
-    s.add_argument("--base", required=not standalone, help="the ref the legacy branch starts at; a new runweld task already has a base")
+    s.add_argument("--base", required=not standalone, help="base ref for an unregistered plan; tasks already have a base")
     s.add_argument("--worktree", metavar="PATH", help="cut the branch in a new git worktree at PATH instead of here")
     s.add_argument("--branch", metavar="NAME", help="the branch to cut, when not the plan's Status line's")
     s.add_argument("--note", help="why")
@@ -5974,7 +5861,7 @@ def main(*, current_task=None):
         if a.group == "status":
             return cmd_status(a.plan, a.json, os.getcwd(), a.current, a.provider, current_task=current_task)
         if a.group == "workflow":
-            return cmd_workflow(a.json)
+            return cmd_workflow(a.json, a.stage)
         if a.group == "plan":
             return cmd_plan(a.command, a.plan, a.value, a.note)
         if a.group == "build":

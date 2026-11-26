@@ -49,11 +49,11 @@ Why: the row was forgotten in 3 of 5 runs
 
 - Under a throwaway epic, run `build start --base <tag>` → the branch starts at the tag, and Status reads `building` with the tag's SHA. The epic's row reads `building`, and `status` shows phase 1 as ready.
 
-### pre-5-1-adopted — Adopting a plan preserves progress without inferring run, summary or acceptance approvals
+### recover-plan-state — Adopting a plan preserves progress without inferring run, summary or acceptance approvals
 
 Why: historical progress is evidence rather than new authority
 
-- Read a completed old run and adopt an unfinished one → completed history is unchanged; unfinished progress survives, but missing new approvals are not inferred at protected transitions.
+- Read a completed run and adopt an unfinished one → completed history is unchanged; unfinished progress survives, but missing new approvals are not inferred at protected transitions.
 
 ### brief-carries-spec — An implementer's brief lists every `## Spec` entry of the plan with its ID and Done items
 
@@ -148,7 +148,7 @@ Why: CLI locking cannot prevent delayed old-worker reports or commits
 
 Why: a fresh coordinator needs to recover the route at any handoff
 
-- Enter with no plan, then view a draft with optional steps taken or skipped and a legacy plan missing that history → all eight stages are identifiable, optional history is honest, and neither inspection nor consent launches work.
+- Enter with no plan, then view a draft with optional steps taken or skipped and a plan with unrecorded stage history → all eight stages are identifiable, optional history is honest, and neither inspection nor consent launches work.
 - Open two independent phases and a dependent phase → the coordinator sees parallel owners and waits, each brief gives its territory, TDD and checks, and a configured check with no reported outcome keeps its phase open. Close the last phase → the output names gate start.
 - Resume an approved plan and a building plan from their relevant checkouts → CLI and hook agree on the plan, stage, owner and next action. With several plans each has its own path. A session unrelated to any run gets no unsolicited workflow.
 - Drive judge pass, land, human notes, an authorized round, renewed review and acceptance through configured finish → every handoff names the next role or wait, and merged is terminal. Open a fixture merge request → the guide shows the outstanding merge.

@@ -18,9 +18,9 @@ cd "$repo" || exit 1
 git init -q
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 git commit -q --allow-empty -m base
-mkdir -p .ai-workflow/plans
+mkdir -p .runweld/workflow/plans
 
-plan1=.ai-workflow/plans/2026-11-13-card-editor.md
+plan1=.runweld/workflow/plans/2026-11-13-card-editor.md
 cat > "$plan1" <<'P'
 # Plan: card editor
 
@@ -111,7 +111,7 @@ assert_contains "$arch" '## Out of scope
 
 # 2: change one rule, remove the other
 git add -A && git commit -q -m one
-plan2=.ai-workflow/plans/2026-11-14-save.md
+plan2=.runweld/workflow/plans/2026-11-14-save.md
 cat > "$plan2" <<'P'
 # Plan: save
 
@@ -180,7 +180,7 @@ assert_contains "$area" "### extra — Extra" "TC-3: the new rule" || fail "TC-3
 
 # 2b: ~ without Done keeps the scenarios
 git checkout -q -- docs; git clean -fdq docs
-plan3=.ai-workflow/plans/2026-11-15-reason.md
+plan3=.runweld/workflow/plans/2026-11-15-reason.md
 cat > "$plan3" <<'P'
 # Plan: reason
 
@@ -200,7 +200,7 @@ assert_contains "$area" "- Change a card, press" "TC-2b: scenarios stay" || fail
 git checkout -q -- docs; git clean -fdq docs
 
 # 4: problems, all at once, nothing written
-bad=.ai-workflow/plans/bad.md
+bad=.runweld/workflow/plans/bad.md
 cat > "$bad" <<'P'
 # Plan: bad
 
@@ -236,12 +236,12 @@ python3 "$spec" write "$bad" >/dev/null
 assert_exit 1 "TC-4: write fails too" || fail "TC-4 write"
 [ -z "$(git status --porcelain docs)" ] || fail "TC-4: write wrote on a failed check"
 
-printf '# P\n\n## Result\n\nr\n' > .ai-workflow/plans/nospec.md
-out=$(python3 "$spec" check .ai-workflow/plans/nospec.md)
+printf '# P\n\n## Result\n\nr\n' > .runweld/workflow/plans/nospec.md
+out=$(python3 "$spec" check .runweld/workflow/plans/nospec.md)
 assert_exit 1 "TC-4: no Spec section" || fail "TC-4 nospec"
 assert_contains "$out" "nospec.md:1: no \`## Spec\` section" "TC-4: missing section message" || fail "TC-4 nospec"
 
-none=.ai-workflow/plans/none.md
+none=.runweld/workflow/plans/none.md
 printf '# P\n\n## Spec\n\nnone\n' > "$none"
 python3 "$spec" check "$none"; assert_exit 0 "TC-4: none passes" || fail "TC-4 none"
 python3 "$spec" write "$none"; assert_exit 0 "TC-4: none writes" || fail "TC-4 none write"
@@ -250,7 +250,7 @@ python3 "$spec" write "$none"; assert_exit 0 "TC-4: none writes" || fail "TC-4 n
 # 1: from a subdirectory the base is the repo's, not the directory's
 git add -A && git commit -q -m two
 mkdir -p sub
-logplan=.ai-workflow/plans/log.md
+logplan=.runweld/workflow/plans/log.md
 printf '# L\n\n## Done\n\n1. x\n\n## Spec\n\n+ log — Log\n  About: the log\n+ log#r — R\n  Why: y\n  Done: 1\n' > "$logplan"
 (cd sub && python3 "$spec" write "../$logplan") || fail "TC-1b: write from a subdirectory"
 [ -f docs/spec/card-editor.md ] || fail "TC-1b: write from a subdirectory deleted an area file"
@@ -261,7 +261,7 @@ case "$out" in *"save-closes already exists"*) ;; *) fail "TC-1b: check from a s
 
 # the base named in the Status line, not HEAD
 older=$(git rev-parse HEAD~2)
-baseplan=.ai-workflow/plans/older.md
+baseplan=.runweld/workflow/plans/older.md
 printf '# B\n\nStatus: building · base `%s`\n\n## Done\n\n1. x\n\n## Spec\n\n+ card-editor — Card editor\n  About: the form\n' "$older" > "$baseplan"
 out=$(python3 "$spec" check "$baseplan"); assert_exit 1 "TC-6: the Status base is read, and it is stale" || fail "TC-6"
 assert_contains "$out" "after the base $older" "TC-6: names the Status base" || fail "TC-6: $out"
@@ -269,15 +269,15 @@ sed -i.bak 's/base `[^`]*`/base `HEAD`/' "$baseplan"; rm -f "$baseplan.bak"
 python3 "$spec" check "$baseplan" >/dev/null; assert_exit 1 "TC-6: HEAD has card-editor" || fail "TC-6 head"
 
 # an empty Spec, an empty Why, fenced headings, a second Spec
-e1=.ai-workflow/plans/empty.md
+e1=.runweld/workflow/plans/empty.md
 printf '# P\n\n## Spec\n\n## Result\n\nr\n' > "$e1"
 out=$(python3 "$spec" check "$e1"); assert_exit 1 "TC-7: empty Spec" || fail "TC-7"
 assert_contains "$out" "empty.md:3: the \`## Spec\` section is empty; write \`none\` when no rule changes" "TC-7: message" || fail "TC-7: $out"
-e2=.ai-workflow/plans/emptywhy.md
+e2=.runweld/workflow/plans/emptywhy.md
 printf '# P\n\n## Done\n\n1. x\n\n## Spec\n\n~ card-editor#save-closes — S\n  Why:\n' > "$e2"
 out=$(python3 "$spec" check "$e2"); assert_exit 1 "TC-8: empty Why" || fail "TC-8"
 assert_contains "$out" "emptywhy.md:9: card-editor#save-closes: Why: is empty" "TC-8: message" || fail "TC-8: $out"
-e3=.ai-workflow/plans/fenced.md
+e3=.runweld/workflow/plans/fenced.md
 cat > "$e3" <<'P'
 # P
 
@@ -302,7 +302,7 @@ assert_contains "$rec" "after" "TC-9: Approach keeps its tail" || fail "TC-9 tai
 assert_contains "$rec" "+ log — Log" "TC-9: the real Spec is archived" || fail "TC-9 spec"
 [ -f docs/spec/log.md ] || fail "TC-9: the real Spec applied"
 git checkout -q -- docs; git clean -fdq docs
-e4=.ai-workflow/plans/twice.md
+e4=.runweld/workflow/plans/twice.md
 printf '# P\n\n## Spec\n\n+ log — Log\n  About: the log\n\n## Spec\n\nnone\n' > "$e4"
 out=$(python3 "$spec" check "$e4"); assert_exit 1 "TC-9: a second Spec" || fail "TC-9b"
 assert_contains "$out" "twice.md:8: a second \`## Spec\` section" "TC-9: message" || fail "TC-9b: $out"

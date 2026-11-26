@@ -1,7 +1,5 @@
 # Worktrees and workflow paths
 
-## Installed runweld
-
 - Start new work with `runweld task start ID` before grill, reproduction or planning.
   Use its branch, base, tree, plan path and artifacts directory as printed.
   Repeating the ID keeps its tree and run settings. From a fresh tab use
@@ -21,14 +19,3 @@
 - Finish keeps private history. If integration succeeds and cleanup refuses a
   worktree with unsaved or ignored local files, keep those files or move them
   out, then rerun `runweld finish PLAN` for cleanup alone.
-
-## Legacy plugin runs
-
-Keep using the assigned checkout, CLI and absolute plan path. Keep new
-artifacts beside the run or under its checkout's ignored `.ai-workflow/`.
-
-`runweld init` exposes legacy history in `.runweld/workflow/legacy/`. Main checkout
-history stays put. Linked history moves to the archive, with a link at the old
-path so existing commands and locks keep working. Removing a linked checkout
-keeps its archive in `runweld status`. Move collisions aside and retry. Unversioned
-runs stay unversioned.

@@ -24,7 +24,7 @@ Show eight stages in order: optional grill, optional prototype, plan, build, bui
 ```text
 ## Done
 
-1. Enter with no plan, then view a draft with optional steps taken or skipped and a legacy plan missing that history → all eight stages are identifiable, optional history is honest, and neither inspection nor consent launches work.
+1. Enter with no plan, then view a draft with optional steps taken or skipped and a plan with unrecorded stage history → all eight stages are identifiable, optional history is honest, and neither inspection nor consent launches work.
 2. Open two independent phases and a dependent phase → the coordinator sees parallel owners and waits, each brief gives its territory, TDD and checks, and a configured check with no reported outcome keeps its phase open. Close the last phase → the output names gate start.
 3. Run a normal gate and finish a clean review → status distinguishes pending review from zero findings and names outstanding E2E cases. Retry review completion and submit an old range after a change → current evidence remains accurate.
 4. Change the tree after verification, then drive a fix and a targeted recheck → the required cases and reviewer are named, stale evidence cannot silently satisfy the judge, and existing explicit exceptions remain visible. On small, review remains required and the human sees the cases to try.

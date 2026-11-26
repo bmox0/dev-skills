@@ -11,8 +11,6 @@ sys.path.insert(0, str(store))
 
 
 CURRENT_STATUS = """
-import inspect
-import os
 from pathlib import Path
 import sys
 
@@ -22,13 +20,7 @@ sys.path.insert(0, str(Path(engine).parent))
 import pipeline
 
 sys.argv = [engine, *args]
-if "current_task" in inspect.signature(pipeline.main).parameters:
-    sys.exit(pipeline.main(current_task=selected))
-
-# Retained engines own their status format but cannot read unrelated newer records.
-pipeline.inventory = lambda root: [selected] if os.path.lexists(selected) else []
-pipeline.task_rows = lambda root: [task] if (task := pipeline.task_for(selected, root)) else []
-sys.exit(pipeline.main())
+sys.exit(pipeline.main(current_task=selected))
 """
 
 

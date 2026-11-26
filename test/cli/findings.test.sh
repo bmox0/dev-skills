@@ -15,13 +15,13 @@ repo=$(cd "$(mktemp_dir)" && pwd -P)
 cd "$repo" || exit 1
 git init -q
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-mkdir -p .ai-workflow/plans skills/tdd src
+mkdir -p .runweld/workflow/plans skills/tdd src
 touch skills/tdd/SKILL.md
 echo a > src/a.txt
 git add -A && git commit -q -m base
 git tag v0
 
-plan=$repo/.ai-workflow/plans/2026-11-16-f.md
+plan=$repo/.runweld/workflow/plans/2026-11-16-f.md
 cat > "$plan" <<'P'
 # Plan: f
 

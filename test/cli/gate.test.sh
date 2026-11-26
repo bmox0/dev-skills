@@ -15,13 +15,13 @@ repo=$(cd "$(mktemp_dir)" && pwd -P)
 cd "$repo" || exit 1
 git init -q
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-mkdir -p .ai-workflow/plans skills/tdd src lib outside
+mkdir -p .runweld/workflow/plans skills/tdd src lib outside
 touch skills/tdd/SKILL.md
 echo a > src/a.txt
 git add -A && git commit -q -m base
 git tag v0
 
-plan=$repo/.ai-workflow/plans/2026-11-16-g.md
+plan=$repo/.runweld/workflow/plans/2026-11-16-g.md
 cat > "$plan" <<'P'
 # Plan: g
 
@@ -148,5 +148,5 @@ PY
 # run show prints the allocation on its own
 out=$(cli run show "$plan")
 assert_contains "$out" "Port: 43" "run show prints the port" || exit 1
-assert_contains "$out" "Data dir: $repo/.ai-workflow/plans/2026-11-16-g.data" "run show prints the data directory" || exit 1
+assert_contains "$out" "Data dir: $repo/.runweld/workflow/plans/2026-11-16-g.data" "run show prints the data directory" || exit 1
 echo "gate.test.sh: ok"

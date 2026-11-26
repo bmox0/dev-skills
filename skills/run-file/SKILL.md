@@ -8,21 +8,17 @@ description: Write the run file a plan is built under — what the run may do, h
 Read shared `AGENTS.md` and the executor contract:
 [SESSIONS.md](../../references/SESSIONS.md).
 
-The run records agreed permissions, checks and ending. Use `runweld` as `CLI` for an
-installed workflow, or `python3 "<this skill's directory>/../build/pipeline.py"`
-for a legacy plugin run. The keys are in [example.run.toml](references/example.run.toml).
+The run records agreed permissions, checks and ending. Use `runweld` as
+`CLI`. See [example.run.toml](references/example.run.toml) for the fields.
 
-1. **Locate.** For runweld, use the plan path and companion run from
-   [task entry](../../references/WORKFLOW-PATHS.md). For legacy, choose a
-   branch and `.ai-workflow/plans/YYYY-MM-DD-<slug>.md` with branch `/` written `-`.
-2. **Snapshot.** A runweld task starts with the
+1. **Locate.** Use the plan path and companion run from
+   [task entry](../../references/WORKFLOW-PATHS.md).
+2. **Snapshot.** A task starts with the
    [project configuration](references/project-config.md) and locked release.
-   For legacy, `CLI run new <plan path>` copies the latest run or the
-   credential-free example with current AGENTS presets. Verify the pair with
-   `CLI executor show --provider <provider>`.
-3. **Ask once.** Send one message with the copied values (`CLI run show
-   <plan path>`). Ask what differs and add `[run]` keys for missing task needs, including
-   fixtures and accounts: E2E sets up only these keys. Apply the answers.
+   Verify the pair with `CLI executor show --provider <provider>`.
+3. **Agree the ending.** Read the draft. Record the user's local merge method or
+   merge request and target in `[finish]`. Ask once for missing choices and
+   task-specific fixtures or accounts. Keep choices already given.
 4. **Secrets.** For each new secret, in the step 3 message when an answer
    brings it, ask: written directly, or as `keychain:<service>/<account>`, which
    stays as written.

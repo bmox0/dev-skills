@@ -24,12 +24,12 @@ with tempfile.TemporaryDirectory(prefix='consent repo ') as directory:
     git('init', '-q', '-b', 'main')
     git('config', 'user.name', 'Test')
     git('config', 'user.email', 'test@example.org')
-    (root / '.ai-workflow/plans').mkdir(parents=True)
+    (root / '.runweld/workflow/plans').mkdir(parents=True)
     (root / 'src').mkdir()
     (root / 'src/a').write_text('base\n')
     git('add', 'src')
     git('commit', '-qm', 'base')
-    plan = root / '.ai-workflow/plans/2026-11-17-consent.md'
+    plan = root / '.runweld/workflow/plans/2026-11-17-consent.md'
     plan.write_text('''# Plan: consent
 
 Status: draft · branch `consent` · base `<sha>`
@@ -126,7 +126,7 @@ delete_backups = false
     # planning#summary-before-build, run#required-to-approve
     epic = plan.parent.parent / 'epic.md'
     epic.write_text('# Epic\n\n## Plans\n\n| # | Plan | Waits for | Status |\n|---|---|---|---|\n| 1 | Consent | — | |\n')
-    plan.write_text(plan.read_text().replace('Prototype: none', 'Epic: .ai-workflow/epic.md · row 1\nPrototype: none'))
+    plan.write_text(plan.read_text().replace('Prototype: none', 'Epic: .runweld/workflow/epic.md · row 1\nPrototype: none'))
     cli('approve', plan)
     assert state()['status'] == 'draft', 'validation must not grant consent'
     run.write_text(run.read_text().replace('delete_backups = false', 'delete_backups = true'))
@@ -155,7 +155,7 @@ delete_backups = false
     elsewhere.mkdir()
     adjacent = summary
     summary = elsewhere / adjacent.name
-    for target in (f'../.ai-workflow/plans/{plan.name}#result "Details"', f'<{plan}>', quote(str(plan))):
+    for target in (f'../.runweld/workflow/plans/{plan.name}#result "Details"', f'<{plan}>', quote(str(plan))):
         summary.write_text(f'Build [this plan]({target}).\n')
         approve_summary()
     for alias, destination in (
@@ -341,9 +341,9 @@ delete_backups = false
     unchanged('plan', 'status', plan, 'passed', code='no-page')
     guide = '\n\n#### Checks\n\n- —\n\n#### Decisions\n\n- —'
     bound_land = compiled.read_bytes()
-    legacy_land = state()
-    del legacy_land['lands'][-1]['judge']
-    compiled.write_text(json.dumps(legacy_land))
+    unbound_land = state()
+    del unbound_land['lands'][-1]['judge']
+    compiled.write_text(json.dumps(unbound_land))
     unchanged('page', plan, '--guide', 'Try CLI.' + guide, code='judge-stale')
     compiled.write_bytes(bound_land)
     cli('page', plan, '--guide', 'Try CLI.' + guide)

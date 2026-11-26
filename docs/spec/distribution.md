@@ -23,7 +23,8 @@ Why: a new harness needs only one lightweight entry skill to use the same proces
 Why: collaborators must share reproducible rules and preserve ongoing work across updates.
 
 - Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
-- Change only the reviewer instructions, install the new build and update the project → the release ID and reviewer digest change, every other component digest stays the same, and a new task refuses a lock with an edited digest.
+- Change only the reviewer instructions, install the new build and update the project → the release ID, reviewer digest and consuming stage digests change, other components stay pinned, and a new task refuses a lock with an edited digest.
+- Change only the interview guide and update → only grill changes in the stage list; its inputs name the changed file. Inspect build verification → its conditional web/Electron tools include browser-test.
 - Install releases A and B, start a run on A and call `runweld update --project` → the project lock moves to B, new work uses B, and the active run and its briefs still use A. An unavailable or damaged release gives an actionable error and leaves the prior lock or run intact.
 
 ### local-workflow — Shared project configuration and private workflow artifacts have distinct Git visibility
@@ -31,4 +32,4 @@ Why: collaborators must share reproducible rules and preserve ongoing work acros
 Why: a clone reuses project settings while execution records and evidence stay local.
 
 - Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
-- Adopt a legacy checkout with historical and active runs, compiled approvals, an issued command and a linked worktree → the command still works, inventory finds each run once, recorded approvals and evidence survive, and retrying migration preserves all files. Git ignores plans, evidence and scratch files under `.runweld/workflow/`. The project can track `.runweld/config.toml`, `.runweld/runweld.lock` and its specs.
+- Start a task in an initialized checkout → Git ignores its plan, worktree and evidence under `.runweld/workflow/`. The project can track its config, lock and specs.

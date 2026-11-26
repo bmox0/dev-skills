@@ -68,12 +68,13 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'Provider' in output and 'scripts/test old' in output and 'touch must-not-run-at-init' in output
     assert not (project / 'must-not-run-at-init').exists()
     profiles = {'GPT': {'primary': {'model': 'codex-main', 'effort': 'high'}, 'secondary': {'model': 'codex-helper'}}}
+    assert 'finish' not in read(config)
     assert read(config)['executors'] == profiles
     assert read(config)['checks'] == {'phase': ['scripts/lint'], 'full': ['scripts/lint', 'scripts/test old']}
     assert read(config)['isolation']['worktree'] is True
     assert read(config)['setup'] == {'command': 'touch must-not-run-at-init'}
     pins = read(lock)
-    assert pins['version'] == 1 and pins['release'] == release
+    assert pins['lock_version'] == 2 and pins['release'] == release
     assert set(pins['roles']) == {'implementer', 'reviewer', 'judge'}
     assert {'plan', 'build', 'review'} <= pins['skills'].keys()
     assert {'claude', 'codex', 'qoder'} <= pins['adapters'].keys()
@@ -129,7 +130,7 @@ with tempfile.TemporaryDirectory() as folder:
     plans = project / '.runweld/workflow/plans'
     plans.mkdir(parents=True)
     first = plans / 'first.md'
-    runweld('task', 'start', 'first')
+    runweld('task', 'start', 'first', '--finish-how', 'ff-only', '--finish-target', 'main')
     first.write_text(f'''# Plan: First
 
 Status: draft · branch `runweld/first` · base `{git('rev-parse', 'HEAD')}`
@@ -170,6 +171,10 @@ none
     first_values = first.with_suffix('.run.toml')
     with first_values.open('a') as f:
         f.write('credential = "keychain:example/private"\n')
+    agreed = first_values.read_bytes()
+    first_values.write_bytes(agreed.replace(b'how = "ff-only"\n', b''))
+    assert '[finish] how is missing' in runweld('approve', first, ok=False)
+    first_values.write_bytes(agreed)
     runweld('approve', first)
     runweld('run', 'approve', first, '--by', 'User', '--words', 'Approve first run')
     clone = home / 'Claude clone'
@@ -201,6 +206,9 @@ none
     second = plans / 'second.md'
     runweld('task', 'start', 'second')
     snapshot = read(second.with_suffix('.run.toml'))
+    assert snapshot['finish'] == {'delete_backups': True}
+    assert json.loads(runweld('run', 'show', second, '--json'))['run']['finish'] == snapshot['finish']
+    assert '[finish] how is missing' in runweld('run', 'check', second, ok=False)
     assert snapshot['checks']['full'] == ['scripts/lint', 'scripts/test new']
     assert snapshot['executors'] == profiles and snapshot['setup'] == read(config)['setup']
     assert snapshot['workflow'] == {'release': release} and snapshot['run'] == {}
@@ -227,13 +235,20 @@ none
     (explicit / '.gitignore').write_text('/.runweld/\n')
     runweld('init', '--provider', 'Other provider', '--primary-model', 'opaque model', '--secondary-model', 'other model',
        '--phase-check', 'lint -- arg', '--full-check', 'test one', '--full-check', 'test two',
-       '--finish-how', 'no-ff', '--finish-target', 'stable', '--no-delete-backups',
        '--port', '--data-dir', '--dev', 'serve {port} {data_dir}', '--url', 'http://localhost:{port}',
        '--non-interactive', cwd=explicit)
     direct = read(explicit / '.runweld/config.toml')
     assert direct['checks'] == {'phase': ['lint -- arg'], 'full': ['test one', 'test two'],
                                 'dev': 'serve {port} {data_dir}', 'url': 'http://localhost:{port}'}
-    assert direct['finish'] == {'how': 'no-ff', 'target': 'stable', 'delete_backups': False}
+    assert 'finish' not in direct
+    git('commit', '--allow-empty', '-qm', 'base', cwd=explicit)
+    runweld('task', 'start', 'local', '--finish-how', 'no-ff', '--finish-target', 'trunk', '--no-delete-backups', cwd=explicit)
+    runweld('task', 'start', 'request', '--finish-how', 'merge-request', '--finish-target', 'trunk', cwd=explicit)
+    runs = explicit / '.runweld/workflow/plans'
+    assert read(runs / 'local.run.toml')['finish'] == {'how': 'no-ff', 'target': 'trunk', 'delete_backups': False}
+    assert read(runs / 'request.run.toml')['finish']['how'] == 'merge-request'
+    assert 'already has a run file' in runweld('task', 'start', 'local', '--finish-how', 'merge-request', cwd=explicit, ok=False)
+    assert 'finish' not in read(explicit / '.runweld/config.toml')
     assert direct['isolation'] == {'worktree': True, 'port': True, 'data_dir': True}
     assert 'setup' not in direct
     git('check-ignore', '.runweld/config.toml', cwd=explicit, ok=False)

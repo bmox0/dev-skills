@@ -40,6 +40,6 @@ assert 'Dispatch a fresh secondary worker' not in verify, 'build#worker-role-bou
 # run#executor-presets: discovery comes from supplied catalogues; profiles stay literal and local.
 plan = (root / 'skills/plan/SKILL.md').read_text()
 assert '.claude/skills/' not in plan and '.agents/skills/' not in plan
-requires(protocol, ('literal', 'project-root', 'AGENTS.md', 'frozen', 'unsupported'), 'run#executor-presets')
+requires(protocol, ('literal', '.runweld/config.toml', 'AGENTS.md', 'frozen', 'unsupported'), 'run#executor-presets')
 PY
 echo ok

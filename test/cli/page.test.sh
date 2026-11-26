@@ -17,12 +17,12 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q -b main
-  mkdir -p .ai-workflow/plans skills/tdd src
+  mkdir -p .runweld/workflow/plans skills/tdd src
   touch skills/tdd/SKILL.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
   git tag v0
-  plan=$repo/.ai-workflow/plans/2026-11-16-l.md
+  plan=$repo/.runweld/workflow/plans/2026-11-16-l.md
   cat > "$plan" <<'P'
 # Plan: l
 
@@ -270,7 +270,7 @@ newrepo
 land1
 input="${plan%.md}.guide.md"
 example="$repo_root/skills/build/references/example.guide.md"
-output="$repo/.ai-workflow/printed-guide"
+output="$repo/.runweld/workflow/printed-guide"
 render() { cli page "$plan" --guide-file "$input" --message "feat: guide"; }
 st="${plan%.md}.json"
 unchanged=$(git hash-object "$plan" "$st")
@@ -325,7 +325,7 @@ complete_review "$plan" || fail "complete normal review"
 cli verdict pass "$plan" --report "normal" --decide D1 let-through "The human can defer this" --predicted pass --engine fixture >/dev/null || fail "normal judge"
 land1
 input="${plan%.md}.guide.md"
-output="$repo/.ai-workflow/printed-guide"
+output="$repo/.runweld/workflow/printed-guide"
 st="${plan%.md}.json"
 unchanged=$(git hash-object "$plan" "$st")
 sed '/\*\*Done 2\*\*/d' "$example" > "$input"
@@ -383,7 +383,7 @@ assert_contains "$(cat "$plan")" "Historical instructions." "the historical note
 newrepo pass small zero
 land1
 input="${plan%.md}.guide.md"
-output="$repo/.ai-workflow/printed-guide"
+output="$repo/.runweld/workflow/printed-guide"
 cat > "$input" <<'GUIDE'
 Откройте `src/a.txt` в рабочей копии.
 

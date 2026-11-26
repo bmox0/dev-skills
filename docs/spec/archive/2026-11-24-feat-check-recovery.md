@@ -17,7 +17,7 @@ Examples of individual JSON actions, from different points in a run:
 ```
 
 ```json
-{"owner":"Coordinator","kind":"run","action":"Resume the open fix.","argv":["/usr/bin/python3","/work/dev skills/skills/build/pipeline.py","fix","done","/work/dev skills/.ai-workflow/plans/demo.md"]}
+{"owner":"Coordinator","kind":"run","action":"Resume the open fix.","argv":["/usr/bin/python3","/work/dev skills/skills/build/pipeline.py","fix","done","/work/dev skills/.runweld/workflow/plans/demo.md"]}
 ```
 
 ```json

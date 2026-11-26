@@ -14,7 +14,7 @@ sys.dont_write_bytecode = True
 source = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(source / "skills/build"))
 
-from runweld_release import MANIFEST, PROGRAM, ReleaseError, atomic_write, manifest_bytes, release_id, verify_release
+from runweld_release import MANIFEST, PROGRAM, ReleaseError, atomic_write, manifest_bytes, read_workflow, release_id, verify_release
 
 
 def main():
@@ -50,6 +50,7 @@ def main():
         manifest = manifest_bytes(stage, version)
         for file in (*stage.rglob("*.py"), stage / "bin/runweld"):
             compile(file.read_bytes(), str(file.relative_to(stage)), "exec")
+        read_workflow(stage, json.loads(manifest)["files"])
         release = release_id(version, manifest)
         final = releases / release
         try:

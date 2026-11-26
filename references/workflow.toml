@@ -1,0 +1,67 @@
+# Paths are relative to the release. Every stage uses the shared instructions.
+order = ["grill", "prototype", "plan", "build", "build-verification", "judge", "human-review", "finish"]
+shared = ["references/SESSIONS.md", "references/WORKFLOW-PATHS.md"]
+
+[stages.grill]
+label = "Grill (optional)"
+next = { prototype_requested = "prototype", ready_to_plan = "plan" }
+inputs = ["skills/grill/SKILL.md", "skills/grill/references/INTERVIEW.md", "skills/spec/references/FORMAT.md",
+          "skills/domain-modeling/SKILL.md", "skills/domain-modeling/references/ADR-FORMAT.md", "skills/domain-modeling/references/CONTEXT-FORMAT.md"]
+
+[stages.prototype]
+label = "Prototype (optional)"
+next = { ready_to_plan = "plan" }
+inputs = ["skills/prototype/SKILL.md", "skills/prototype/references/LOGIC.md", "skills/prototype/references/UI.md"]
+
+[stages.plan]
+label = "Plan"
+next = { start_authorized = "build" }
+inputs = [
+  "skills/plan/SKILL.md", "skills/plan/references/example.md", "skills/plan/references/resume.example.md",
+  "skills/plan/references/environment-contract.md", "skills/run-file/SKILL.md",
+  "skills/run-file/references/project-config.md", "skills/run-file/references/example.run.toml",
+  "skills/spec/references/FORMAT.md", "skills/build/references/gate.md",
+]
+
+[stages.build]
+label = "Build"
+next = { phases_complete = "build-verification" }
+inputs = ["skills/build/SKILL.md", "skills/tdd/SKILL.md", "skills/build/references/rounds.md"]
+
+[stages.build.roles]
+implementer = "agents/implementer.md"
+
+[stages.build-verification]
+label = "Build verification"
+next = { repair = "build-verification", evidence_ready = "judge" }
+inputs = [
+  "skills/build/SKILL.md", "skills/build/references/gate.md", "skills/build/references/rounds.md",
+  "skills/review/SKILL.md", "skills/review/references/CRITERIA.md", "agents/implementer.md", "skills/tdd/SKILL.md",
+]
+[stages.build-verification.roles]
+reviewer = "agents/reviewer.md"
+verify = "skills/verify/SKILL.md"
+[stages.build-verification.when.web-or-electron]
+role = "verify"
+inputs = ["skills/browser-test/SKILL.md", "skills/browser-test/tab.mjs", "skills/browser-test/references/WEBSOCKETS.md"]
+
+[stages.judge]
+label = "Judge"
+next = { round = "build", evidence_owed = "build-verification", landed = "human-review" }
+inputs = [
+  "skills/build/SKILL.md", "skills/build/references/judge.md", "skills/build/references/gate.md",
+  "skills/land/SKILL.md", "skills/commit-work/SKILL.md", "skills/commit-work/references/commit-message-template.md",
+]
+
+[stages.judge.roles]
+judge = "agents/judge.md"
+
+[stages.human-review]
+label = "Human review"
+next = { round_authorized = "build", accepted = "finish" }
+inputs = ["skills/build/SKILL.md", "skills/build/references/human-guide.md", "skills/build/references/example.guide.md", "skills/build/references/rounds.md"]
+
+[stages.finish]
+label = "Finish"
+next = {}
+inputs = ["skills/finish/SKILL.md"]

@@ -34,7 +34,7 @@ Skills currently assume Claude models, herdr and an original-session controller;
 7. Attempt passed, request-link or merged shortcuts without required current judge, land, page or acceptance records → refused without state or target changes; supported request-link recording still works after a valid finish flow.
 8. Complete phases, gate, judge, land, page and authorized acceptance, including a feedback round → ff-only finish uses the agreed ending and retains backups; existing judge dispositions and explicit land-hook exceptions remain visible and supported.
 9. Change the branch tree or approved planning content after a page/acceptance → stale stages are identified; passed and finish refuse until the required evidence and acceptance are current.
-10. Read a completed old run and adopt an unfinished one → completed history is unchanged; unfinished progress survives, but missing new approvals are not inferred at protected transitions.
+10. Read a completed run and adopt an unfinished one → completed history is unchanged; unfinished progress survives, but missing new approvals are not inferred at protected transitions.
 11. Read every core skill, role and generated brief → shared rules come from AGENTS; planning, build coordination, first review and judge use primary; helpers, code, E2E and rechecks use secondary; no fixed provider/model or herdr-only requirement remains.
 
 ## Spec
@@ -65,7 +65,7 @@ Skills currently assume Claude models, herdr and an original-session controller;
 ~ build#act-with-a-reason — Recorded operational overrides preserve judgment but cannot manufacture missing approval, judge, land or page stages
   Why: discretion does not authorize skipping the workflow
   Done: 7, 8
-~ build#pre-5-1-adopted — Adopting a plan preserves progress without inferring run, summary or acceptance approvals
+~ build#recover-plan-state — Adopting a plan preserves progress without inferring run, summary or acceptance approvals
   Why: historical progress is evidence rather than new authority
   Done: 10
 ~ build#judge-after-every-round — Every round ends with a primary judge before land and acceptance

@@ -21,7 +21,7 @@ Land:
 
 The page:
 
-- Once a land is recorded, `## Human gate` is code's: every render redraws it from the records, and a hand edit is drift. A plan with no land record keeps its section as written: plans before 5.1, and this epic's plans built by 5.0.2.
+- Once a land is recorded, `## Human gate` is code's: every render redraws it from the records, and a hand edit is drift. A plan with no land record keeps its section as written.
 - `page --note "<how to try it>" [--message "<…>"]` records the note and the merge message or request title, and sets `at the human gate`. It is refused before a land, and without a message when the run ends in `no-ff` or a merge request. The page names the ending, so the user's word at the gate approves it and finish asks nothing.
 - Build's order stays, with the note and the ending first; Decided without you includes deviations' `--note`s, and Open holds what is undecided, let through, survived its fix or not reached, the last verdict's report without the Prediction, and any stop; an item a fix or round closed shows once, under that fix or round. Labels are code's, in English as in the notes file; every text keeps its author's words.
 - A result, check run or verdict taken on a tree other than the tip's is flagged with its commit; one on the pre-land head is not. A record with no commit is flagged as unknown. Each flag names the paths changed between that tree and the tip's; whether a change touched a case stays the reader's call.

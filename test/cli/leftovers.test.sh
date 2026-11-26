@@ -17,12 +17,12 @@ newrepo() {
   repo=$(cd "$(mktemp_dir)" && pwd -P)
   cd "$repo" || exit 1
   git init -q
-  mkdir -p .ai-workflow/plans skills/tdd src
+  mkdir -p .runweld/workflow/plans skills/tdd src
   touch skills/tdd/SKILL.md
   echo a > src/a.txt
   git add -A && git commit -q -m base
   git tag v0
-  plan=$repo/.ai-workflow/plans/2026-11-16-l.md
+  plan=$repo/.runweld/workflow/plans/2026-11-16-l.md
   cat > "$plan" <<'P'
 # Plan: l
 
@@ -154,9 +154,9 @@ cli round done "$plan" >/dev/null || fail "round done"
 
 # run#isolated: two build starts at once pick two ports; a merged plan gets none
 repo=$(cd "$(mktemp_dir)" && pwd -P); cd "$repo" || exit 1
-git init -q; mkdir -p .ai-workflow/plans src; echo a > src/a.txt; git add -A; git commit -q -m base; git tag v0
+git init -q; mkdir -p .runweld/workflow/plans src; echo a > src/a.txt; git add -A; git commit -q -m base; git tag v0
 for x in a b; do
-  cat > .ai-workflow/plans/2026-11-16-$x.md <<P
+  cat > .runweld/workflow/plans/2026-11-16-$x.md <<P
 # Plan: $x
 
 Status: draft · branch \`$x\` · base \`<sha>\`
@@ -200,16 +200,16 @@ Waits for: nothing
   Why: a test
   Done: 1
 P
-  cp "$repo_root/skills/run-file/references/example.run.toml" .ai-workflow/plans/2026-11-16-$x.run.toml
-  approve_plan .ai-workflow/plans/2026-11-16-$x.md >/dev/null || fail "approve $x"
+  cp "$repo_root/skills/run-file/references/example.run.toml" .runweld/workflow/plans/2026-11-16-$x.run.toml
+  approve_plan .runweld/workflow/plans/2026-11-16-$x.md >/dev/null || fail "approve $x"
 done
-cli build start --base v0 --worktree "$repo/wa" .ai-workflow/plans/2026-11-16-a.md >/dev/null &
+cli build start --base v0 --worktree "$repo/wa" .runweld/workflow/plans/2026-11-16-a.md >/dev/null &
 p1=$!
-cli build start --base v0 --worktree "$repo/wb" .ai-workflow/plans/2026-11-16-b.md >/dev/null &
+cli build start --base v0 --worktree "$repo/wb" .runweld/workflow/plans/2026-11-16-b.md >/dev/null &
 p2=$!
 wait "$p1"; wait "$p2"
-pa=$(python3 -c 'import json; print(json.load(open(".ai-workflow/plans/2026-11-16-a.json"))["alloc"]["port"])')
-pb=$(python3 -c 'import json; print(json.load(open(".ai-workflow/plans/2026-11-16-b.json"))["alloc"]["port"])')
+pa=$(python3 -c 'import json; print(json.load(open(".runweld/workflow/plans/2026-11-16-a.json"))["alloc"]["port"])')
+pb=$(python3 -c 'import json; print(json.load(open(".runweld/workflow/plans/2026-11-16-b.json"))["alloc"]["port"])')
 [ -n "$pa" ] && [ "$pa" != "$pb" ] || fail "two plans started at once get two ports: $pa $pb"
 
 newrepo '"true"' false

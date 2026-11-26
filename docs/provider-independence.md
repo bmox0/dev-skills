@@ -42,7 +42,7 @@ only `QODER_PLUGIN_ROOT`, Python exited 2 trying to open `/hooks/advise.py`.
 
 The existing hook tests call the Python handler directly, so they did not cover
 this launcher failure. The worker retained a red test patch locally as
-`.ai-workflow/plans/2026-11-18-qoder-portability.red.patch`; source files were
+`2026-11-18-qoder-portability.red.patch`; source files were
 left unchanged.
 
 This minimal reproducer reads the actual declared command. Run from the
@@ -548,7 +548,6 @@ No installation, account configuration or implementation changes were made for
 this investigation. The user's separate Qoder installation is not treated as a
 passing runtime test.
 
-Detailed secondary-worker notes are retained locally under the git-ignored
-`.ai-workflow/research/2026-11-18-provider-independence/`. This document preserves
+Detailed secondary-worker notes are kept in the local research directory. This document preserves
 the reasoning, corrections, accepted boundary and primary sources independently
 of those disposable local notes.

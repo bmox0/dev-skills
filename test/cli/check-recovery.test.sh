@@ -15,8 +15,8 @@ git init -q
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 git -c commit.gpgsign=false commit --allow-empty -qm base
 git tag v0
-mkdir -p .ai-workflow/plans
-plan="$(pwd -P)/.ai-workflow/plans/2026-11-24-recovery.md"
+mkdir -p .runweld/workflow/plans
+plan="$(pwd -P)/.runweld/workflow/plans/2026-11-24-recovery.md"
 cat > "$plan" <<'PLAN'
 # Plan: Recovery
 
@@ -56,7 +56,7 @@ Waits for: nothing
 
 none
 PLAN
-sed 's|^full = .*$|full = ["echo started >> .ai-workflow/suite-starts", "python3 .ai-workflow/controlled-check.py"]|' \
+sed 's|^full = .*$|full = ["echo started >> .runweld/workflow/suite-starts", "python3 .runweld/workflow/controlled-check.py"]|' \
   "$repo_root/skills/run-file/references/example.run.toml" > "${plan%.md}.run.toml"
 approve_plan "$plan" >/dev/null
 cli build start "$plan" --base v0 >/dev/null

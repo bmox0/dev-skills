@@ -4,7 +4,7 @@ A worked example: the territories and commands are made up. It passes `pipeline.
 
 Status: approved · branch `feat/shortcut-rebinding` · base `a1b2c3d`
 Grill: done
-Prototype: `.ai-workflow/prototypes/2026-09-26-settings-shortcuts.html`, variant B
+Prototype: `.runweld/workflow/prototypes/2026-09-26-settings-shortcuts.html`, variant B
 
 ## Result
 

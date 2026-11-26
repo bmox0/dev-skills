@@ -5,10 +5,8 @@ are optional advice and confer no approval. Always run prescribed CLI checks.
 
 ## Select executors
 
-`CLI` is `runweld` or, for legacy, `python3 "<build skill directory>/pipeline.py"`.
-`CLI executor show --provider NAME` reads project configuration (legacy:
-literal project-root AGENTS Executors). Add `PLAN` for the frozen snapshot.
-Request missing profiles.
+`CLI` is `runweld`. `CLI executor show --provider NAME` reads literal model
+and effort values from `.runweld/config.toml`. Add `PLAN` for the frozen snapshot. Request missing profiles.
 
 Planning, coordination, first review (including small gates) and judges use
 primary. Helpers, prototypes, implementation, fixes, verify/E2E, rechecks and

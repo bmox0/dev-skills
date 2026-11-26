@@ -16,11 +16,12 @@ RELEASE = re.compile(rf"{VERSION}@[0-9a-f]{{64}}")
 TASK_ID = re.compile(r"[a-z0-9][a-z0-9-]*")
 MANIFEST = "release.json"
 PROGRAM = Path("skills/build/pipeline.py")
+WORKFLOW = "references/workflow.toml"
 INSTRUCTIONS = "scripts/word-budgets.txt"
 GUIDE_SKILLS = ("grill", "prototype", "run-file", "plan", "build", "review", "verify", "land", "finish",
                 "bug", "epic", "handoff", "retro", "spec", "domain-modeling", "tdd", "browser-test", "commit-work")
 ROLES = ("implementer", "reviewer", "judge")
-REQUIRED = {str(PROGRAM), INSTRUCTIONS, "bin/runweld", "runweld/SKILL.md", "skills/build/runweld_release.py",
+REQUIRED = {str(PROGRAM), WORKFLOW, INSTRUCTIONS, "bin/runweld", "runweld/SKILL.md", "skills/build/runweld_release.py",
             *(f"skills/build/_marko/{name}.py" for name in ("__init__", "block", "element", "helpers", "inline",
                                                          "inline_parser", "parser", "patterns", "source")),
             "skills/browser-test/tab.mjs", "skills/run-file/references/example.run.toml",
@@ -122,10 +123,10 @@ def verify_release(store, release):
     root = store / "releases" / release
     expected = release_manifest(root, release)
     try:
-        actual = json.loads(manifest_bytes(root, expected["version"]))
-        if expected != actual:
-            changed = next(p for p in sorted(expected["files"].keys() | actual["files"].keys())
-                           if expected["files"].get(p) != actual["files"].get(p))
+        files = expected["files"]
+        actual = release_files(root)
+        if files != actual:
+            changed = next(p for p in sorted(files.keys() | actual.keys()) if files.get(p) != actual.get(p))
             raise ValueError(f"damaged release resource {changed}")
     except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
         raise ReleaseError(f"{release} at {root}: {error}; install this exact release from its source") from None
@@ -211,6 +212,48 @@ def component_key(path):
     return "resources", parts[0]
 
 
+def read_workflow(root, files=None):
+    def check_paths(items):
+        if not isinstance(items, list) or not all(isinstance(p, str) for p in items):
+            raise ValueError("expected a list of release paths")
+        if files is not None and (missing := set(items) - files.keys()):
+            raise ValueError(f"missing stage inputs: {', '.join(sorted(missing))}")
+
+    catalog = read_data(root / WORKFLOW, tomllib.loads)
+    try:
+        if set(catalog) != {"order", "shared", "stages"}:
+            raise ValueError("expected order, shared inputs and stages")
+        stages = catalog["stages"]
+        events = {"grill": {"prototype_requested", "ready_to_plan"}, "prototype": {"ready_to_plan"},
+                  "plan": {"start_authorized"}, "build": {"phases_complete"},
+                  "build-verification": {"repair", "evidence_ready"}, "judge": {"round", "evidence_owed", "landed"},
+                  "human-review": {"round_authorized", "accepted"}, "finish": set()}
+        if set(stages) != events.keys():
+            raise ValueError("unexpected stage IDs")
+        if not isinstance(catalog["order"], list) or len(catalog["order"]) != len(stages) or set(catalog["order"]) != stages.keys():
+            raise ValueError("order must contain each stage once")
+        check_paths(catalog["shared"])
+        assignments = {"build": {"implementer"}, "build-verification": {"reviewer", "verify"}, "judge": {"judge"}}
+        for key, stage in stages.items():
+            if set(stage) - {"label", "inputs", "next", "roles", "when"} or not isinstance(stage["label"], str):
+                raise ValueError(f"invalid stage definition for {key}")
+            transitions = stage["next"]
+            if set(transitions) != events[key] or set(transitions.values()) - stages.keys():
+                raise ValueError(f"invalid transition in {key}")
+            check_paths(stage["inputs"])
+            roles = stage.get("roles", {})
+            if set(roles) != assignments.get(key, set()):
+                raise ValueError(f"missing or unknown roles in {key}")
+            check_paths(list(roles.values()))
+            for dependency in stage.get("when", {}).values():
+                if dependency["role"] not in roles:
+                    raise ValueError(f"unknown conditional tool owner in {key}")
+                check_paths(dependency["inputs"])
+    except (AttributeError, KeyError, TypeError, ValueError) as error:
+        raise ReleaseError(f"invalid {root / WORKFLOW}: {error}") from None
+    return catalog
+
+
 def project_lock(bundle):
     release = bundle.name
     manifest = release_manifest(bundle, release)
@@ -218,12 +261,32 @@ def project_lock(bundle):
     for path, entry in manifest["files"].items():
         section, name = component_key(path)
         groups.setdefault(section, {}).setdefault(name, {})[path] = entry
-    lines = ["version = 1", f'release = "{release}"']
+    catalog = read_workflow(bundle, manifest["files"])
+    lines = ["lock_version = 2", f'release = "{release}"', "stage_order = " + json.dumps(catalog["order"])]
     for section, components in sorted(groups.items()):
         lines.extend(["", f"[{section}]"])
         for name, entries in sorted(components.items()):
             digest = hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()
             lines.append(f'{json.dumps(name)} = "sha256:{digest}"')
+    for key in catalog["order"]:
+        stage = catalog["stages"][key]
+        inputs = catalog["shared"] + stage["inputs"] + list(stage.get("roles", {}).values())
+        for dependency in stage.get("when", {}).values():
+            inputs.extend(dependency["inputs"])
+        entries = {path: manifest["files"][path] for path in sorted(set(inputs))}
+        digest = hashlib.sha256(json.dumps([stage, catalog["shared"], entries], sort_keys=True).encode()).hexdigest()
+        lines.extend(["", f"[stages.{key}]", "label = " + json.dumps(stage["label"]), f'digest = "sha256:{digest}"'])
+        for event, target in stage["next"].items():
+            lines.append(f"next.{json.dumps(event)} = " + json.dumps(target))
+        for name, dependency in stage.get("when", {}).items():
+            prefix = "when." + json.dumps(name)
+            lines.extend([prefix + ".role = " + json.dumps(dependency["role"]),
+                          prefix + ".inputs = " + json.dumps(dependency["inputs"])])
+        for role, path in stage.get("roles", {}).items():
+            lines.append(f"roles.{json.dumps(role)} = " + json.dumps(path))
+        lines.append(f"[stages.{key}.inputs]")
+        for path, (checksum, _) in entries.items():
+            lines.append(f'{json.dumps(path)} = "sha256:{checksum}"')
     return "\n".join(lines) + "\n"
 
 
@@ -235,8 +298,8 @@ def read_lock(project, store):
     release = value.get("release")
     if not valid_release(release):
         raise ReleaseError(f"{path} needs one exact release ID as `release = \"…\"`; run `runweld update --project RELEASE` or restore the lock")
-    if type(value.get("version")) is not int or value["version"] != 1:
-        raise ReleaseError(f"{path} needs lock format 1; run `runweld update --project` or restore the lock")
+    if type(value.get("lock_version")) is not int or value["lock_version"] != 2:
+        raise ReleaseError(f"{path} needs a supported lock format; run `runweld update --project` or restore the lock")
     expected = tomllib.loads(project_lock(store / "releases" / release))
     if expected != value:
         raise ReleaseError(f"{path} does not match the components of {release}; run `runweld update --project {release}` or restore the lock")
@@ -269,12 +332,12 @@ def read_task_record(path):
     value = read_data(path, json.loads)
     if value is None and not path.exists():
         return None
-    fields = {"base", "ready", "branch"}
-    # Retained engines expect the three-field record to stay unchanged.
-    if (not isinstance(value, dict) or set(value) not in (fields, fields | {"release"}) or
+    fields = {"base", "ready", "branch", "release"}
+    if (not isinstance(value, dict) or set(value) not in (fields, fields | {"finish"}) or
             not isinstance(value["base"], str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["base"]) or
             type(value["ready"]) is not bool or value["branch"] != "runweld/" + path.stem or
-            ("release" in value and not valid_release(value["release"]))):
+            not valid_release(value["release"]) or
+            ("finish" in value and (value["ready"] or not isinstance(value["finish"], dict)))):
         raise ReleaseError(f"{path} has an invalid task record; restore the task record from a known-good copy")
     return value
 
@@ -286,9 +349,9 @@ def registered_task(plan):
 
 def task_pin(pin, task, path):
     if task is not None:
-        recorded = task.get("release")
-        if pin is None or (recorded is not None and pin != recorded):
-            expected = f" {recorded}" if recorded else ""
+        recorded = task["release"]
+        if pin != recorded:
+            expected = f" {recorded}"
             raise ReleaseError(f"{path} must retain the task's original [workflow].release{expected}; restore the run file or snapshot")
     elif pin is not None:
         raise ReleaseError(f"{path} pins a release without a registered task; use `runweld task start ID` and the returned plan path")

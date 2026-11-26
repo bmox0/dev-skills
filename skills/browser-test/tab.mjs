@@ -12,7 +12,7 @@ function artifactDirectory() {
   const artifacts = process.env.RUNWELD_ARTIFACTS
   if (artifacts) return path.join(artifacts, "browser-test")
   const bundle = path.resolve(path.dirname(HERE), "../..")
-  if (!existsSync(path.join(bundle, "release.json"))) return path.resolve(".ai-workflow", "browser-test")
+  if (!existsSync(path.join(bundle, "release.json"))) return path.resolve(".runweld", "workflow", "browser-test")
   try {
     const branch = execFileSync("git", ["branch", "--show-current"], {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim()
     const task = branch.match(/^runweld\/([a-z0-9][a-z0-9-]*)$/)?.[1]

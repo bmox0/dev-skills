@@ -9,7 +9,7 @@ import time
 
 pipeline, plan = sys.argv[1:]
 cli = [sys.executable, pipeline]
-control = Path(".ai-workflow")
+control = Path(".runweld/workflow")
 started = control / "started"
 suite_starts = control / "suite-starts"
 hold = control / "hold"
@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-control = Path(".ai-workflow")
+control = Path(".runweld/workflow")
 if len(sys.argv) > 1:
     (control / "nested").write_text(str(os.getpid()))
     while (control / "hold").exists():
@@ -116,10 +116,10 @@ try:
     state_path.write_text(json.dumps(foreign))
     assert action()["kind"] == "ask" and action()["input"] == "check-ownership", action()
     assert "unobservable process scope" in call("gate", "start", code=1)
-    legacy = state()
-    del legacy["check_transition"]
-    legacy["cycles"][0]["runs"][0]["pid"] = os.getpid()
-    state_path.write_text(json.dumps(legacy))
+    incomplete = state()
+    del incomplete["check_transition"]
+    incomplete["cycles"][0]["runs"][0]["pid"] = os.getpid()
+    state_path.write_text(json.dumps(incomplete))
     assert action()["kind"] == "ask" and "lacks child ownership evidence" in action()["action"], action()
     assert "checks-owner-unknown" in call("gate", "start", code=1)
     state_path.write_text(original)

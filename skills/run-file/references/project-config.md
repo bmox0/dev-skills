@@ -20,7 +20,8 @@ edit `.runweld/config.toml` to change them for future runs. `runweld update --pr
 the release for new runs. For a previous run, `runweld help agents --plan PLAN`
 opens its release's instructions.
 
-Every runweld task uses a dedicated worktree. Planning does not run setup.
+Set the finish method and target per task, at entry or in its run file before approval.
+Every task uses a dedicated worktree.
 Set `[setup].command` to an existing preparation command if needed. It runs
 in the task tree and receives `RUNWELD_SOURCE_CHECKOUT`, `RUNWELD_TASK_PATH`, `RUNWELD_PLAN`,
 `RUNWELD_WORKFLOW`, `RUNWELD_ARTIFACTS`, and `RUNWELD_PORT` / `RUNWELD_DATA_DIR` when allocated.
