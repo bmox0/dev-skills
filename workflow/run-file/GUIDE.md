@@ -15,7 +15,9 @@ The run records agreed permissions, checks and ending. Use `runweld` as
    [task entry](../../references/WORKFLOW-PATHS.md).
 2. **Snapshot.** A task starts with the
    [project configuration](references/project-config.md) and locked release.
-   Verify the pair with `CLI executor show --provider <provider>`.
+   Only the initiating provider's pair is recorded.
+   `CLI task start ID --provider NAME` adds a missing pair without replacing
+   recorded presets. Verify with `CLI executor show --provider NAME PLAN`.
 3. **Agree the ending.** Read the draft. Record the human's local merge method or
    merge request and target in `[finish]`. Ask once for missing choices and
    task-specific fixtures or accounts. Keep choices already given.
@@ -23,6 +25,11 @@ The run records agreed permissions, checks and ending. Use `runweld` as
    brings it, ask: written directly, or as `keychain:<service>/<account>`, which
    stays as written.
 5. **Check.** `CLI run check <plan path>` until it is silent: the file is done.
+
+Before compiling, set `[route]` preferences for `grill` and `prototype`.
+`"take"` requires the stage, `"skip"` bypasses an unstarted stage, and
+`"ask"` keeps the choice interactive. Omitted keys use the pinned release's
+defaults. Discovery records and mandatory gates stay intact.
 
 The planner presents this configuration together with the complete plan using
 `CLI plan review <plan>`. One human approval binds both at the displayed

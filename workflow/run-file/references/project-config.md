@@ -19,7 +19,10 @@ Commit `.runweld/config.toml`, `.runweld/runweld.lock`, `AGENTS.md` and
 `.gitignore`. Rerun init to add a provider. Edit the config to change defaults.
 `runweld update --project` changes the release for new runs.
 
-Choose the finish method and target in each task before approval.
+Choose the finish method and target in each task before approval. Set
+`[route]` only in the companion run file, not in project configuration.
+Each new task records the initiating provider's pair. A provider joining
+later adds its own pair without updating project defaults.
 `[setup].command` runs
 in the task tree and receives `RUNWELD_SOURCE_CHECKOUT`, `RUNWELD_TASK_PATH`, `RUNWELD_PLAN`,
 `RUNWELD_WORKFLOW`, `RUNWELD_ARTIFACTS`, and `RUNWELD_PORT` / `RUNWELD_DATA_DIR` when allocated.

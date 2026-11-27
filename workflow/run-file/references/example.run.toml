@@ -1,12 +1,18 @@
 # Runweld writes [workflow] version and digest from the selected release.
-# Shared checks and executors come from .runweld/config.toml. Choose [finish]
-# per run. The dev command, URL and isolation resources are optional.
+# Shared checks and the initiating provider's pair come from .runweld/config.toml.
+# Choose [finish] per run. The dev command, URL and isolation resources are optional.
+# Join with task start ID --provider NAME to add another provider's pair.
 # Each provider has this shape:
 # [executors."PROVIDER".primary]
 # model = "model identifier"
 # effort = "optional effort"
 # [executors."PROVIDER".secondary]
 # model = "model identifier"
+
+# Optional per-run discovery. Missing keys use the pinned release's defaults.
+# [route]
+# grill = "skip"              # ask | take | skip
+# prototype = "take"          # ask | take | skip
 
 [finish]
 how = "merge-request"        # merge-request | ff-only | no-ff

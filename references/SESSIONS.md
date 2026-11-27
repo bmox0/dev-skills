@@ -5,7 +5,7 @@
 ## Select executors
 
 `CLI` is `runweld`. `CLI executor show --provider NAME` reads literal profiles
-from `.runweld/config.toml`. Add `PLAN` for the frozen snapshot.
+from `.runweld/config.toml`. Add `PLAN` for recorded or frozen profiles.
 
 Planning, coordination, first review (including small gates) and judges use
 primary. Helpers, prototypes, implementation, fixes, verify/E2E, rechecks and

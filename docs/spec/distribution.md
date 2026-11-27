@@ -18,14 +18,12 @@ Why: a new terminal or agent needs a discoverable path through the entire task
 - Start on release A, select B for new tasks, resume the first from a fresh session. Commands and roles resolve on this machine to the task's release. A second task uses B.
 - Give a fresh agent only the instruction to run next mid-task. Ask it to explain the goal, what has been decided, what evidence justifies the current action, who owns it and what will unlock the next step. Compare its answers with the saved records and observe it continue from the resulting report or human decision
 
-### project-lock — The project locks the workflow release and `runweld update --project` changes that selection for new work
+### project-lock — The project lock selects an exact verified release for new work and existing runs retain their release
 
-Why: collaborators must share reproducible rules and preserve ongoing work across updates.
+Why: release contents already carry their integrity metadata and task changes must stay local
 
-- Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
-- Change only the reviewer instructions, install the new build and update the project → the release ID, reviewer digest and consuming stage digests change, other components stay pinned, and a new task refuses a lock with an edited digest.
-- Change only the interview guide and update → only grill changes in the stage list; its inputs name the changed file. Inspect build verification → its conditional web/Electron tools include browser-test.
-- Install releases A and B, start a run on A and call `runweld update --project` → the project lock moves to B, new work uses B, and the active run and its briefs still use A. An unavailable or damaged release gives an actionable error and leaves the prior lock or run intact.
+- Initialize and update a test project. Its new lock contains only format and release, an existing v2 project opens, older runs retain their pinned engine, and an altered package still fails verification.
+- Configure two runs from one project to take different optional stages. Resume each in a fresh process and follow its selected route; compare project config and lock byte for byte before and after. Existing runs with no preference keep working.
 
 ### local-workflow — Shared project configuration and private workflow artifacts have distinct Git visibility
 
@@ -39,3 +37,17 @@ Why: a clone reuses project settings while execution records and evidence stay l
 Why: humans can browse runs and retain evidence after the working tree is removed
 
 - Create two tasks. Choose explicitly in the main checkout and resume by worktree. Retry across a date boundary. Each task has one dated plan directory holding its artifacts through finish.
+
+### task-outcome — The owner can complete or cancel a task at its current stage and inspect the preserved result
+
+Why: a task can reach its goal before Git integration or stop on its owner's decision
+
+- Complete a disposable 7.2.0 task at Plan with an accepted Prototype artifact. A fresh CLI shows completed at Plan, opens the saved prototype, and omits the task from suggested work. History and release pin survive.
+- Cancel a task with a compiled plan and reopen its status. The cancelled outcome and actual stage survive; another closure cannot overwrite it, and a stale workflow command cannot advance it. The branch and evidence remain accessible.
+
+### command-help — Root, group and command help let an agent discover an operation, carry it out and verify the result
+
+Why: a fresh agent needs accurate examples, effects and next steps directly in the terminal
+
+- Read root help outside a project, find a task action, and invoke both help spellings. The text agrees, explains authorization and effects, gives a usable example, and shows how to check the outcome. An unknown command path gives a helpful usage error.
+- Open the bare plan guide, its command help, and help agents for a selected run. Each produces the intended instructions; the root examples and grouped command names correspond to the shipped CLI.

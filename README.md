@@ -35,6 +35,9 @@ For updates, use `runweld update --cli` to install the latest CLI from `main`. U
 
 In your project’s Git checkout, run `runweld help agents` and `runweld next`. On first use, follow the prompt to run `runweld init`. Choose your models and project checks, then commit the shared configuration. [Project setup](workflow/run-file/references/project-config.md)
 
+Use `runweld --help` to find a command and `runweld help task start` or
+`runweld task start --help` for its requirements and examples. [Terminal help](docs/cli.md#find-a-command)
+
 ### Start a task
 
 Start in the repository:

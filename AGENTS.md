@@ -18,7 +18,8 @@ a browser or a server
 The current provider selects its own pair. Planning, coordination, the
 first review of a range (including a small gate) and every judge use primary. Helpers, implementation,
 E2E, fixes, rounds and rechecks use secondary. Provider and model names are
-opaque identifiers; effort is optional. New runs snapshot every provider here.
+opaque identifiers and effort is optional. A task records only the initiating
+provider's pair. Other providers add their own pair when they join.
 Apply the selected model and effort explicitly to each dispatch; never infer
 a role from an inherited model. Shared handoff and acceptance rules:
 [SESSIONS.md](references/SESSIONS.md). Host adapters import shared rules.

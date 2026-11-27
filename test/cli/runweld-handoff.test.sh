@@ -89,27 +89,24 @@ with tempfile.TemporaryDirectory() as folder:
     finally:
         os.close(master)
         os.close(slave)
-    updated = tomllib.loads(lock.read_text())
-    original = tomllib.loads(before.decode())
-    assert updated['release'] == latest
-    assert updated['guides']['grill'] != original['guides']['grill']
-    grill, previous = updated['stages']['grill'], original['stages']['grill']
-    assert grill['digest'] != previous['digest']
-    assert [path for path in grill['inputs'] if grill['inputs'][path] != previous['inputs'][path]] == ['workflow/grill/references/INTERVIEW.md']
-    assert all(updated['stages'][key] == stage for key, stage in original['stages'].items() if key != 'grill')
-    assert updated['roles'] == original['roles']
-    assert 'workflow/browser-test/tab.mjs' in updated['stages']['build-verification']['when']['web-or-electron']['inputs']
+    def manifest_files(release_id):
+        return json.loads((prefix / "lib/runweld/releases" / release_id / "release.json").read_text())["files"]
+
+    def changed_files(old, new):
+        before, after = map(manifest_files, (old, new))
+        return {path for path in before.keys() | after.keys() if before.get(path) != after.get(path)}
+
+    assert tomllib.loads(lock.read_text()) == {"lock_version": 3, "release": latest}
+    assert changed_files(release, latest) == {"workflow/grill/references/INTERVIEW.md"}
     shared_path = 'references/SESSIONS.md'
     with (upstream / shared_path).open('a') as f:
         f.write('\nShared protocol fixture\n')
     run("git", "commit", "-qam", "change session protocol", cwd=upstream)
     subprocess.run([cli, "update", "--cli"], cwd=locked, env=bootstrap_env, check=True, timeout=30)
     run(cli, "update", "--project", cwd=locked)
-    shared = tomllib.loads(lock.read_text())
-    for key, stage in updated['stages'].items():
-        changed = shared['stages'][key]
-        assert stage['digest'] != changed['digest']
-        assert [p for p in stage['inputs'] if stage['inputs'][p] != changed['inputs'][p]] == [shared_path]
+    shared_release = (prefix / "lib/runweld/default").read_text().strip()
+    assert tomllib.loads(lock.read_text()) == {"lock_version": 3, "release": shared_release}
+    assert changed_files(latest, shared_release) == {shared_path}
     nested = locked / "src"
     nested.mkdir()
     run(cli, "update", "--project", release, cwd=nested)
@@ -180,10 +177,10 @@ with tempfile.TemporaryDirectory() as folder:
         entry = json.loads(run(cli, "workflow", "--json", cwd=project))
         definition = json.loads(run(cli, "workflow", "--stage", "build-verification", "--json", cwd=project))
         assert definition["when"]["web-or-electron"]["role"] == "verify"
-        assert definition["when"] == updated["stages"]["build-verification"]["when"]
+        assert "workflow/browser-test/tab.mjs" in definition["when"]["web-or-electron"]["inputs"]
         assert entry["actions"][0]["assignment"]["kind"] == "task-entry"
         slug = provider.lower() + "-message"
-        task = json.loads(run(cli, "task", "start", slug, "--goal", f"Print a {provider} greeting.",
+        task = json.loads(run(cli, "task", "start", slug, "--provider", provider, "--goal", f"Print a {provider} greeting.",
                               "--finish-how", "ff-only", "--finish-target", "main", "--json", cwd=project))
         plan, tree = map(Path, (task["plan"], task["tree"]))
         assert task["release"] == release
@@ -370,17 +367,18 @@ none
         assert not any(x.get("role") == "judge" for x in actions())
         report("reviewer", ("review", "complete"))
         # distribution#system-cli: resume a release A repair after the project has selected release B.
-        run(cli, "update", "--project", shared["release"], cwd=project)
-        assert shared["release"] in run(cli, "help", "agents", cwd=project)
+        run(cli, "update", "--project", shared_release, cwd=project)
+        assert shared_release in run(cli, "help", "agents", cwd=project)
         assert any("Greeting contains an extra line" in fact for fact in view(compare=True)["evidence"])
-        another = json.loads(run(cli, "task", "start", "release-b-check", "--goal", "Use the new release", "--json", cwd=project))
+        another = json.loads(run(cli, "task", "start", "release-b-check", "--provider", provider,
+                                 "--goal", "Use the new release", "--json", cwd=project))
         scope = inspect(project)
-        assert {task["id"]: task["release"] for task in scope["tasks"]} == {slug: release, "release-b-check": shared["release"]}
+        assert {task["id"]: task["release"] for task in scope["tasks"]} == {slug: release, "release-b-check": shared_release}
         resume, = (step for step in scope["actions"] if step.get("argv", [])[-2:] == ["next", slug])
         assert json.loads(follow(resume, "--json")) == view()
         second = inspect(another["tree"])
         new_grill = second["actions"][0]["assignment"]["instructions"][0]
-        assert new_grill[1:4] == [str(cli), "--release", shared["release"]]
+        assert new_grill[1:4] == [str(cli), "--release", shared_release]
         assert "Global update fixture" in run(*new_grill, cwd=another["tree"])
         assert "Next:" in advertised("fix", "start")
         brief("implementer", "secondary", "fix")

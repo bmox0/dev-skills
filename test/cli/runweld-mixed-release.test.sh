@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+unset CODEX_THREAD_ID CLAUDECODE
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$repo_root/test/lib/harness.sh"
@@ -11,18 +12,29 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER
 cli() { "$launcher" "$@"; }
 
 # Two releases share the store; each task executes its pinned engine.
-preceding="$sandbox/release-a"
-mkdir "$sandbox/project with spaces" "$preceding"
-cp -R "$repo_root/." "$preceding/"
-printf '\nRelease A fixture.\n' >> "$preceding/README.md"
+mkdir "$sandbox/project with spaces"
+if [[ -n "${RUNWELD_TEST_LEGACY_BUNDLE:-}" ]]; then
+  preceding="$RUNWELD_TEST_LEGACY_BUNDLE"
+else
+  preceding="$sandbox/release-a"
+  mkdir "$preceding"
+  cp -R "$repo_root/." "$preceding/"
+  sed -e '/^project_lock_version = /d' -e '/^\[route\]$/,/^$/d' "$repo_root/references/workflow.toml" > "$preceding/references/workflow.toml"
+  sed 's/Close a task whose/Previous help for a task whose/g' "$repo_root/workflow/build/cli_help.py" > "$preceding/workflow/build/cli_help.py"
+fi
 launcher="$sandbox/bin/runweld"
 "$preceding/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 a=$(cat "$sandbox/lib/runweld/default")
+if [[ -n "${RUNWELD_TEST_LEGACY_BUNDLE:-}" ]]; then
+  assert_eq "${preceding##*/}" "$a"
+fi
 bundle="$sandbox/lib/runweld/releases/$a"
 cd "$sandbox/project with spaces"
 git init -qb main
 git commit --allow-empty -qm base
 cli init --non-interactive --provider Test --primary-model main --secondary-model helper >/dev/null
+cp .runweld/runweld.lock "$sandbox/v2.lock"
+assert_contains "$(cat "$sandbox/v2.lock")" 'lock_version = 2' 'distribution#project-lock: a preceding release uses v2'
 previous=(previous-draft previous-active previous-plan previous-repair)
 for id in "${previous[@]}"; do
   entry=$(cli task start "$id" --finish-how ff-only --finish-target main --json)
@@ -101,6 +113,11 @@ record_status() {
 check_status() {
   local id="$1" expected="$2" format="$3" stream
   record_status "$id" "$sandbox/$id.$format.actual" "$format" cli
+  if [[ "$id" == previous-repair && -n "${RUNWELD_TEST_LEGACY_BUNDLE:-}" ]]; then
+    assert_eq 0 "$(cat "$sandbox/$id.$format.actual.code")"
+    assert_contains "$(cat "$sandbox/$id.$format.actual.out")" 'not-compiled' 'The current launcher diagnoses missing legacy state'
+    return
+  fi
   for stream in code out err; do
     if ! diff -u "$expected.$stream" "$sandbox/$id.$format.actual.$stream"; then
       echo "distribution#project-lock run#task-worktree: $id $format $stream differs from pinned native scoped inventory" >&2
@@ -128,9 +145,24 @@ cp "$sandbox/active.md" "$plan"
 
 "$repo_root/scripts/install-runweld" --prefix "$sandbox" >/dev/null
 launcher="$sandbox/bin/runweld"
+assert_contains "$(cli help agents)" "$a" 'distribution#project-lock: the new launcher opens a v2 project'
+# distribution#command-help: both closure help forms use the current handler on a v2 lock.
+for action in complete cancel; do
+  cli task "$action" --help > "$sandbox/closure-help"
+  assert_contains "$(cat "$sandbox/closure-help")" '--reason' 'distribution#command-help: closure help describes the required reason'
+  cli help task "$action" > "$sandbox/closure-topic"
+  cmp "$sandbox/closure-help" "$sandbox/closure-topic"
+done
+cmp .runweld/runweld.lock "$sandbox/v2.lock"
+cli update --project "$a" >/dev/null
+cmp .runweld/runweld.lock "$sandbox/v2.lock"
+cli init --non-interactive --provider Test >/dev/null
+cmp .runweld/runweld.lock "$sandbox/v2.lock"
 cli update --project >/dev/null
 b=$(cat "$sandbox/lib/runweld/default")
 [[ "$a" != "$b" ]]
+assert_eq "lock_version = 3
+release = \"$b\"" "$(cat .runweld/runweld.lock)" 'distribution#project-lock: updating to a current release writes only the format and release'
 current_entry=$(cli task start current --finish-how ff-only --finish-target main --json)
 same_plan=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"])' <<< "$current_entry")
 cp .runweld/runweld.lock "$sandbox/lock"
@@ -184,7 +216,10 @@ for id in rows:
         assert row['status'] == 'draft' and row['nostate'] and row['ready'] == [] and row['state_repair'] is None
         assert any(action['kind'] == 'run' and action['argv'][-4:] == ['--release', a, 'approve', row['path']] for action in steps)
     elif id == 'previous-repair':
-        restore = f"restore {Path(row['path']).with_suffix('.json')}"
+        missing = str(Path(row['path']).with_suffix('.json'))
+        restore = f"restore {missing}"
+        assert row['status'] == 'stopped' and row['reason'] == {'code': 'not-compiled', 'path': missing}
+        assert row['workflow']['stage'] is None
         assert row['nostate'] and row['ready'] == [] and row['state_repair'] == restore
         action, = steps
         assert action['assignment']['kind'] == 'repair-file' and action['action'] == restore

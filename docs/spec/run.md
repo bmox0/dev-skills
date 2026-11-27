@@ -49,13 +49,11 @@ Why: nothing pulls the user in mid-run
 
 - Run `runweld verify` on a plan whose use case needs a login its run file lacks → that case is `not reached: needs <the login>`, and the dev server it starts uses the run's port
 
-### executor-presets — Project configuration supplies named primary and secondary presets and an approved run freezes its profiles
+### executor-presets — Each provider records its own primary and secondary presets when it joins a run and approval freezes the recorded profiles
 
-Why: teammates can add their own provider while retaining shared checks and earlier approvals.
+Why: the task configuration should list participating providers while preserving their chosen models across sessions
 
-- Install outside the project and run `runweld init` in a plain terminal → select one provider, enter its pair and checks, receive a usable config, lock, ignore rule and short AGENTS pointer. Repeat init or interrupt and retry → user-authored content and profiles survive.
-- Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
-- Change the shared test command and create a run with an older run present → the new run config records the current checks, profiles and exact release. Resume the older run → it uses its approved snapshot.
+- Start a GPT task in a project with GPT, Qwen and Claude configured. Inspect the run TOML: it contains exactly the GPT pair. Join the same run as Qwen: only the Qwen pair is added. Resume as either provider: their recorded models and effort are unchanged, Claude is absent, and the project config and other runs are untouched. An existing multi-provider run retains its recorded profiles.
 
 ### task-worktree — Every new Runweld task has a dedicated branch and worktree from entry through confirmed integration, with local history accessible across trees
 

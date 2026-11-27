@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Select an exact installed release, then run its existing pipeline CLI."""
 
+from contextlib import ExitStack
 import os
 from pathlib import Path
+import shlex
 import sys
 
 sys.dont_write_bytecode = True
@@ -14,17 +16,35 @@ SCOPED_EXECUTION = """
 from pathlib import Path
 import sys
 
-engine, selected, *args = sys.argv[1:]
+engine, selected, lifecycle, *args = sys.argv[1:]
 sys.path.insert(0, str(Path(engine).parent))
 import pipeline
 
 sys.argv = [engine, *args]
-sys.exit(pipeline.main(current_task=Path(selected)))
+kwargs = {"lifecycle": True} if lifecycle else {}
+sys.exit(pipeline.main(current_task=Path(selected) if selected else None, **kwargs))
 """
 
 
-def main():
-    from runweld_release import ReleaseError, command_plan, installed_default, project_root, read_lock, run_pin, update_installation, verify_release, PROGRAM
+def task_write(args):
+    group, command = args.group, getattr(args, "command", None)
+    if group in ("status", "next", "reference", "help", "executor", "owner"):
+        return False
+    if group == "guide":
+        return bool(getattr(args, "browser_args", ()))
+    if group == "task":
+        return command not in ("resume", "path") and not (command == "setup" and args.preview)
+    if group == "page":
+        return not args.show
+    return (group, command) not in (("plan", "review"), ("run", "check"), ("run", "show"), ("spec", "check"))
+
+
+def main(locks):
+    from route_pipeline import ParseExit, Refuse, compiled_state_missing, missing_state, parse_cli
+    from runweld_release import (PROGRAM, TASK_OUTCOMES, TASK_OUTCOME_SUFFIX, ReleaseError,
+                                 canonical_plan, command_plan, installed_default, project_root, read_lock,
+                                 read_task_outcome, registered_task, run_pin, task_folders, task_write_lock,
+                                 update_installation, verify_release)
 
     argv = sys.argv[1:]
     project_pin = None
@@ -33,21 +53,37 @@ def main():
         release = None
         if len(argv) >= 2 and argv[0] == "--release":
             release, argv = argv[1], argv[2:]
-        if argv[:1] == ["update"]:
-            from route_pipeline import parse_cli
-            _, args = parse_cli(argv, standalone=True)
+        try:
+            _, args = parse_cli(argv, standalone=True, routing=True)
+        except ParseExit:
+            args = None
+        if args and args.group == "update":
             update_installation(store, args.scope, args.version)
             return 0
+        plan = command_plan(args, Path.cwd()) if args else None
+        plan = canonical_plan(plan) if plan else None
+        task = registered_task(plan) if plan and plan.suffix == ".md" else None
+        closing = len(argv) > 1 and argv[0] == "task" and argv[1] in TASK_OUTCOMES
+        closure_help = (args and args.group == "help" and args.topic == "task"
+                        and len(args.subtopics) == 1 and args.subtopics[0] in TASK_OUTCOMES)
+        fd = None
+        if task and not closing and task_write(args):
+            fd = locks.enter_context(task_write_lock(plan))
+        outcome = read_task_outcome(plan) if task else None
+        if outcome and fd is not None:
+            raise ReleaseError(f"task-closed: {plan.stem} is {outcome['outcome']} at {outcome['stage']}; "
+                               f"inspect it with `runweld status {shlex.quote(str(plan))}`")
+        if plan and args.group == "status" and args.current:
+            scoped = plan
+        inspecting = args and (args.group in ("next", "status") or args.group == "task" and args.command == "resume")
+        missing = plan and (inspecting or fd is not None) and compiled_state_missing(plan)
+        if missing and fd is not None:
+            raise missing_state(plan, compiled=True)
+        lifecycle = closing or closure_help or inspecting and (outcome or missing)
+        if lifecycle and task and release and release != task["release"]:
+            raise ReleaseError(f"this run selects {task['release']}, not {release}; use `runweld` without a release override")
         if release is None:
-            from route_pipeline import ParseExit, parse_cli
-            try:
-                _, args = parse_cli(argv, standalone=True, routing=True)
-            except ParseExit:
-                args = None
-            plan = command_plan(args, Path.cwd()) if args else None
-            release = run_pin(plan) if plan else None
-            if plan and args.group == "status" and args.current:
-                scoped = plan
+            release = task["release"] if task and (outcome or closing or missing) else run_pin(plan) if plan else None
             if release is None:
                 project = project_root(Path(plan).absolute().parent if plan else Path.cwd())
                 if project is not None:
@@ -58,6 +94,20 @@ def main():
             if release is None:
                 release = installed_default(store)
         bundle = verify_release(store, release)
+        if (not plan and args and args.group in ("next", "status") and (project := project_root(Path.cwd()))):
+            plans = project / ".runweld/workflow/plans"
+            for name, folder in task_folders(plans):
+                if os.path.lexists(folder / (name + TASK_OUTCOME_SUFFIX)):
+                    lifecycle = True
+                    break
+                try:
+                    if compiled_state_missing(folder / (name + ".md")):
+                        lifecycle = True
+                        break
+                except ReleaseError:
+                    continue  # Inventory already skips unreadable plans without state.
+        if lifecycle:
+            bundle = verify_release(store, installed_default(store))
         engine = bundle / PROGRAM
         if argv in (["--version"], ["--version", "--verbose"], ["--verbose", "--version"]):
             if project_pin is not None:
@@ -71,18 +121,29 @@ def main():
                     print(f"Project build ID: {project_pin}")
                 return 0
             # The installed launcher owns version output even when the project pins an older engine.
-            from route_pipeline import parse_cli
-            parse_cli(argv, standalone=True, version=release)
-        if scoped:
-            os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", SCOPED_EXECUTION, str(engine), str(scoped), *argv])
+            if "--verbose" in argv:
+                print(f"CLI version: {release.partition('@')[0]}\nBuild ID: {release}")
+            else:
+                print(release.partition("@")[0])
+            return 0
+        if fd is not None:
+            os.set_inheritable(fd, True)
+        if scoped or lifecycle:
+            os.execv(sys.executable, [sys.executable, "-B", "-P", "-c", SCOPED_EXECUTION,
+                                      str(engine), str(scoped or ""), "1" if lifecycle else "", *argv])
         os.execv(sys.executable, [sys.executable, str(engine), *argv])
     except ReleaseError as error:
         print(f"runweld: {error}", file=sys.stderr)
+        return 1
+    except Refuse as error:
+        for code, message, fix in error.diags:
+            print(f"runweld: {code}: {message} — fix: {fix}", file=sys.stderr)
         return 1
 
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        with ExitStack() as locks:
+            sys.exit(main(locks))
     except (ImportError, OSError, SyntaxError) as error:
         sys.exit(f"runweld: cannot start the installed launcher ({error}); reinstall Runweld")

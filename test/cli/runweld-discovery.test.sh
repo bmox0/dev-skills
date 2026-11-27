@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+unset CODEX_THREAD_ID CLAUDECODE
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export INSTALLER="$repo_root/scripts/install-runweld"
 python3 -B <<'PY'
@@ -9,6 +10,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
+import tomllib
 
 with tempfile.TemporaryDirectory() as tmp:
     prefix = Path(tmp).resolve()
@@ -86,6 +88,56 @@ with tempfile.TemporaryDirectory() as tmp:
     plan_view = next_from(feature)
     assert plan_view["stage"] == "plan" and plan_view["task"]["discovery"]["prototype"]["reason"] == "There is no layout uncertainty"
     assert "required" in record(feature, "plan", "skip", "--reason", "Not useful", ok=False)
+
+    # planning#run-route distribution#project-lock: each task has its own route.
+    direct = new("direct", "No discovery needed")
+    layout = new("layout", "A prototype is needed")
+    shared = {repo / ".runweld" / name: (repo / ".runweld" / name).read_bytes()
+              for name in ("config.toml", "runweld.lock")}
+
+    def route(row, settings):
+        path = Path(row["plan"]).with_suffix(".run.toml")
+        text = path.read_text().split("\n[route]\n", 1)[0]
+        path.write_text(text + "\n[route]\n" + settings)
+        return path
+
+    direct_run = route(direct, 'grill = "skip"\nprototype = "skip"\n')
+    layout_run = route(layout, 'grill = "skip"\nprototype = "take"\n')
+    assert next_from(direct)["stage"] == "plan", "planning#run-route: skip both optional stages"
+    resumed = json.loads(run(cli, "task", "resume", "direct", "--json"))
+    assert [row["state"] for row in resumed["workflow"]["stages"][:2]] == ["skipped by route"] * 2
+    assert "current stage" in record(direct, "grill", "start", ok=False)
+    layout_view = next_from(layout)
+    assert layout_view["stage"] == "prototype"
+    assert not any("skip" in step.get("argv", []) for step in layout_view["actions"])
+    assert "prototype" in record(layout, "prototype", "skip", "--reason", "Skip anyway", ok=False)
+    follow(action(layout_view, ("prototype", "start", layout["plan"])))
+    record(layout, "prototype", "done", "--result", "The layout works")
+    assert next_from(layout)["stage"] == "plan"
+    route(layout, 'grill = "skip"\nprototype = "skip"\n')
+    assert next_from(layout)["task"]["discovery"]["prototype"]["result"] == "The layout works"
+    chosen = direct_run.read_bytes()
+    for bad, setting in (('grill = "maybe"', "grill"), ('prototype = true', "prototype"), ('build = "skip"', "build")):
+        route(direct, bad + "\n")
+        out = run(cli, "next", "direct", ok=False)
+        assert "[route]" in out and setting in out and str(direct_run) in out
+        assert "[route]" in run(cli, "run", "check", direct["plan"], ok=False)
+        assert "[route]" in record(direct, "grill", "start", ok=False)
+    direct_run.write_bytes(chosen)
+    # build#workflow-progress planning#run-route distribution#task-outcome: closure preserves route history.
+    early_exit = new("early-exit", "Goal met without building")
+    route(early_exit, 'grill = "skip"\nprototype = "skip"\n')
+    resumed = json.loads(run(cli, "task", "resume", "early-exit", "--json"))
+    assert [row["state"] for row in resumed["workflow"]["stages"][:2]] == ["skipped by route"] * 2
+    closed = json.loads(run(cli, "task", "complete", "early-exit", "--by", "Owner", "--reason", "Goal met", "--json"))
+    assert closed["outcome"]["stage"] == "plan"
+    assert closed["workflow"]["stages"][:2] == resumed["workflow"]["stages"][:2], closed["workflow"]["stages"][:2]
+    route(early_exit, 'grill = "ask"\nprototype = "take"\n')
+    reopened = json.loads(run(cli, "task", "resume", "early-exit", "--json"))
+    assert reopened["workflow"]["stages"][:2] == resumed["workflow"]["stages"][:2]
+    assert reopened["workflow"]["actions"] == []
+    assert tomllib.loads(layout_run.read_text())["route"]["prototype"] == "skip"
+    assert all(path.read_bytes() == before for path, before in shared.items())
 
     trial = new("trial", "Compare two layouts")
     record(trial, "grill", "skip", "--reason", "The layout question is already clear")
@@ -165,6 +217,19 @@ Waits for: nothing
 
 none
 """
+    direct_plan = Path(direct["plan"])
+    direct_plan.write_text(draft.replace('runweld/bug', direct["branch"]).replace(earlier, direct["base"]))
+    run(cli, "approve", direct_plan)
+    approval = json.loads(run(cli, "plan", "review", direct_plan, "--json"))["revision"]
+    assert "plan-unapproved" in run(cli, "build", "start", direct_plan, ok=False)
+    route(direct, 'grill = "take"\nprototype = "skip"\n')
+    assert "restore the discovery route" in run(cli, "plan", "approve", direct_plan, "--revision", approval,
+                                                "--by", "Tester", "--words", "Approve the plan and run", ok=False)
+    direct_run.write_bytes(chosen)
+    run(cli, "plan", "approve", direct_plan, "--revision", approval, "--by", "Tester", "--words", "Approve the plan and run")
+    direct_view = json.loads(run(cli, "status", direct_plan, "--json"))
+    assert [row["state"] for row in direct_view["workflow"]["stages"][:2]] == ["skipped by route"] * 2
+
     plan.write_text(draft)
     assert "reproduction" in run(cli, "approve", plan, ok=False).lower()
     assert "red" in record(bug, "reproduce", "done", "--result", "The source says wrong", "--command", reproduction, ok=False)

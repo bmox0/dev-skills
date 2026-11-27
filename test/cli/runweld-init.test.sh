@@ -80,14 +80,10 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'isolation' not in read(config)
     assert read(config)['setup'] == {'command': 'touch must-not-run-at-init'}
     pins = read(lock)
-    assert pins['lock_version'] == 2 and pins['release'] == release
-    assert set(pins['roles']) == {'implementer', 'reviewer', 'judge'}
-    assert {'plan', 'build', 'review'} <= pins['guides'].keys()
-    assert {'claude', 'codex', 'antigravity'} <= pins['adapters'].keys()
-    assert pins['cli'].keys() == {'engine', 'launcher'}
+    assert pins == {'lock_version': 3, 'release': release}, 'distribution#project-lock: init writes only the format and exact release'
     generated = lock.read_bytes()
-    lock.write_bytes(generated.replace(pins['roles']['judge'].encode(), b'sha256:' + b'0' * 64))
-    assert 'does not match the components' in runweld('task', 'start', 'altered', ok=False)
+    lock.write_bytes(generated + b'unexpected = true\n')
+    assert 'runweld update --project' in runweld('task', 'start', 'altered', ok=False)
     runweld('update', '--project', release)
     assert lock.read_bytes() == generated
     block = ('<!-- runweld:begin -->\n\n'
@@ -229,8 +225,54 @@ none
     assert shown['run']['run'] == {'credential': 'keychain:example/private'}
     assert json.loads(runweld('executor', 'show', '--provider', 'Claude', '--json', cwd=clone))['source'] == str(clone_config)
 
+    # run#executor-presets: each participating provider adds just its own pair.
+    qwen = {'primary': {'model': 'qwen-primary', 'effort': 'xhigh'}, 'secondary': {'model': 'qwen-secondary'}}
+    runweld('init', *extra_pair)
+    runweld('init', '--provider', 'Qwen', '--primary-model', 'qwen-primary', '--primary-effort', 'xhigh',
+            '--secondary-model', 'qwen-secondary', '--non-interactive')
+    other_before = second.with_suffix('.run.toml').read_bytes()
+    assert '--provider' in runweld('task', 'start', 'ambiguous', ok=False)
+    gpt_session = {**env, 'CODEX_THREAD_ID': 'fixture-gpt-thread'}
+    entry = json.loads(runweld('task', 'start', 'providers', '--json', with_env=gpt_session))
+    task_run = Path(entry['plan']).with_suffix('.run.toml')
+    assert read(task_run)['executors'] == profiles
+    before_config = config.read_bytes().replace(b'codex-main', b'changed-gpt')
+    config.write_bytes(before_config)
+    runweld('task', 'start', 'providers', '--provider', 'Qwen')
+    assert read(task_run)['executors'] == {**profiles, 'Qwen': qwen}
+    joined = task_run.read_bytes()
+    for provider, pair in [('GPT', profiles['GPT']), ('Qwen', qwen)]:
+        runweld('task', 'start', 'providers', '--provider', provider)
+        runweld('task', 'resume', 'providers', '--provider', provider, cwd=entry['tree'])
+        selected = json.loads(runweld('executor', 'show', entry['plan'], '--provider', provider, '--json'))
+        assert all(selected[tier] == profile for tier, profile in pair.items())
+        assert task_run.read_bytes() == joined
+    assert config.read_bytes() == before_config and lock.read_bytes() == generated
+    assert second.with_suffix('.run.toml').read_bytes() == other_before
+    assert first_values.read_bytes() == agreed
+
+    # A historical multi-provider proposal remains readable and keeps unrelated pairs.
+    second_file = second.with_suffix('.run.toml')
+    second_file.write_bytes(other_before + b'\n[executors.Claude.primary]\nmodel = "historic-main"\n'
+                            b'[executors.Claude.secondary]\nmodel = "historic-helper"\neffort = "medium"\n')
+    legacy = read(second_file)['executors']
+    runweld('task', 'start', 'second', '--provider', 'Qwen')
+    assert read(second_file)['executors'] == {**legacy, 'Qwen': qwen}
+
+    # Joining an approved task proposes a change without changing frozen profiles.
+    first_state = first.with_suffix('.json')
+    approved = first_state.read_bytes()
+    runweld('task', 'start', 'first', '--provider', 'Qwen')
+    assert first_state.read_bytes() == approved and read(first_values)['executors'] == {**profiles, 'Qwen': qwen}
+    assert 'renewed human approval' in runweld('executor', 'show', first, '--provider', 'Qwen', ok=False)
+    assert json.loads(runweld('run', 'show', first, '--json'))['run']['executors'] == profiles
+    assert 'run-stale' in runweld('build', 'start', first, ok=False)
+    current = json.loads(runweld('plan', 'review', first, '--json'))
+    runweld('plan', 'approve', first, '--revision', current['revision'], '--by', 'Mina', '--words', 'Approve the new provider')
+    assert json.loads(runweld('run', 'show', first, '--json'))['run']['executors'] == {**profiles, 'Qwen': qwen}
+
     # run#contract-checked: shared configuration cannot supply graph rules or task values.
-    for forbidden in ('graph', 'run', 'workflow'):
+    for forbidden in ('graph', 'route', 'run', 'workflow'):
         before = config.read_text()
         config.write_text(before + f'\n[{forbidden}]\nvalue = "must not be consumed"\n')
         bad = plans / f'{forbidden}.md'
@@ -252,7 +294,7 @@ none
         '**Dev server.** `make serve`, serves on `http://localhost:9000`\n\n'
         '**Dev URL.** `http://localhost:9100`\n'
     )
-    output = runweld('init', '--provider', 'Test', '--primary-model', 'main',
+    output = runweld('init', '--provider', 'Claude', '--primary-model', 'main',
                      '--secondary-model', 'helper', '--non-interactive', cwd=detected)
     assert 'Detected' in output and 'make types' in output and 'http://localhost:9100' in output, output
     found = read(detected / '.runweld/config.toml')
@@ -261,6 +303,17 @@ none
     assert found['setup'] == {'command': 'touch must-not-bootstrap-during-init'}
     assert not (detected / 'must-not-bootstrap-during-init').exists()
     assert 'commit' in runweld('next', cwd=detected), 'distribution#system-cli: task entry needs an initial commit'
+
+    # run#executor-presets: detected GPT must not silently enter as the only configured provider.
+    git('commit', '--allow-empty', '-qm', 'base', cwd=detected)
+    before = git('worktree', 'list', '--porcelain', cwd=detected)
+    problem = runweld('task', 'start', 'missing-gpt', cwd=detected, with_env=gpt_session, ok=False)
+    assert 'executor-missing' in problem and 'runweld init --provider GPT' in problem, problem
+    assert git('worktree', 'list', '--porcelain', cwd=detected) == before
+    assert not git('branch', '--list', 'runweld/missing-gpt', cwd=detected)
+    assert not list((detected / '.runweld/workflow/plans').glob('*-missing-gpt'))
+    unknown = json.loads(runweld('task', 'start', 'undetected', '--json', cwd=detected))
+    assert read(Path(unknown['plan']).with_suffix('.run.toml'))['executors'] == found['executors']
 
     # run#worktree-setup: a clean project can opt in explicitly or leave setup absent.
     explicit = home / 'explicit'

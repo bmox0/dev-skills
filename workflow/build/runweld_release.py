@@ -1,5 +1,7 @@
 """The standalone release store and the project/run release selectors."""
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -15,6 +17,8 @@ VERSION = r"[0-9][A-Za-z0-9.+-]*"
 RELEASE = re.compile(rf"{VERSION}@[0-9a-f]{{64}}")
 TASK_ID = re.compile(r"[a-z0-9][a-z0-9-]*")
 DATED_TASK = re.compile(rf"\d{{4}}-\d{{2}}-\d{{2}}-({TASK_ID.pattern})")
+TASK_OUTCOMES = {"complete": "completed", "cancel": "cancelled"}
+TASK_OUTCOME_SUFFIX = ".outcome.json"
 MANIFEST = "release.json"
 PROGRAM = Path("workflow/build/pipeline.py")
 WORKFLOW = "references/workflow.toml"
@@ -29,6 +33,8 @@ REQUIRED = {str(PROGRAM), WORKFLOW, INSTRUCTIONS, "bin/runweld", "workflow/build
             "references/WORKFLOW-PATHS.md", "workflow/build/references/human-guide.md",
             "workflow/run-file/references/project-config.md",
             *(f"agents/{role}.md" for role in ROLES), *(f"workflow/{skill}/GUIDE.md" for skill in WORKFLOW_GUIDES)}
+ROUTE_STAGES = ("grill", "prototype")
+ROUTE_CHOICES = ("ask", "take", "skip")
 
 
 class ReleaseError(Exception):
@@ -174,6 +180,12 @@ def history_path(path):
     return md
 
 
+def canonical_plan(path):
+    md = Path(path).absolute()
+    # Resolve directory aliases without following the replaceable plan file.
+    return history_path(Path(os.path.realpath(md.parent)) / md.name)
+
+
 def task_folders(plans):
     for folder in sorted(plans.glob("*")):
         if (match := DATED_TASK.fullmatch(folder.name)) and not folder.is_symlink() and folder.is_dir():
@@ -194,7 +206,7 @@ def task_plan(project, name):
 def command_plan(args, cwd):
     if plan := getattr(args, "plan", None):
         return plan
-    by_id = (args.group == "task" and args.command in ("start", "resume", "path")) or (args.group == "next" and args.id)
+    by_id = (args.group == "task" and args.command in ("start", "resume", "path", *TASK_OUTCOMES)) or (args.group == "next" and args.id)
     in_task = ((args.group == "status" and args.current) or
                args.group in ("guide", "next", "reference", "discovery") or (args.group == "help" and args.topic == "agents"))
     if not (by_id or in_task) or not (project := project_root(cwd)):
@@ -238,8 +250,15 @@ def read_workflow(root, files=None):
 
     catalog = read_data(root / WORKFLOW, tomllib.loads)
     try:
-        if set(catalog) != {"order", "shared", "stages"}:
+        required = {"order", "shared", "stages"}
+        if not required <= catalog.keys() <= required | {"project_lock_version", "route"}:
             raise ValueError("expected order, shared inputs and stages")
+        if "project_lock_version" in catalog and (type(catalog["project_lock_version"]) is not int or catalog["project_lock_version"] != 3):
+            raise ValueError("project_lock_version must be 3")
+        if "route" in catalog:
+            route = catalog["route"]
+            if not isinstance(route, dict) or set(route) != set(ROUTE_STAGES) or any(v not in ROUTE_CHOICES for v in route.values()):
+                raise ValueError("[route] must specify grill and prototype as ask, take or skip")
         stages = catalog["stages"]
         events = {"grill": {"prototype_requested", "ready_to_plan"}, "prototype": {"ready_to_plan"},
                   "plan": {"start_authorized"}, "build": {"phases_complete"},
@@ -277,14 +296,16 @@ def read_workflow(root, files=None):
     return catalog
 
 
-def project_lock(bundle):
+def project_lock(bundle, *, legacy=False):
     release = bundle.name
     manifest = release_manifest(bundle, release)
+    catalog = read_workflow(bundle, manifest["files"])
+    if not legacy and catalog.get("project_lock_version") == 3:
+        return f'lock_version = 3\nrelease = "{release}"\n'
     groups = {}
     for path, entry in manifest["files"].items():
         section, name = component_key(path)
         groups.setdefault(section, {}).setdefault(name, {})[path] = entry
-    catalog = read_workflow(bundle, manifest["files"])
     lines = ["lock_version = 2", f'release = "{release}"', "stage_order = " + json.dumps(catalog["order"])]
     for section, components in sorted(groups.items()):
         lines.extend(["", f"[{section}]"])
@@ -321,11 +342,13 @@ def read_lock(project, store):
     release = value.get("release")
     if not valid_release(release):
         raise ReleaseError(f"{path} needs one exact release ID as `release = \"…\"`; run `runweld update --project RELEASE` or restore the lock")
-    if type(value.get("lock_version")) is not int or value["lock_version"] != 2:
+    version = value.get("lock_version")
+    if type(version) is not int or version not in (2, 3):
         raise ReleaseError(f"{path} needs a supported lock format; run `runweld update --project` or restore the lock")
-    expected = tomllib.loads(project_lock(store / "releases" / release))
+    expected = tomllib.loads(project_lock(store / "releases" / release, legacy=version == 2))
     if expected != value:
-        raise ReleaseError(f"{path} does not match the components of {release}; run `runweld update --project {release}` or restore the lock")
+        raise ReleaseError(f"{path} does not match the lock format or contents for {release}; "
+                           f"run `runweld update --project {release}` or restore the lock")
     return release
 
 
@@ -358,12 +381,15 @@ def read_task_record(path, name):
     if value is None and not path.exists():
         return None
     fields = {"base", "ready", "branch", "release"}
-    if (not isinstance(value, dict) or not fields <= value.keys() <= fields | {"finish", "goal", "bug"} or
+    if (not isinstance(value, dict) or not fields <= value.keys() <= fields | {"finish", "goal", "bug", "provider"} or
             not isinstance(value["base"], str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["base"]) or
             type(value["ready"]) is not bool or value["branch"] != "runweld/" + name or
             not valid_release(value["release"]) or
             ("goal" in value and (not isinstance(value["goal"], str) or not value["goal"].strip())) or
             ("bug" in value and value["bug"] is not True) or
+            ("provider" in value and (value["ready"] or not isinstance(value["provider"], str) or
+                                      not value["provider"].strip() or "\0" in value["provider"] or
+                                      len(value["provider"].splitlines()) != 1 or value["provider"].endswith(("\n", "\r")))) or
             ("finish" in value and (value["ready"] or not isinstance(value["finish"], dict)))):
         raise ReleaseError(f"{path} has an invalid task record; restore the task record from a known-good copy")
     return value
@@ -378,6 +404,42 @@ def registered_task(plan):
         if folder.is_symlink():
             raise ReleaseError(f"{folder} is a symbolic link; restore the task directory")
         return read_task_record(folder / (plan.stem + ".task.json"), plan.stem)
+
+
+def read_task_outcome(plan):
+    path = Path(plan).with_suffix(TASK_OUTCOME_SUFFIX)
+    if path.is_symlink():
+        raise ReleaseError(f"{path} is a symbolic link; restore the task outcome")
+    value = read_data(path, json.loads)
+    if value is None and not path.exists():
+        return None
+    fields = {"outcome", "stage", "by", "reason", "at"}
+    if (not isinstance(value, dict) or not fields <= value.keys() <= fields | {"optional_stages"} or
+            not all(isinstance(value[key], str) and value[key].strip() for key in fields) or
+            value["outcome"] not in TASK_OUTCOMES.values() or
+            value["stage"] not in ("reproduce", "grill", "prototype", "plan", "build", "build-verification", "judge", "human-review", "finish")):
+        raise ReleaseError(f"{path} has an invalid task outcome; restore it from a known-good copy")
+    optional = value.get("optional_stages", {})
+    if not isinstance(optional, dict) or any(
+            key not in ROUTE_STAGES or state not in ("active", "done", "skipped", "skipped by route", "not applicable",
+                                                    "current", "upcoming", "complete", "unknown")
+            for key, state in optional.items()):
+        raise ReleaseError(f"{path} has invalid optional stage history; restore it from a known-good copy")
+    return value
+
+
+@contextlib.contextmanager
+def task_write_lock(plan, *, closing=False):
+    path = Path(plan).with_suffix(".outcome.lock")
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ReleaseError(f"{path} must be a regular file")
+        # Writers share admission while open. Closing waits for admitted writers across release engines.
+        fcntl.flock(fd, fcntl.LOCK_EX if closing else fcntl.LOCK_SH)
+        yield fd
+    finally:
+        os.close(fd)
 
 
 def task_pin(pin, task, path):

@@ -13,12 +13,20 @@ Keep the guide in `workflow/NAME/GUIDE.md`. Put worked examples and detailed
 procedures in its `references/` directory. A bare command prints the guide and
 its bundled references. Describe when each optional procedure applies.
 
-For a new command, register its name in `WORKFLOW_GUIDES`. For an input to
+Register a new bare guide in `WORKFLOW_GUIDES`. For an input to
 a workflow stage, declare its release-relative path in
-[workflow.toml](../../references/workflow.toml) so the project lock records
-which stages use it. Give each instruction file a word budget in
+[workflow.toml](../../references/workflow.toml) so the release records which
+stages use it. Give each instruction file a word budget in
 [scripts/word-budgets.txt](../../scripts/word-budgets.txt).
 
-Test the installed command from a clean project. Its output should contain
-the steps and examples an agent needs to do the work. Run `scripts/check`
-and the installed CLI fixture before publishing.
+Terminal help is separate from the guide. Use the argument definitions in
+[pipeline.py](../build/pipeline.py) for syntax and option summaries, and
+[cli_help.py](../build/cli_help.py) for command descriptions and examples.
+Say who can act, what is required, what is written, which defaults matter,
+and how to verify success or recover. Show a command that ships. Use uppercase
+placeholders for values the agent must get first. Group commands by the job
+they do, not by implementation.
+
+Test both `runweld help COMMAND` and `runweld COMMAND --help` in an installed
+CLI. Run the examples in a disposable project and check the bare guide still
+prints its instructions. Run `scripts/check` and the affected CLI fixtures.

@@ -48,9 +48,12 @@ def main():
         for name in ("README.md", "LICENSE", "install.sh", "VERSION"):
             shutil.copy2(source / name, stage / name)
         manifest = manifest_bytes(stage, version)
+        files = json.loads(manifest)["files"]
+        if "workflow/build/cli_help.py" not in files:
+            raise ReleaseError("missing terminal help: workflow/build/cli_help.py")
         for file in (*stage.rglob("*.py"), stage / "bin/runweld"):
             compile(file.read_bytes(), str(file.relative_to(stage)), "exec")
-        read_workflow(stage, json.loads(manifest)["files"])
+        read_workflow(stage, files)
         release = release_id(version, manifest)
         final = releases / release
         try:
