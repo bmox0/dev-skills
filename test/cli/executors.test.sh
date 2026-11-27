@@ -6,30 +6,21 @@ export SUMMARY_FIXTURE="$here/../lib/summary.md"
 python3 -B <<'PY'
 import json, os, pathlib, shlex, subprocess, tempfile, tomllib
 
-presets = '''## Executors
-
-```toml
-[executors."GPT".primary]
+presets = '''[executors.primary]
+provider = "GPT"
 model = "gpt-custom"
 effort = "ultra"
-[executors."GPT".secondary]
-model = "gpt-custom"
-effort = "high"
-[executors."Claude".primary]
-model = "opus-custom"
-[executors."Claude".secondary]
-model = "sonnet-custom"
-effort = "medium"
-[executors."Qwen".primary]
-model = "qwen-custom"
-effort = "xhigh"
-[executors."Qwen".secondary]
-model = "qwen-custom"
-[executors."Other / provider".primary]
+[executors.secondary]
+provider = "Other / provider"
 model = "arbitrary model"
-[executors."Other / provider".secondary]
-model = "another model"
-```
+
+[checks]
+phase = []
+full = []
+required = []
+
+[onboarding]
+setup_known = true
 '''
 with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory).resolve()
@@ -41,18 +32,20 @@ with tempfile.TemporaryDirectory() as directory:
         return result.stdout.strip()
     def cli(*args, ok=True, code=None):
         result = command('python3', '-B', os.environ['PIPELINE'], *map(str, args))
-        assert (result.returncode == 0) == ok, result.stdout + result.stderr
+        assert (result.returncode == 0) == ok, (args, code, result.stdout, result.stderr)
         if code:
-            assert code in result.stdout, result.stdout
+            assert code in result.stdout + result.stderr, (args, code, result.stdout, result.stderr)
         return result.stdout
     git('init', '-q', '-b', 'main')
     git('config', 'user.name', 'Test')
     git('config', 'user.email', 'test@example.org')
-    agents = root / 'AGENTS.md'
-    agents.write_text(presets)
+    config = root / '.runweld/config.toml'
+    config.parent.mkdir()
+    config.write_text(presets)
+    (root / 'AGENTS.md').write_text('## Executors\n\nInspect the configured checkout roles.\n')
     (root / 'src').mkdir()
     (root / 'src/a').write_text('base\n')
-    git('add', '.')
+    git('add', 'AGENTS.md', 'src')
     git('commit', '-qm', 'base')
     plans = root / '.runweld/workflow/plans'
     plans.mkdir(parents=True)
@@ -62,21 +55,21 @@ with tempfile.TemporaryDirectory() as directory:
     run = plan.with_suffix('.run.toml')
     values = tomllib.loads(run.read_text())
     assert values['run'] == {}
-    assert set(values.get('executors', {})) == {'GPT', 'Qwen', 'Claude', 'Other / provider'}, 'new runs must snapshot all current AGENTS providers'
-    # run#executor-presets: planning helpers select current AGENTS without a plan.
-    selected = json.loads(cli('executor', 'show', '--provider', 'Other / provider', '--json'))
-    assert selected['primary'] == {'model': 'arbitrary model'}
-    assert selected['source'] == str(agents)
-    for provider in ['', ' ', 'GPT\nQwen']:
-        cli('executor', 'show', '--provider', provider, ok=False, code='bad-provider')
+    assert values["executors"] == {
+        "primary": {"provider": "GPT", "model": "gpt-custom", "effort": "ultra"},
+        "secondary": {"provider": "Other / provider", "model": "arbitrary model"},
+    }
+    # run#executor-presets: each role keeps its own opaque provider and model.
+    selected = json.loads(cli('executor', 'show', '--json'))
+    assert selected == {**values["executors"], "source": str(config)}
     task_values = 'gpt_primary_model = "task-owned"\nquota = 33\nadmin_pwd = "keychain:app/admin"\nmessage = """\n[executors.fake.primary]\nmodel = "task data"\n"""\n'
     run.write_text(run.read_text() + task_values)
-    agents.write_text(presets.replace('gpt-custom', 'new-gpt'))
+    config.write_text(presets.replace('gpt-custom', 'new-gpt'))
     copied_plan = plans / '2026-11-18-copied.md'
     cli('run', 'new', copied_plan)
     copied = copied_plan.with_suffix('.run.toml').read_text()
     assert task_values in copied
-    assert tomllib.loads(copied)['executors']['GPT']['primary']['model'] == 'new-gpt'
+    assert tomllib.loads(copied)['executors']['primary']['model'] == 'new-gpt'
     cli('run', 'check', copied_plan)
     # A header-looking line inside a fixed string cannot move the snapshot into that string.
     copied_plan.with_suffix('.run.toml').write_text(copied.replace('dev = "npm run dev -- --port {port}"', 'dev = """echo\n[run]\n"""'))
@@ -84,32 +77,29 @@ with tempfile.TemporaryDirectory() as directory:
     cli('run', 'new', another_plan)
     another = tomllib.loads(another_plan.with_suffix('.run.toml').read_text())
     assert another['checks']['dev'] == 'echo\n[run]\n'
-    assert another['executors']['GPT']['primary']['model'] == 'new-gpt'
+    assert another['executors']['primary']['model'] == 'new-gpt'
     # run#contract-checked: fixed nested fields name their complete paths; identifiers are opaque.
     good = run.read_text()
     for old, new, path in [
-        ('model = "gpt-custom"', 'models = "wrong"', 'executors."GPT".primary.models'),
-        ('[executors."GPT".secondary]', '[executors."GPT".helper]', 'executors."GPT".helper'),
-        ('model = "gpt-custom"', 'model = "  "', 'executors."GPT".primary.model'),
-        ('model = "gpt-custom"', 'model = 42', 'executors."GPT".primary.model'),
-        ('effort = "ultra"', 'effort = "\\n"', 'executors."GPT".primary.effort'),
-        ('[executors."GPT".primary]', '[executors."".primary]', 'executors.""'),
+        ('model = "gpt-custom"', 'models = "wrong"', 'executors.primary.models'),
+        ('\n[executors.secondary]', '\n[executors.helper]', 'executors.helper'),
+        ('model = "gpt-custom"', 'model = "  "', 'executors.primary.model'),
+        ('model = "gpt-custom"', 'model = 42', 'executors.primary.model'),
+        ('effort = "ultra"', 'effort = "\\n"', 'executors.primary.effort'),
+        ('provider = "GPT"', 'provider = ""', 'executors.primary.provider'),
     ]:
         run.write_text(good.replace(old, new, 1))
         cli('run', 'check', plan, ok=False, code=path)
     run.write_text(good)
-    agents.write_text(presets.replace('effort = "ultra"', 'strength = "ultra"'))
+    config.write_text(presets.replace('effort = "ultra"', 'strength = "ultra"'))
     missing = plans / '2026-11-19-bad.md'
-    cli('run', 'new', missing, ok=False, code='executors."GPT".primary.strength')
+    cli('run', 'new', missing, ok=False, code='executors.primary.strength')
     assert not missing.with_suffix('.run.toml').exists()
-    agents.write_text('## Environment\n')
-    cli('run', 'new', missing, ok=False, code='Executors')
-    # run#executor-presets: host imports cannot replace literal project-root profiles.
-    (root / 'profiles.md').write_text(presets)
-    agents.write_text('@profiles.md\n')
-    cli('executor', 'show', '--provider', 'GPT', ok=False, code='executors-missing')
-    agents.write_text(presets)
-    # run#changes-through-approve: selection freezes on consent, even after AGENTS changes.
+    config.unlink()
+    cli('run', 'new', missing, ok=False, code='project-needs-onboarding')
+    cli('executor', 'show', ok=False, code='project-needs-onboarding')
+    config.write_text(presets)
+    # run#changes-through-approve: selection freezes on consent, even after checkout settings change.
     plan.write_text('''# Plan: executors
 
 Status: draft · branch `executors` · base `<sha>`
@@ -150,35 +140,35 @@ none
 ''')
     run.write_text(good.replace('full = ["scripts/check", "scripts/test"]', 'full = []'))
     cli('approve', plan)
-    agents.write_text(presets.replace('gpt-custom', 'current-gpt'))
-    assert json.loads(cli('executor', 'show', plan, '--provider', 'GPT', '--json'))['primary']['model'] == 'current-gpt'
+    config.write_text(presets.replace('gpt-custom', 'current-gpt'))
+    assert json.loads(cli('executor', 'show', plan, '--json'))['primary']['model'] == 'gpt-custom'
     plan.with_suffix(".summary.md").write_bytes(pathlib.Path(os.environ["SUMMARY_FIXTURE"]).read_bytes())
     review = json.loads(cli('plan', 'review', plan, '--json'))
     cli('plan', 'approve', plan, '--revision', review['revision'], '--by', 'Mina', '--words', 'approve fixture plan and run')
-    agents.write_text('## Executors\n\n```toml\ninvalid TOML\n```\n')
-    selected = json.loads(cli('executor', 'show', plan, '--provider', 'Claude', '--json'))
-    assert selected['primary'] == {'model': 'opus-custom'}
-    assert selected['secondary'] == {'model': 'sonnet-custom', 'effort': 'medium'}
-    assert selected['source'] == 'approved run snapshot'
-    refused = cli('executor', 'show', plan, '--provider', 'Missing', ok=False, code='executors."Missing"')
-    assert 'renewed human approval' in refused
+    config.write_text('invalid TOML\n')
+    selected = json.loads(cli('executor', 'show', plan, '--json'))
+    assert selected == {**values["executors"], "source": "approved run snapshot"}
     # Removing the approved presets must not produce a new worker assignment.
     state_file = plan.with_suffix('.json')
     saved_state = state_file.read_bytes()
     without_profiles = json.loads(saved_state)
     del without_profiles['run']['executors']
     state_file.write_text(json.dumps(without_profiles))
-    cli('executor', 'show', plan, '--provider', 'GPT', ok=False, code='executors."GPT"')
+    cli('executor', 'show', plan, ok=False, code='approval-snapshot')
     cli('brief', 'implementer', plan, '1', ok=False, code='approval-snapshot')
     state_file.write_bytes(saved_state)
-    cli('build', 'start', plan, '--base', 'main', ok=False, code='provider-required')
-    cli('build', 'start', plan, '--base', 'main', '--provider', 'GPT')
+    cli('build', 'start', plan, '--base', 'main')
     def brief(kind, tier, *extra):
-        path = pathlib.Path(cli('brief', kind, plan, *extra, '--provider', 'GPT').strip())
+        path = pathlib.Path(cli('brief', kind, plan, *extra).strip())
         text = path.read_text()
         assert f'Executor tier: {tier}' in text, text
-        assert 'Executor model: gpt-custom' in text, text
-        assert f'Executor effort: {"ultra" if tier == "primary" else "high"}' in text, text
+        executor = values["executors"][tier]
+        for field in ("provider", "model", "effort"):
+            label = f"Executor {field}:"
+            if field in executor:
+                assert f"{label} {executor[field]}" in text, text
+            else:
+                assert label not in text, text
         assert 'AGENTS.md' in text and 'CLAUDE.md' not in text
         # build#worker-role-bound: every brief binds its authoritative role and protocol.
         package = pathlib.Path(os.environ['PIPELINE']).resolve().parents[2]

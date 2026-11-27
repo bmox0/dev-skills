@@ -14,18 +14,18 @@ The gate checks data, sync, errors, races and code. The human judges look and fe
 ## The pass
 
 1. `gate start` ran the full checks. Red is on the list.
-2. Together: `runweld reviewer` handed `CLI brief reviewer --provider <provider> <plan>`, and, above
-   small, a worker driving through `runweld verify` handed `CLI brief verify --provider <provider>
+2. Together: `runweld reviewer` handed `CLI brief reviewer <plan>`, and, above
+   small, a worker driving through `runweld verify` handed `CLI brief verify
    <plan>`. They record through those briefs. The reviewer records completion
    even when there are no findings. Each returns one line.
 3. With nothing on the one list (`CLI status <plan>`), skip `fix start`. Else
    `CLI fix start <plan>` takes the one list: red checks, Defects, use cases
-   failed. A case the code keeps from being reached is `failed`. Before `fix start`, re-drive a failed case once with `CLI brief verify --provider <provider> --cases N` when its capture does not match the command as written. One new implementer handed `CLI
-   brief fix --provider <provider> <plan>` fixes all of it; `CLI fix done <plan>` re-runs the checks (long, like `gate start`). A case not
+   failed. A case the code keeps from being reached is `failed`. Before `fix start`, re-drive a failed case once with `CLI brief verify --cases N` when its capture does not match the command as written. One new implementer handed `CLI
+   brief fix <plan>` fixes all of it; `CLI fix done <plan>` re-runs the checks (long, like `gate start`). A case not
    reached for the environment goes on the gate page with what it needs;
    Conventions go to the judge, Observations folded to the gate page.
 4. For the re-check, follow the range and executor in `CLI brief reviewer
-   --provider <provider>`. At once a fresh worker gets `CLI brief verify --provider <provider>
+  `. At once a fresh worker gets `CLI brief verify
    [--cases N,…]` with the cases the fix touched. When that brief says "no case
    to drive", dispatch no worker; the judge brief says so.
    A fix takes new items. Survivors appear under Open.

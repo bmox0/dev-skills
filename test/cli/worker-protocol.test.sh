@@ -37,9 +37,9 @@ assert 'Answer through the host’s message tool' not in build
 assert 'Workers use secondary.' not in build, 'build#worker-role-bound: first review and judge use primary'
 verify = (root / 'workflow/verify/GUIDE.md').read_text()
 assert 'Dispatch a fresh secondary worker' not in verify, 'build#worker-role-bound: the assigned Verify worker drives cases without dispatching'
-# run#executor-presets: discovery comes from supplied catalogues; profiles stay literal and local.
+# run#executor-presets: dispatch uses independently recorded roles.
 plan = (root / 'workflow/plan/GUIDE.md').read_text()
 assert '.claude/skills/' not in plan and '.agents/skills/' not in plan
-requires(protocol, ('literal', '.runweld/config.toml', 'AGENTS.md', 'frozen', 'unsupported'), 'run#executor-presets')
+requires(protocol, ("checkout's confirmed roles", "approved roles", "provider", "model", "optional effort", "unsupported"), 'run#executor-presets')
 PY
 echo ok

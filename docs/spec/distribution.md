@@ -9,14 +9,14 @@ Why: instructions without their resources do not install the workflow
 - Load complete packages from relocated paths → command instructions, role sources, references and CLI resolve to the intended revision; target-project profiles/artifacts stay outside package code.
 - In a Qoder session, invoke the CLI and dispatch all three roles → capture loaded sources, role identity, requested/reported settings and result delivery; unavailable settings or authentication are not passed
 
-### system-cli — Humans and agents can enter with help and resume with next using the installed release
+### system-cli — Project and task entry guide an agent from chat onboarding through interruption and finish
 
-Why: a new terminal or agent needs a discoverable path through the entire task
+Why: a fresh session needs the next authorized action in context
 
-- From a clean checkout follow help and next through init twice. Project checks, bootstrap and URL survive, format passes and the second init produces no diff.
-- Use a fresh process to follow a review finding through fix, recheck, judge and human feedback round. Execute the supplied argv in its indicated cwd. Find the brief and reporting command for work. Distinguish a question for the human from waiting on the assigned worker. Text and JSON agree on each action.
-- Start on release A, select B for new tasks, resume the first from a fresh session. Commands and roles resolve on this machine to the task's release. A second task uses B.
-- Give a fresh agent only the instruction to run next mid-task. Ask it to explain the goal, what has been decided, what evidence justifies the current action, who owns it and what will unlock the next step. Compare its answers with the saved records and observe it continue from the resulting report or human decision
+- In an empty Git checkout run `next --json` then the offered preview. Nothing is written. Inspect proposed commands, sources and both roles. Apply the confirmed settings and see a per-path outcome. Repeat and verify byte-identical project files.
+- Commit shared setup and clone it. The clone has the root lock and no local configuration. With both global defaults supplied, a new agent still asks for confirmation. Save one role, stop, and finish from a fresh process. Removing only the managed block or ignore rule offers repair and preserves adjacent user text.
+- Open a checkout with similarly titled tasks, select one by ID, and recover from its linked worktree. Read the next action before history. On an approved plan a separate start is still required. Inspect detailed output and execute a permitted JSON action in its declared cwd. For an unknown ID, follow the displayed recovery command.
+- Starting with only the README chat prompt, complete onboarding and follow a disposable task through approval, verification, human acceptance and local finish. A fresh agent can identify outstanding checks, recorded decisions and the next owner after interruption.
 
 ### project-lock — The project lock selects an exact verified release for new work and existing runs retain their release
 
@@ -25,12 +25,12 @@ Why: release contents already carry their integrity metadata and task changes mu
 - Update a project after changing only the grill interview. Only the release ID and `guides.grill` change in the lock. Verify package files against the release manifest and resume existing runs on their pinned engine.
 - Configure two runs from one project to take different optional stages. Resume each in a fresh process and follow its selected route; compare project config and lock byte for byte before and after. Existing runs with no preference keep working.
 
-### local-workflow — Shared project configuration and private workflow artifacts have distinct Git visibility
+### local-workflow — The root release lock and entry instructions are shared while each checkout owns its configuration and workflow records
 
-Why: a clone reuses project settings while execution records and evidence stay local.
+Why: teammates share project requirements and choose their own executors
 
-- Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
-- Start a task in an initialized checkout → Git ignores its plan, worktree and evidence under `.runweld/workflow/`. The project can track its config, lock and specs.
+- In an empty Git checkout run `next --json` then the offered preview. Nothing is written. Inspect proposed commands, sources and both roles. Apply the confirmed settings and see a per-path outcome. Repeat and verify byte-identical project files.
+- Commit shared setup and clone it. The clone has the root lock and no local configuration. With both global defaults supplied, a new agent still asks for confirmation. Save one role, stop, and finish from a fresh process. Removing only the managed block or ignore rule offers repair and preserves adjacent user text.
 
 ### task-artifacts — Each new task keeps its plan and execution records in one dated task directory
 
@@ -51,3 +51,9 @@ Why: a fresh agent needs accurate examples, effects and next steps directly in t
 
 - Read root help outside a project, find a task action, and invoke both help spellings. The text agrees, explains authorization and effects, gives a usable example, and shows how to check the outcome. An unknown command path gives a helpful usage error.
 - Open the bare plan guide, its command help, and help agents for a selected run. Each produces the intended instructions; the root examples and grouped command names correspond to the shipped CLI.
+
+### published-install — Default installation and CLI updates select an exact published stable release
+
+Why: two installs against the same release should use the same code
+
+- With an unpublished branch tip, a prerelease and a published stable release, install into a clean prefix and update an existing one. Both select the stable revision. A failed lookup or damaged download preserves the working selection. A missing locked build in a clone identifies the exact build to install. Move a test project's root lock to another valid build and resume an already started task on its recorded build.

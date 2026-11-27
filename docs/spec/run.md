@@ -10,13 +10,14 @@ Why: local history must not override shared project decisions and retro needs th
 - Change the shared test command and create a run with an older run present → the new run config records the current checks, profiles and exact release. Resume the older run → it uses its approved snapshot.
 - Install releases A and B, start a run on A and call `runweld update --project` → the project lock moves to B, new work uses B, and the active run and its briefs still use A. An unavailable or damaged release gives an actionable error and leaves the prior lock or run intact.
 
-### contract-checked — Project and run settings validate fixed fields, opaque provider and model identifiers, optional effort and scalar task values
+### contract-checked — Onboarding validates each role and exposes project commands, sources and unresolved decisions before use
 
-Why: malformed configuration must identify the affected setting across both terminal and agent entry points.
+Why: an operator must see what the agent will run and which inputs are still needed
 
-- Install outside the project and run `runweld init` in a plain terminal → select one provider, enter its pair and checks, receive a usable config, lock, ignore rule and short AGENTS pointer. Repeat init or interrupt and retry → user-authored content and profiles survive.
-- Commit the shared files, clone elsewhere and select Claude → supply only the missing Claude pair, retain the Codex pair and checks, and see no previous plans. Both clones select the same release.
-- Change the shared test command and create a run with an older run present → the new run config records the current checks, profiles and exact release. Resume the older run → it uses its approved snapshot.
+- In an empty Git checkout run `next --json` then the offered preview. Nothing is written. Inspect proposed commands, sources and both roles. Apply the confirmed settings and see a per-path outcome. Repeat and verify byte-identical project files.
+- Commit shared setup and clone it. The clone has the root lock and no local configuration. With both global defaults supplied, a new agent still asks for confirmation. Save one role, stop, and finish from a fresh process. Removing only the managed block or ignore rule offers repair and preserves adjacent user text.
+- Resolve conflicting project and CI checks in chat after seeing both sources. With two mandatory commands, try omitting one before approval, then try a judge waiver after one fails. Both attempts stop before a pass or integration. Fix the failure, rerun at the current head and observe both successes.
+- Confirm GPT primary and Claude secondary. Override just the secondary model for one task. Change global defaults, open a new session and inspect both role briefs. They use the recorded providers, models and efforts. A sibling task uses checkout defaults and a new clone offers the new personal defaults.
 
 ### required-to-approve — Build requires one current human approval binding the complete plan and run config
 
@@ -49,11 +50,12 @@ Why: nothing pulls the user in mid-run
 
 - Run `runweld verify` on a plan whose use case needs a login its run file lacks → that case is `not reached: needs <the login>`, and the dev server it starts uses the run's port
 
-### executor-presets — Each provider records its own primary and secondary presets when it joins a run and approval freezes the recorded profiles
+### executor-presets — Each task records its resolved primary and secondary executor independently, and approval binds both roles
 
-Why: the task configuration should list participating providers while preserving their chosen models across sessions
+Why: a later host must resume with the approved assignments
 
-- Start a GPT task in a project with GPT, Qwen and Claude configured. Inspect the run TOML: it contains exactly the GPT pair. Join the same run as Qwen: only the Qwen pair is added. Resume as either provider: their recorded models and effort are unchanged, Claude is absent, and the project config and other runs are untouched. An existing multi-provider run retains its recorded profiles.
+- Confirm GPT primary and Claude secondary. Override just the secondary model for one task. Change global defaults, open a new session and inspect both role briefs. They use the recorded providers, models and efforts. A sibling task uses checkout defaults and a new clone offers the new personal defaults.
+- Open a checkout with similarly titled tasks, select one by ID, and recover from its linked worktree. Read the next action before history. On an approved plan a separate start is still required. Inspect detailed output and execute a permitted JSON action in its declared cwd. For an unknown ID, follow the displayed recovery command.
 
 ### task-worktree — Every new Runweld task has a dedicated branch and worktree from entry through confirmed integration, with local history accessible across trees
 
@@ -67,3 +69,10 @@ Why: concurrent tabs can plan, build and resume independently while their code a
 Why: planning works in a fresh tree and setup can retry without creating a second task.
 
 - Start two tasks concurrently from one checkout, including a small task → grill and planning use different branches and worktrees; project status lists both and each tab sees its own next action. Resume one task from a fresh tab → same tree and history. Both can plan before dependency installation. At the first step needing the environment, exercise optional setup with separate ports and data directories; fail it once and retry in the same tree. A project without a setup command also works.
+
+### mandatory-checks — A successful run accounts for every project-designated mandatory check
+
+Why: colleagues need the same meaning of a passing result
+
+- Resolve conflicting project and CI checks in chat after seeing both sources. With two mandatory commands, try omitting one before approval, then try a judge waiver after one fails. Both attempts stop before a pass or integration. Fix the failure, rerun at the current head and observe both successes.
+- Starting with only the README chat prompt, complete onboarding and follow a disposable task through approval, verification, human acceptance and local finish. A fresh agent can identify outstanding checks, recorded decisions and the next owner after interruption.

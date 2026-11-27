@@ -9,7 +9,7 @@ Read `VERSION` and inspect changes on `main` since the preceding version bump. U
 
 Honor the requested bump. Draft short English notes for the humans and agents using the CLI. Describe observable changes, useful commands and any effect on existing runs. Keep internal fixes within the same release out of the notes. Save the approved text in `docs/releases/<version>.md`; CI also supports a plain `VERSION` bump with GitHub-generated notes.
 
-For a preview, show the proposed version and notes in chat. For publication, show the version and notes for approval unless the owner has already authorized those exact terms. Commit the version and notes together on `main` and push the approved changes. Check for unrelated staged or working-tree changes, particularly `.runweld/runweld.lock`, and leave them out of the release commit.
+For a preview, show the proposed version and notes in chat. For publication, show the version and notes for approval unless the owner has already authorized those exact terms. Commit the version and notes together on `main` and push the approved changes. Check for unrelated staged or working-tree changes, particularly the root `runweld.lock`, and leave them out of the release commit.
 
 The existing CI publishes on a green push that changes `VERSION`. It creates `v<version>` at the tested push SHA. Follow the run for that SHA with `gh run list --workflow ci.yml --commit SHA` and `gh run watch RUN_ID --exit-status`. Check the resulting tag, title, notes and URL with `gh release view TAG` and confirm the tag resolves to the tested commit. On failure, inspect the failed job; retry that run for a transient failure. An existing tag on another commit requires the owner's decision.
 

@@ -13,13 +13,16 @@ Usage
   runweld --release RELEASE COMMAND [ARGS...]
 
 Start here
-  runweld next                       See available actions in this checkout.
-  runweld next TASK                  Inspect one task and its next actions.
-  runweld next TASK --json           Read those actions as structured data.
+  runweld next                       See what needs attention in this checkout.
+  runweld next TASK                  See one task's goal, owner, and next action.
+  runweld next TASK --details        Show exact commands, paths, and evidence.
+  runweld next TASK --json           Read the full action and evidence records.
 
   Start with `runweld next` in a project checkout or task worktree.
   In a task worktree, Runweld finds the task without an ID.
-  If the project needs initialization, `next` points you to `runweld init`.
+  For setup, preview with `runweld onboard`. Review the project's commands
+  and confirm both executor roles in chat before saving with `onboard --apply`.
+  `runweld help agents` explains how to proceed within recorded approvals.
 
 Examples
   runweld task start report-search --goal "Find reports by title"
@@ -27,9 +30,9 @@ Examples
   runweld help task start
 
 Project and tasks
-  init                 Configure Runweld and the executor pair for this project.
+  onboard              Preview or save Runweld settings for this checkout.
   update               Update the installed CLI or select a release for new tasks.
-  task start           Create or join a task. Use --bug for a reproduction.
+  task start           Create or resume a task. Use --bug for a reproduction.
   task resume          Inspect an existing task and its next actions.
   task path            Locate a task's artifacts.
   task setup           Preview or run task setup.
@@ -104,14 +107,18 @@ DETAILS = {
                 "handoff", "help handoff herdr"),
     "handoff herdr": ("Check that the workspace and pane match the task’s worktree. For a continuation, identify the existing agent.",
                       "handoff herdr PLAN --workspace WORKSPACE --pane PANE"),
-    "next": ("Read the current stage, evidence, owner and available actions without advancing work. "
-             "Omit ID in its worktree, or pass --plan PLAN. In the project checkout without an ID, closed tasks are not offered as work.",
-             "next", "next report-search --json"),
-    "init": ("Run in a Git checkout. Init previews detected commands without running them and writes shared project settings, "
-             "the release lock and repository guidance. Supply the provider and both models for a new pair in non-interactive use. "
-             "Commit the shared files, then run runweld next.",
-             "init", "init --non-interactive --provider GPT --primary-model PRIMARY --secondary-model SECONDARY"),
-    "update": ("Without a scope, an interactive terminal prompts. --cli installs the upstream CLI in this prefix. "
+    "next": ("List open tasks in the project checkout. Select an ID or --plan PLAN to see its goal, current stage and "
+             "who must act. Omit the ID in a task worktree. Add --details for exact commands, paths and evidence, "
+             "or --json for typed actions. This does not advance the workflow.",
+             "next", "next report-search --details", "next report-search --json"),
+    "onboard": ("Run in a Git checkout. Preview detected commands, sources, both executor roles and pending decisions "
+                "without writing files or running project commands. Ask for missing inputs in chat, then use --apply "
+                "to save confirmed roles and checkout preferences. Repeating --apply repairs shared files and reports each path. "
+                "Commit runweld.lock, AGENTS.md and .gitignore, then run runweld next.",
+                "onboard", "onboard --apply --primary-provider GPT --primary-model PRIMARY "
+                "--secondary-provider Claude --secondary-model SECONDARY --no-setup"),
+    "update": ("Without a scope, an interactive terminal prompts. --cli installs the latest published stable CLI in this prefix. "
+               "Set RUNWELD_REF to use an explicit Git tag, commit or development ref instead. "
                "--project selects the installed default (or the exact installed RELEASE) for new tasks from an initialized project. "
                "Existing runs keep their pins. Check with runweld --version --verbose.",
                "update --project", "update --cli"),
@@ -120,11 +127,10 @@ DETAILS = {
              "Choose an action below, then use runweld help task ACTION for its requirements.",
              'task start report-search --goal "Find reports by title"', "help task complete"),
     "task start": ("Run in an initialized Git checkout. A new ID creates a branch, worktree and local run files from the "
-                   "project’s pinned release and HEAD unless --base is given. Select --provider when ambiguous. "
-                   "Reusing the ID keeps the task and can add a new provider’s pair without changing recorded profiles. "
-                   "On an approved run the new pair stays in the proposal until reapproved. Verify with runweld next ID.",
-                   'task start report-search --goal "Find reports by title"', "task start report-search --provider GPT"),
-    "task resume": ("Inspect the saved state and next actions without joining as a provider. Closed tasks still show their outcome and evidence.",
+                   "project’s pinned release and HEAD unless --base is given. Override just the role fields this task needs. "
+                   "Reusing the ID keeps its recorded choices. Inspect them with runweld executor show PLAN.",
+                   'task start report-search --goal "Find reports by title"', "task start report-search --secondary-model MODEL"),
+    "task resume": ("Inspect the saved state and next actions. Closed tasks still show their outcome and evidence.",
                     "task resume report-search --json"),
     "task path": ("Print the artifacts directory for an existing task or a path below it, without creating anything.",
                   "task path report-search", "task path report-search browser-test"),
@@ -154,8 +160,9 @@ DETAILS = {
     "approve": ("Strictly check the draft and compile its execution state. This writes records but is not human approval. "
                 "Correct reported problems, then present the summary from runweld plan review PLAN to the human.",
                 "approve PLAN"),
-    "status": ("Read a plan by path, or omit it for project inventory. Use --current for current workflow guidance "
-               "and --json for evidence and actions in a machine-readable form.", "status --current", "status PLAN --json"),
+    "status": ("Omit PLAN for a compact inventory including closed tasks. Use --current for next actions, "
+               "--current --details for full status from this checkout, or pass PLAN for the history of one plan. "
+               "Use --json for machine-readable status.", "status --current", "status --current --details", "status PLAN --json"),
     "workflow": ("Read the selected release’s workflow without advancing a task. Use --stage to narrow it to inputs, roles and transitions. "
                  "For a task’s actual stage and evidence, use runweld next.", "workflow --stage build-verification --json"),
     "plan": ("Run bare for the planning guide. Review the complete plan and run before recording the human’s decision. "
@@ -173,7 +180,7 @@ DETAILS = {
               "build", "help build start"),
     "build start": ("Open the approved build under the separate start instruction. Registered tasks already own a branch, base and worktree. "
                     "A repeat shows the existing assignment. Use runweld next --plan PLAN for the next action.",
-                    "build start PLAN --provider GPT"),
+                    "build start PLAN"),
     "phase": ("Coordinators start and verify phases. The assigned implementer records the commits and checks in a report.",
               "help phase report", "status PLAN"),
     "phase start": ("Open a phase once its dependencies are done. Inspect the resulting assignment with runweld next --plan PLAN.",
@@ -189,17 +196,17 @@ DETAILS = {
     "decision": ("Record the question, source, answer, rationale and cost of being wrong. Include --phase for a phase ruling.",
                  'decision PLAN --phase 1 --by implementer --question "Keep the alias?" --from "CLI contract" --answer "Yes" --why "Existing callers" --cost "Old callers fail"'),
     "brief": ("Write the assigned role’s brief beside the plan and print its path. Read the selected model, effort and commands "
-              "from the brief. This does not dispatch the role.", "brief implementer PLAN 1 --provider GPT"),
+              "from the brief. This does not dispatch the role.", "brief implementer PLAN 1"),
     "brief implementer": ("Write the phase assignment with its scope, skills, dependencies and report command.",
-                          "brief implementer PLAN 1 --provider GPT"),
+                          "brief implementer PLAN 1"),
     "brief judge": ("Write the judge’s brief from the current review and verification evidence. "
-                    "Complete the review and required results before briefing.", "brief judge PLAN --provider GPT"),
-    "brief round": ("Write the running round’s notes and report command for its implementer.", "brief round PLAN --provider GPT"),
+                    "Complete the review and required results before briefing.", "brief judge PLAN"),
+    "brief round": ("Write the running round’s notes and report command for its implementer.", "brief round PLAN"),
     "brief reviewer": ("Write the exact change range and any fix context for independent review.",
-                       "brief reviewer PLAN --provider GPT"),
+                       "brief reviewer PLAN"),
     "brief verify": ("Write the cases and result commands for Verify. A recheck includes previously failed cases and any --cases requested.",
-                     "brief verify PLAN --provider GPT"),
-    "brief fix": ("Write the open items assigned to the running fix and its report command.", "brief fix PLAN --provider GPT"),
+                     "brief verify PLAN"),
+    "brief fix": ("Write the open items assigned to the running fix and its report command.", "brief fix PLAN"),
     "gate": ("Open build verification once phase reports are verified. Gate start applies spec changes and runs or reuses full checks.",
              "help gate start", "status PLAN"),
     "gate start": ("The coordinator applies the spec changes, determines the gate level and records full checks for the current tip. "
@@ -265,17 +272,17 @@ DETAILS = {
                "Resolve the reported blocker and rerun finish to resume cleanup.", "finish PLAN --json"),
     "run": ("Inspect or check the companion .run.toml. The approved values stay frozen until reapproval. " + ROUTE,
             "run show PLAN", "run check PLAN"),
-    "run new": ("Recover the initial run file only for an interrupted task entry. To start a new task use runweld task start. "
-                "For a missing file on an existing task restore its saved copy.", "run new PLAN"),
+    "run new": ("Standalone run files are created at task entry. For a missing run file on an existing task restore its saved copy.",
+                "task start report-search"),
     "run check": ("Read and validate the companion .run.toml. A valid file is silent. Fix reported problems and rerun the check.",
                   "run check PLAN"),
     "run show": ("Print run settings and any drift from the approved snapshot. Use --json for structured settings. " + ROUTE,
                  "run show PLAN --json"),
-    "executor": ("Inspect the literal executor pair for a provider. This does not change the models or join a task.",
-                 "executor show --provider GPT PLAN"),
+    "executor": ("Inspect the checkout or task’s two executor roles without changing them.",
+                 "executor show PLAN"),
     "executor show": ("Omit PLAN to read project defaults. With PLAN, read the recorded pair or, after approval, the frozen pair. "
                       "Use the reported model and effort exactly when dispatching that role.",
-                      "executor show --provider GPT PLAN"),
+                      "executor show PLAN"),
     "grill": ("Run bare for interview instructions. Start or save the current interview, finish it when decisions are settled, "
               "or skip with a reason when optional. " + ROUTE, "grill start PLAN", 'grill skip PLAN --reason "Questions are settled"'),
     "prototype": ("Run bare for the prototype guide. Save evidence under the task’s artifacts and record the reviewed result. "

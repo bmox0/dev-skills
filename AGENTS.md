@@ -4,6 +4,12 @@
 **Typecheck.** none
 **Lint.** `scripts/check`
 **Tests.** `scripts/test`
+**Phase checks.** `scripts/check`
+**Full checks.** `scripts/check`, `scripts/test`
+**Required checks.** `scripts/check`, `scripts/test`
+**CI workflow.** `.github/workflows/ci.yml`
+**CI checks.** `scripts/check`, `scripts/test`
+**Worktree setup.** none
 **Single test file.** `scripts/test <path>`
 **Dev server.** none
 **E2E.** explicitly selected native host checks; default tests use fixtures
@@ -15,40 +21,13 @@ a browser or a server
 
 ## Executors
 
-The current provider selects its own pair. Planning, coordination, the
-first review of a range (including a small gate) and every judge use primary. Helpers, implementation,
-E2E, fixes, rounds and rechecks use secondary. Provider and model names are
-opaque identifiers and effort is optional. A task records only the initiating
-provider's pair. Other providers add their own pair when they join.
-Apply the selected model and effort explicitly to each dispatch; never infer
-a role from an inherited model. Shared handoff and acceptance rules:
-[SESSIONS.md](references/SESSIONS.md). Host adapters import shared rules.
-
-```toml
-[executors."GPT".primary]
-model = "gpt-6.2-astra"
-effort = "high"
-
-[executors."GPT".secondary]
-model = "gpt-6.2-sol"
-effort = "high"
-
-[executors."Qwen".primary]
-model = "qwen4-max"
-effort = "xhigh"
-
-[executors."Qwen".secondary]
-model = "qwen4-max"
-effort = "high"
-
-[executors."Claude".primary]
-model = "claude-opus-5-5"
-effort = "xhigh"
-
-[executors."Claude".secondary]
-model = "claude-sonnet-5-5"
-effort = "medium"
-```
+Confirm both roles in checkout onboarding. Planning, coordination, the first
+review of a range (including a small gate) and every judge use primary. Helpers,
+implementation, E2E, fixes, rounds and rechecks use secondary. Provider and model
+names are opaque identifiers and effort is optional. A task records each role
+independently. Read both from `runweld executor show PLAN`. Apply the selected
+settings explicitly to each dispatch.
+[SESSIONS.md](references/SESSIONS.md) holds the shared handoff and acceptance rules.
 
 <!-- runweld:begin -->
 

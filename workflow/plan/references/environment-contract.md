@@ -2,8 +2,9 @@
 
 A plan's Checks names the commands each phase runs, the full commands run after
 all phases, and how e2e drives the system. Plan and verify read the run file.
-For standalone `runweld`, shared checks come from `.runweld/config.toml`. The project's
-`AGENTS.md` environment block can suggest commands at `runweld init`:
+For standalone `runweld`, checkout checks come from `.runweld/config.toml`.
+`runweld onboard` previews commands from the project's `AGENTS.md` environment
+block and other project sources:
 
 ```markdown
 ## Environment
@@ -12,6 +13,12 @@ For standalone `runweld`, shared checks come from `.runweld/config.toml`. The pr
 **Typecheck.** `<command>` — or: none
 **Lint.** `<command>` — or: none
 **Tests.** `<command that runs the suite>` — or: none, this project has no test framework
+**Phase checks.** `<command to run for each phase>`
+**Full checks.** `<command to run at the full gate>`
+**Required checks.** `<mandatory command>`
+**CI workflow.** `<path to designated GitHub Actions workflow>`
+**CI checks.** `<mandatory command named by the designated workflow>`
+**Worktree setup.** `<command to prepare a worktree>` — or: none
 **Single test file.** `<command> <path>`
 **Dev server.** `<command>`, serves on `<url>`
 **E2E.** `<command>` — or: none
@@ -24,7 +31,9 @@ from> — or: none
 **Devices.** <what e2e runs on, and what it leaves alone> — or: any
 ```
 
-Language is what plans and specs are written in. Without the line, they are written in the language of the documents in `docs/`, `docs/spec/` first (commits, code comments, a README or a changelog do not decide it); with no documents, ask the human once. In both fallbacks offer just the line, for the file the project keeps its rules in; the whole block is offered only when the project has none.
+Language applies to plans and specs. If it is missing, read `docs/spec/` first,
+then `docs/`. If neither supplies the language, ask once in chat. Offer only
+the Language line unless the project has no Environment block.
 
 State facts, not prohibitions. "none, this project has no test framework" is a
 fact and it is worth a line. Access names where a credential lives, never the

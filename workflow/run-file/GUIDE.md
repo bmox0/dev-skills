@@ -15,15 +15,15 @@ The run records agreed permissions, checks and ending. Use `runweld` as
    [task entry](../../references/WORKFLOW-PATHS.md).
 2. **Snapshot.** A task starts with the
    [project configuration](references/project-config.md) and locked release.
-   Only the initiating provider's pair is recorded.
-   `CLI task start ID --provider NAME` adds a missing pair without replacing
-   recorded presets. Verify with `CLI executor show --provider NAME PLAN`.
+   For a task override, use e.g. `CLI task start ID --secondary-model MODEL`.
+   Inspect assignments with `CLI executor show PLAN`. Keep the recorded
+   mandatory commands in `[checks].full` and their sources intact.
 3. **Agree the ending.** Read the draft. Record the human's local merge method or
    merge request and target in `[finish]`. Ask once for missing choices and
    task-specific fixtures or accounts. Keep choices already given.
 4. **Secrets.** For each new secret, in the step 3 message when an answer
    brings it, ask: written directly, or as `keychain:<service>/<account>`, which
-   stays as written.
+   stays unresolved.
 5. **Check.** `CLI run check <plan path>` until it is silent: the file is done.
 
 Before compiling, set `[route]` preferences for `grill` and `prototype`.

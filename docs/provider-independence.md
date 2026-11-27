@@ -22,9 +22,16 @@ same model identifier, effort, child-session or messaging operation.
 
 ## Resume from the installed CLI
 
+On a new checkout, `runweld next` points to `runweld onboard`. Inspect the
+project commands and confirm both roles in chat. Primary and secondary can
+use different providers. The checkout stores the confirmed roles locally,
+and task entry records its own resolved pair.
+
 Run `runweld next` in the task worktree, or `runweld next ID` from the project
-checkout. The saved assignment names the task’s release, role instructions,
-executor, working directory and reporting commands. Use your host to check
+checkout. It leads with the goal, next action and owner. Add `--details` for
+paths and evidence or `--json` for executable records. The saved assignment
+names the task’s release, role instructions, executor, working directory
+and reporting commands. Use your host to check
 whether the worker is still live before dispatch or continuation. The CLI
 cannot infer dispatch from a prepared brief or an idle session.
 

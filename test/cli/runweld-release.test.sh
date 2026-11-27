@@ -35,7 +35,7 @@ mkdir -p "$project/.runweld"
 cd "$project"
 git init -q -b main
 git commit --allow-empty -qm base
-runweld init --non-interactive --provider Test --primary-model primary --secondary-model secondary >/dev/null
+runweld onboard --apply --primary-provider Test --secondary-provider Test --primary-model primary --secondary-model secondary --no-setup >/dev/null
 if out=$(runweld run new docs/solo.md 2>&1); then
   echo 'run#task-worktree: standalone run new cannot bypass task entry' >&2
   exit 1
@@ -130,10 +130,9 @@ previous="${previous_plan%.md}.task.json"
 cp "$previous" "$sandbox/previous-record.json"
 
 # distribution#project-lock: an interrupted entry retains A even if the project lock moves before retry.
-interrupted=$(runweld task start interrupted --finish-how ff-only --finish-target main --json)
+interrupted=$(runweld task start interrupted --finish-how merge-request --finish-target main --json)
 interrupted_plan=$(entry_field plan <<< "$interrupted")
 interrupted_run="${interrupted_plan%.md}.run.toml"
-rm "$interrupted_run"
 python3 - "${interrupted_plan%.md}.task.json" <<'PY'
 import json
 from pathlib import Path
@@ -141,7 +140,6 @@ import sys
 record = Path(sys.argv[1])
 value = json.loads(record.read_text())
 value['ready'] = False
-value['finish'] = {'how': 'merge-request', 'target': 'main'}
 record.write_text(json.dumps(value))
 PY
 
@@ -251,10 +249,10 @@ fi
 assert_contains "$out" '[workflow]' 'run#changes-through-approve: the refusal identifies the removed pin'
 cp "$sandbox/run-a.toml" "${plan%.md}.run.toml"
 (cd "$sandbox" && runweld phase start "$plan" 1) >/dev/null
-brief=$(cd "$sandbox" && runweld brief implementer "$plan" 1 --provider Test)
+brief=$(cd "$sandbox" && runweld brief implementer "$plan" 1)
 assert_contains "$(cat "$brief")" "$engine_a/agents/implementer.md" 'distribution#project-lock: run briefs still use A'
 assert_contains "$(cat "$brief")" 'runweld tdd' 'distribution#system-cli: a phase can depend on an installed skill'
-(cd "$repo_worktree" && runweld status --current --json --provider Test) > "$sandbox/status.json"
+(cd "$repo_worktree" && runweld status --current --json) > "$sandbox/status.json"
 python3 - "$sandbox/status.json" "$brief" "$engine_a" <<'PY'
 import json, sys
 from pathlib import Path
@@ -267,14 +265,14 @@ assert step['assignment']['role_source'] == f'{release}/agents/implementer.md'
 PY
 
 # Missing or changed contents must not select a fallback or alter the lock or run.
-cp .runweld/runweld.lock "$sandbox/lock-before"
+cp runweld.lock "$sandbox/lock-before"
 printf 'broken\n' > "$engine_a/references/SESSIONS.md"
 if out=$(runweld update --project "$a" 2>&1); then
   echo 'distribution#project-lock: a damaged candidate must not update the lock' >&2
   exit 1
 fi
 assert_contains "$out" 'references/SESSIONS.md' 'distribution#project-lock: update identifies damaged contents'
-cmp .runweld/runweld.lock "$sandbox/lock-before"
+cmp runweld.lock "$sandbox/lock-before"
 cp "${plan%.md}.json" "$sandbox/run-before"
 if out=$(cd "$sandbox" && runweld phase done "$plan" 1 2>&1); then
   echo 'distribution#project-lock: a damaged locked run cannot execute' >&2
@@ -317,5 +315,5 @@ if ! out=$(cd "$sandbox" && "$repo_root/scripts/install-runweld" --prefix "$pref
   echo "distribution#project-lock: reinstalling the exact damaged release repairs it: $out" >&2
   exit 1
 fi
-cmp .runweld/runweld.lock "$sandbox/lock-before"
+cmp runweld.lock "$sandbox/lock-before"
 assert_contains "$(cd "$sandbox" && runweld help agents --plan "$plan")" "$a" 'distribution#project-lock: the repaired run can use A again'

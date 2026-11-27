@@ -28,7 +28,7 @@ sys.exit(pipeline.main(current_task=Path(selected) if selected else None, **kwar
 
 def task_write(args):
     group, command = args.group, getattr(args, "command", None)
-    if group in ("status", "next", "reference", "help", "executor", "owner"):
+    if group in ("status", "next", "onboard", "reference", "help", "executor", "owner"):
         return False
     if group == "guide":
         return bool(getattr(args, "browser_args", ()))
@@ -42,7 +42,7 @@ def task_write(args):
 def main(locks):
     from route_pipeline import ParseExit, Refuse, compiled_state_missing, missing_state, parse_cli
     from runweld_release import (PROGRAM, TASK_OUTCOMES, TASK_OUTCOME_SUFFIX, ReleaseError,
-                                 canonical_plan, command_plan, installed_default, project_root, read_lock,
+                                 canonical_plan, command_plan, installed_default, lock_path, project_root, read_lock,
                                  read_task_outcome, registered_task, run_pin, task_folders, task_write_lock,
                                  update_installation, verify_release)
 
@@ -89,8 +89,8 @@ def main(locks):
                 if project is not None:
                     project_pin = read_lock(project, store)
                     release = project_pin
-                    if release is None and (project / ".runweld/config.toml").exists() and args and args.group not in ("init", "help", "next"):
-                        raise ReleaseError(f"{project}/.runweld/runweld.lock is missing; run `runweld init` to finish setup or restore the lock")
+                    if release is None and (project / ".runweld/config.toml").exists() and args and args.group not in ("onboard", "help", "next"):
+                        raise ReleaseError(f"{lock_path(project)} is missing; run `runweld onboard` to finish setup or restore the lock")
             if release is None:
                 release = installed_default(store)
         bundle = verify_release(store, release)
@@ -137,7 +137,7 @@ def main(locks):
         return 1
     except Refuse as error:
         for code, message, fix in error.diags:
-            print(f"runweld: {code}: {message} — fix: {fix}", file=sys.stderr)
+            print(f"runweld: {code}: {message}\n  Recovery: {fix}", file=sys.stderr)
         return 1
 
 

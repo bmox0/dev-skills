@@ -22,9 +22,10 @@ with tempfile.TemporaryDirectory() as folder:
                GIT_AUTHOR_NAME="Fixture", GIT_AUTHOR_EMAIL="fixture@example.org",
                GIT_COMMITTER_NAME="Fixture", GIT_COMMITTER_EMAIL="fixture@example.org")
     env.pop("CLAUDE_CONFIG_DIR", None)
+    env["XDG_CONFIG_HOME"] = str(home / "preferences")
 
     def run(*args, cwd=home, ok=True):
-        result = subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, timeout=30)
+        result = subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
         assert (result.returncode == 0) == ok, result.stdout + result.stderr
         return result.stdout if ok else result.stdout + result.stderr
 
@@ -39,14 +40,14 @@ with tempfile.TemporaryDirectory() as folder:
 
     assert "one persistent tab" in run("runweld", "browser-test", "help")
     assert not any((bundle / p).exists() for p in (".agents", ".claude-plugin", ".codex-plugin", ".qoder-plugin"))
-    # A local Git remote exercises the piped installer without contacting GitHub.
+    # An explicit development ref uses the local Git remote without a release lookup.
     upstream = home / "upstream"
     shutil.copytree(bundle, upstream)
     run("git", "init", "-qb", "main", cwd=upstream)
     run("git", "add", ".", cwd=upstream)
     run("git", "commit", "-qm", "fixture release", cwd=upstream)
     prefix = home / "custom prefix"
-    bootstrap_env = dict(env, GIT_CONFIG_COUNT="1",
+    bootstrap_env = dict(env, RUNWELD_REF="refs/heads/main", GIT_CONFIG_COUNT="1",
                          GIT_CONFIG_KEY_0=f"url.{upstream.as_uri()}.insteadOf",
                          GIT_CONFIG_VALUE_0="https://github.com/bmox0/runweld.git")
     with (source / "install.sh").open() as script:
@@ -61,11 +62,11 @@ with tempfile.TemporaryDirectory() as folder:
     run("git", "init", "-qb", "main", cwd=locked)
     assert "outside a Git repository" in run(cli, "update", "--project", cwd=home, ok=False)
     assert not (home / ".runweld").exists()
-    assert "runweld init" in run(cli, "update", "--project", cwd=locked, ok=False)
+    assert "runweld onboard" in run(cli, "update", "--project", cwd=locked, ok=False)
     assert not (locked / ".runweld").exists()
     assert (prefix / "lib/runweld/default").read_text().strip() == release
-    run(cli, "init", "--non-interactive", "--provider", "Test", "--primary-model", "p", "--secondary-model", "s", cwd=locked)
-    lock = locked / ".runweld/runweld.lock"
+    run(cli, "onboard", "--apply", "--primary-provider", "Test", "--secondary-provider", "Test", "--primary-model", "p", "--secondary-model", "s", "--no-setup", cwd=locked)
+    lock = locked / "runweld.lock"
     before = lock.read_bytes()
     with (upstream / "workflow/grill/references/INTERVIEW.md").open("a") as f:
         f.write("\nGlobal update fixture\n")
@@ -124,6 +125,12 @@ with tempfile.TemporaryDirectory() as folder:
     codex.mkdir()
     run("git", "init", "-qb", "main", cwd=codex)
     (codex / "hello.txt").write_text("before\n")
+    required = ("test -s hello.txt", 'test "$(wc -l < hello.txt)" -eq 1')
+    (codex / "AGENTS.md").write_text(f"# Project\n\n## Environment\n\n**Required checks.** `{required[0]}`\n"
+                                    "**CI workflow.** `.github/workflows/check.yml`\n")
+    workflow = codex / ".github/workflows/check.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(f"jobs:\n  tests:\n    steps:\n      - run: {required[1]}\n")
     (codex / ".gitignore").write_text(".fixture-*\n")
     run("git", "add", ".", cwd=codex)
     run("git", "commit", "-qm", "initial project", cwd=codex)
@@ -133,7 +140,7 @@ with tempfile.TemporaryDirectory() as folder:
         view = json.loads(run(cli, "next", *scope, "--json", cwd=cwd))
         if not compare:
             return view
-        terminal = run(cli, "next", *scope, cwd=cwd)
+        terminal = run(cli, "next", *scope, "--details", cwd=cwd)
         for step in view["actions"]:
             assert f"{step['owner']} — {step['action']} [{step['kind']}]" in terminal
             assignment = step.get("assignment", {})
@@ -153,28 +160,30 @@ with tempfile.TemporaryDirectory() as folder:
         return run(*command["argv"], *args, cwd=command["cwd"], ok=ok).strip()
 
     starter, = inspect(codex, compare=True)["actions"]
-    options = ("--non-interactive", "--provider", "GPT", "--primary-model", "codex-primary",
-               "--secondary-model", "codex-secondary", "--phase-check", "git diff --check",
-               "--full-check", "test -s hello.txt", "--bootstrap", "printf ready > .fixture-setup",
-               "--data-dir", "--dev-url", "http://localhost:4000")
+    onboarding_preview = json.loads(follow(starter))
+    assert "required_checks" in onboarding_preview["pending"]
+    assert onboarding_preview["sources"]["required checks"] == {"AGENTS.md ## Environment": [required[0]],
+                                                     ".github/workflows/check.yml": [required[1]]}
+    options = ("--apply", "--primary-provider", "GPT", "--secondary-provider", "Claude", "--primary-model", "primary / opaque",
+               "--primary-effort", "xhigh", "--secondary-model", "checkout helper", "--secondary-effort", "medium",
+               "--phase-check", "git diff --check", "--full-check", required[0], "--setup", "printf ready > .fixture-setup",
+               "--data-dir", "--dev-url", "http://localhost:4000",
+               "--required-check", required[0], "--required-check", required[1])
     follow(starter, *options)
     config = codex / ".runweld/config.toml"
     initial = config.read_text()
     settings = tomllib.loads(initial)
     assert settings["setup"]["command"] == "printf ready > .fixture-setup"
     assert settings["checks"] == {"phase": ["git diff --check"], "full": ["test -s hello.txt"],
-                                 "url": "http://localhost:4000"}
+                                 "url": "http://localhost:4000", "required": list(required)}
     run("git", "add", ".", cwd=codex)
     run("git", "commit", "-qm", "shared settings", cwd=codex)
     follow(starter, *options)
     assert not run("git", "status", "--porcelain", cwd=codex)
     config.write_text(initial + '\n[graph]\nfinish_without_acceptance = true\n')
-    run("git", "add", ".", cwd=codex)
-    run("git", "commit", "-qm", "initial project", cwd=codex)
     assert "[graph]" in run(cli, "task", "start", "forged", cwd=codex, ok=False)
     assert json.loads(run(cli, "status", "--json", cwd=codex)) == []
     config.write_text(initial)
-    run("git", "commit", "-qam", "use release graph", cwd=codex)
 
     def lifecycle(project, provider, release):
         bundle = prefix / "lib/runweld/releases" / release
@@ -187,8 +196,19 @@ with tempfile.TemporaryDirectory() as folder:
         assert "workflow/browser-test/tab.mjs" in definition["when"]["web-or-electron"]["inputs"]
         assert entry["actions"][0]["assignment"]["kind"] == "task-entry"
         slug = provider.lower() + "-message"
-        task = json.loads(run(cli, "task", "start", slug, "--provider", provider, "--goal", f"Print a {provider} greeting.",
-                              "--finish-how", "ff-only", "--finish-target", "main", "--json", cwd=project))
+        task = json.loads(run(cli, "task", "start", slug, "--secondary-model", "task / opaque helper",
+                              "--goal", f"Print a {provider} greeting.", "--finish-how", "ff-only", "--finish-target", "main",
+                              "--json", cwd=project))
+        recorded = {**settings["executors"], "secondary": {**settings["executors"]["secondary"], "model": "task / opaque helper"}}
+        global_config = home / "preferences/runweld/config.toml"
+        global_config.parent.mkdir(parents=True, exist_ok=True)
+        global_config.write_text("""[executors.primary]
+provider = "New provider"
+model = "new personal planner"
+[executors.secondary]
+provider = "Another provider"
+model = "new personal builder"
+""")
         plan, tree = map(Path, (task["plan"], task["tree"]))
         assert task["release"] == release
         artifacts = Path(task["artifacts"])
@@ -219,7 +239,8 @@ with tempfile.TemporaryDirectory() as folder:
         advertised("grill", "save", extra=("--result", "One greeting line", "--question", "Which punctuation?"))
         assert view()["task"]["discovery"]["grill"]["result"] == "One greeting line"
         assert requested("discovery-questions")["questions"] == ["Which punctuation?"]
-        advertised("grill", "done", extra=("--result", "No punctuation"))
+        discovery_result = "Preserve the plain greeting. " * 90
+        advertised("grill", "done", extra=("--result", discovery_result.strip()))
         advertised("prototype", "start")
         preview = artifacts / "preview.txt"
         preview.write_text(f"hello {provider}\n")
@@ -263,6 +284,7 @@ Waits for: nothing
 
 none
 """)
+        draft_text = plan.read_text()
 
         def assignment_for(role, steps=None):
             assignment, = (x["assignment"] for x in (actions() if steps is None else steps) if x["kind"] == "work" and x.get("role") == role)
@@ -277,9 +299,11 @@ none
             path = Path(advertised("brief", command or role, role=role))
             body = path.read_text()
             fields = dict(line.split(": ", 1) for line in body.splitlines() if ": " in line)
-            model = "codex-" + tier
-            assert fields["Executor model"] == model and fields["Executor tier"] == tier
-            assert fields["Executor provider"] == provider and fields["Run release"] == release
+            executor = recorded[tier]
+            assert fields["Executor model"] == executor["model"] and fields["Executor tier"] == tier
+            assert fields["Executor provider"] == executor["provider"] and fields["Run release"] == release
+            assert fields.get("Executor effort") == executor.get("effort")
+            assert fields["Executor source"] == "approved run snapshot"
             for key in ("Protocol", "Role source"):
                 source_path = Path(fields[key])
                 assert source_path.is_relative_to(bundle) and source_path.read_text().strip()
@@ -319,16 +343,54 @@ none
         assert "plan-unapproved" in run(cli, "build", "start", plan, ok=False)
         requested("plan-approval")
         proposal = json.loads(advertised("plan", "review", extra=("--json",)))
+        # run#mandatory-checks: omitting either mandatory declaration or execution is not approvable.
+        run_file = plan.with_suffix(".run.toml")
+        original_run = run_file.read_text()
+        assert proposal["run"]["checks"]["required"] == proposal["run"]["checks"]["full"] == list(required)
+        assert proposal["run"]["required_check_sources"]["required checks"] == onboarding_preview["sources"]["required checks"]
+        for check_key in ("full", "required"):
+            run_file.write_text(original_run.replace(f"{check_key} = " + json.dumps(required),
+                                                    f"{check_key} = " + json.dumps(required[:1])))
+            error = follow(proposal["approval_command"], "--by", "Fixture Human", "--words", "Omit a check", ok=False)
+            assert "run-required-checks" in error
+            assert "plan" not in view()["task"]["approvals"]
+        run_file.write_text(original_run)
+        assert proposal["run"]["executors"] == recorded
         follow(proposal["approval_command"], "--by", "Fixture Human", "--words", "Fixture plan and run approved")
+        if provider == "GPT":
+            sibling = json.loads(run(cli, "task", "start", "similar-message", "--goal", "A similar greeting.",
+                                     "--json", cwd=project))
+            Path(sibling["plan"]).write_text(draft_text.replace(task["branch"], sibling["branch"]))
+            # distribution#system-cli: show task IDs, then the human blocker before lengthy discovery.
+            inventory = run(cli, "next", cwd=project)
+            assert f"{slug} — Plan: Hello GPT" in inventory and "similar-message — Plan: Hello GPT" in inventory, inventory
+            assert str(plan) not in inventory and release not in inventory
+            compact = run(cli, "next", slug, cwd=project)
+            assert compact == run(cli, "next", cwd=tree)
+            assert "Human — Give a separate start instruction" in compact and "Approval alone starts nothing." in compact
+            assert "Plan approval:" not in compact and str(plan) not in compact and discovery_result.strip() not in compact
+            details = run(cli, "next", slug, "--details", cwd=project)
+            assert details.index("Human — Give a separate start instruction") < details.index("Discovery: grill")
+            assert str(plan) in details and "Plan approval: Fixture Human" in details and discovery_result.strip() in details
+            status = run(cli, "status", "--current", cwd=tree)
+            assert slug in status and "Human — Give a separate start instruction" in status
+            assert "Plan approval:" not in status and str(plan) not in status
+            unknown = run(cli, "next", "unknown-message", cwd=project, ok=False)
+            assert "unknown-message" in unknown.splitlines()[0] and "runweld next" not in unknown.splitlines()[0]
+            assert any("runweld next" in line for line in unknown.splitlines()[1:])
+            assert any("runweld task start" in line for line in unknown.splitlines()[1:])
+            assert slug in run(cli, "next", cwd=project)
+        assert json.loads(run(cli, "executor", "show", plan, "--json", cwd=tree)) == {
+            **recorded, "source": "approved run snapshot"}
         start = requested("start-authorization")["command"]
-        selection = ("--provider", provider) if "provider" in start["options"] else ()
-        follow(start, *selection)  # Fixture human authorizes a separate build start.
+        assert start["options"] == {}
+        follow(start)  # Fixture human authorizes a separate build start.
         assert "Next:" in advertised("phase", "start")
         # run#changes-through-approve: recompiling an edited active plan does not authorize its new scope.
         original = plan.read_text()
         plan.write_text(original.replace("Territory: `hello.txt`", "Territory: `hello.txt`, `.gitignore`"))
         run(cli, "approve", plan, cwd=tree)
-        assert "plan-stale" in run(cli, "brief", "implementer", plan, "1", "--provider", provider, cwd=tree, ok=False)
+        assert "plan-stale" in run(cli, "brief", "implementer", plan, "1", cwd=tree, ok=False)
         assert not list(plan.parent.glob("*.brief-implementer-*.md"))
         assert view()["stage"] == "plan"
         proposal = json.loads(advertised("plan", "review", extra=("--json",)))
@@ -368,7 +430,12 @@ none
         report("implementer", ("phase", "report"), "--became", "The greeting is printed", "--commit", commit,
                "--check", "git diff --check", "passed")
         advertised("phase", "done")
-        assert "normal" in advertised("gate", "start")
+        # run#mandatory-checks: a passing dirty edit cannot attest to the committed revision.
+        (tree / "hello.txt").write_text(greeting)
+        assert "required-checks-dirty" in advertised("gate", "start", ok=False)
+        run("git", "restore", "hello.txt", cwd=tree)
+        gate = advertised("gate", "start")
+        assert "normal" in gate and f"ok   {required[0]}" in gate and f"red  {required[1]}" in gate
         brief("reviewer", "primary")
         verify, _ = brief("verify", "secondary")
         assert str(bundle / "workflow/browser-test/tab.mjs") in verify
@@ -385,14 +452,29 @@ none
                "--capture", capture, "--detail", "Captured the whole file")
         assert not any(x.get("role") == "judge" for x in actions())
         report("reviewer", ("review", "complete"))
+        # run#mandatory-checks: a judge cannot let a required check through.
+        refused = run(cli, "verdict", "pass", plan, "--report", "Waive the red check",
+                      "--predicted", "pass", "--engine", "opaque", "--evidence-note", "One check is enough",
+                      "--decide", "check-2", "let-through", "Fixture waiver",
+                      "--decide", "D1", "let-through", "Fixture waiver",
+                      "--decide", "done-1", "let-through", "Fixture waiver", cwd=tree, ok=False)
+        assert "required-checks-red" in refused and required[1] in refused
+        assert not view()["task"]["verdicts"]
+        assert "no-pass" in run(cli, "land", plan, cwd=tree, ok=False)
         # distribution#system-cli: resume a release A repair after the project has selected release B.
         run(cli, "update", "--project", shared_release, cwd=project)
         assert shared_release in run(cli, "help", "agents", cwd=project)
         assert any("Greeting contains an extra line" in fact for fact in view(compare=True)["evidence"])
-        another = json.loads(run(cli, "task", "start", "release-b-check", "--provider", provider,
+        another = json.loads(run(cli, "task", "start", "release-b-check",
                                  "--goal", "Use the new release", "--json", cwd=project))
+        assert json.loads(run(cli, "executor", "show", another["plan"], "--json", cwd=project)) == {
+            **settings["executors"], "source": str(Path(another["plan"]).with_suffix(".run.toml"))}
+        assert config.read_text() == initial
         scope = inspect(project)
-        assert {task["id"]: task["release"] for task in scope["tasks"]} == {slug: release, "release-b-check": shared_release}
+        expected_releases = {slug: release, "release-b-check": shared_release}
+        if provider == "GPT":
+            expected_releases["similar-message"] = release
+        assert {task["id"]: task["release"] for task in scope["tasks"]} == expected_releases
         resume, = (step for step in scope["actions"] if step.get("argv", [])[-2:] == ["next", slug])
         assert json.loads(follow(resume, "--json")) == view()
         second = inspect(another["tree"])
@@ -405,7 +487,9 @@ none
         run("git", "commit", "-qam", "remove the extra line", cwd=tree)
         fixed = run("git", "rev-parse", "HEAD", cwd=tree).strip()
         report("implementer", ("fix", "report"), "--became", "Only the greeting remains", "--commit", fixed)
-        assert "Next:" in advertised("fix", "done")
+        rerun = advertised("fix", "done")
+        assert "Next:" in rerun and f"checks at {fixed[:7]}: green" in rerun
+        assert all(f"ok   {command}" in rerun for command in required)
         brief("reviewer", "secondary")
         brief("verify", "secondary")
         assert assignment_for("reviewer")["range"].endswith(f"{commit}..{fixed}")

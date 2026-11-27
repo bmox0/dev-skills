@@ -79,9 +79,11 @@ how = "ff-only"
 target = "main"
 delete_backups = false
 [run]
-[executors.GPT.primary]
+[executors.primary]
+provider = "GPT"
 model = "planner"
-[executors.GPT.secondary]
+[executors.secondary]
+provider = "GPT"
 model = "worker"
 effort = "high"
 ''')
@@ -168,7 +170,7 @@ effort = "high"
     screen = cli('plan', 'review', plan)
     assert screen.startswith('Approval summary\n\n' + summary) and plan.as_uri() in screen and run.as_uri() in screen
     assert summary_path.as_uri() in screen
-    assert '1. a → b' not in screen and '[executors.GPT.primary]' not in screen
+    assert '1. a → b' not in screen and '[executors.primary]' not in screen
     assert '1. a → b' in review['plan'] and 'target = "main"' in review['run_toml'], review
     assert (compiled.read_bytes(), plan.read_bytes(), git('show-ref')) == before, 'review is read-only'
     run.write_text(run.read_text().replace('delete_backups = false', 'delete_backups = true'))
@@ -231,7 +233,7 @@ effort = "high"
     run.write_text(run.read_text().replace('target = "release"', 'target = "main"'))
     assert display()['current'], 'restoring the approved proposal restores its consent'
     started = json.loads(cli('build', 'start', plan, '--base', 'main', '--json'))
-    assert not started['resumed'] and started['build_provider'] == 'GPT' and started['active_phases'] == []
+    assert not started['resumed'] and started['executors']['primary']['provider'] == 'GPT' and started['active_phases'] == []
     cli('phase', 'start', plan, '1')
     # build#start-chosen: restarting reports the same phase and executor and does not write.
     before = facts()
@@ -240,7 +242,6 @@ effort = "high"
     assert [(p['n'], p['executor']['model'], p['executor']['effort']) for p in current['active_phases']] == [(1, 'worker', 'high')]
     assert 'Active phase 1: One — GPT worker (effort high)' in cli('build', 'start', plan)
     assert facts() == before, 'a repeated start must not change refs or state'
-    unchanged('build', 'start', plan, '--provider', 'Another', code='build-assignment')
     assert display()['revision'] == review['revision'], 'execution progress is not a material edit'
     run.write_text(run.read_text() + '\n# An annotation about these settings.\n')
     assert display()['revision'] == review['revision'] and display()['current']

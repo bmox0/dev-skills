@@ -22,35 +22,69 @@
 
 ## Quick start
 
+### Set up a checkout
+
+Open your project's Git checkout in your coding agent and ask:
+
+> Set up Runweld in this checkout. If it isn't installed, use the installation instructions below. Run `runweld next` and preview onboarding. Show me the project checks and their sources. Ask me to confirm both executors and settle anything the repo leaves unclear before saving. Then show me what changed and what belongs in Git.
+
+Each checkout confirms its own primary and secondary executor, even if you
+have personal defaults. Keep `.runweld/` local. Commit `runweld.lock`,
+`AGENTS.md`, and `.gitignore` so teammates can onboard after cloning.
+[Checkout configuration](workflow/run-file/references/project-config.md)
+
 ### Install
 
-On macOS or Linux, install the CLI with Bash, Git, curl and Python 3.11+ (`python3`).
+On macOS or Linux, use Bash, Git, curl and Python 3.11+ (`python3`) to install the
+latest published stable release. This resolves the release tag to a commit
+before running the installer from that commit.
+
+<details>
+<summary>Show the installation command</summary>
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bash
-export PATH="$HOME/.local/bin:$PATH"
+bash <<'RUNWELD_INSTALL' && export PATH="$HOME/.local/bin:$PATH"
+set -euo pipefail
+repo=https://github.com/bmox0/runweld
+upstream="$repo.git"
+latest=$(curl -fsSL -o /dev/null -w '%{url_effective}' "$repo/releases/latest")
+tag=${latest##*/}
+[[ "$latest" == "$repo/releases/tag/$tag" && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+  { echo "Cannot find a published stable Runweld release" >&2; exit 1; }
+ref="refs/tags/$tag"
+revision=$(git ls-remote --exit-code "$upstream" "$ref" "$ref^{}" |
+  awk -v ref="$ref" '$2 == ref {tag = $1} $2 == ref "^{}" {peeled = $1} END {print (peeled ? peeled : tag)}')
+[[ "$revision" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve $tag to a Git commit" >&2; exit 1; }
+checkout=$(mktemp -d)
+trap 'rm -rf -- "$checkout"' EXIT
+git -C "$checkout" init -q
+git -C "$checkout" fetch -q --depth 1 --no-tags "$upstream" "$revision"
+[[ "$(git -C "$checkout" rev-parse 'FETCH_HEAD^{commit}')" == "$revision" ]] || { echo "Fetched a different commit than $revision" >&2; exit 1; }
+git -C "$checkout" -c core.autocrlf=false checkout -q --detach "$revision"
+[[ "$(cat "$checkout/VERSION")" == "${tag#v}" ]] || { echo "$tag does not match VERSION" >&2; exit 1; }
+"$checkout/scripts/install-runweld"
+RUNWELD_INSTALL
 ```
 
-For updates, use `runweld update --cli` to install the latest CLI from `main`. Use `runweld update --project` in a project to select the installed build for new tasks. In a terminal, `runweld update` asks which one you want. [CLI updates](docs/cli.md#update-the-cli)
+</details>
 
-In your project’s Git checkout, run `runweld help agents` and `runweld next`. On first use, follow the prompt to run `runweld init`. Choose your models and project checks, then commit the shared configuration. [Project setup](workflow/run-file/references/project-config.md)
+To install the source in a Runweld checkout, run `./scripts/install-runweld` there.
+Use `runweld update --cli` for the latest published stable release and
+`runweld update --project` to select an installed build for new tasks.
+[Installation and updates](docs/cli.md#update-the-cli)
 
-Use `runweld --help` to find a command and `runweld help task start` or
-`runweld task start --help` for its requirements and examples. [Terminal help](docs/cli.md#find-a-command)
+### Start or resume a task
 
-### Start a task
+> Use Runweld to add report search by title. Start a task called `report-search` and show me the plan and checks for approval before building.
 
-Start in the repository:
+Approve the plan and run settings together, then separately tell the agent when
+to start the build. When the current result is ready, review and accept it
+before the agent finishes the task.
 
-```sh
-runweld task start report-search --goal "Search reports by title and explain when nothing matches"
-```
-
-Open the worktree printed by `task start` and run `runweld next`. Or give a fresh coding agent in that worktree this prompt:
-
-> Run `runweld next`. Tell me the goal, what’s been decided, who acts next and what they’re waiting for. Continue within the recorded approvals.
-
-Approve the complete plan and run settings together, then separately ask the agent to build. To resume from the main checkout, run `runweld next report-search`. [Terminal and agent walkthrough](docs/cli.md#start-or-resume-a-task)
+To resume, ask a fresh agent to run `runweld next` in the task worktree, or
+`runweld next report-search` in the project checkout. It can see who acts next
+and what they need. Add `--details` for paths and saved evidence.
+[Start or resume a task](docs/cli.md#start-or-resume-a-task)
 
 ## How it works
 
@@ -217,7 +251,7 @@ Your acceptance applies to that page and its landed commit. On your instruction,
 
 Run `runweld grill` for the interview instructions or `runweld plan` to prepare the plan. Each command prints its instructions directly. Your agent client runs shell commands and dispatches workers with the model and effort named in their briefs. You can use a native agent session, a separate herdr tab or a manual handoff. Each uses the same CLI, project checks and task state. [Session handoff](references/SESSIONS.md)
 
-The planning session and build coordinator use **primary** for decisions that affect the whole change. **Secondary** workers get a bounded assignment, such as tracing a code path, implementing one phase or rerunning a failed case. A fresh primary model handles the first review and every judge verdict. Project profiles live in `.runweld/config.toml`. Inspect one with `runweld executor show --provider NAME`.
+The planning session and build coordinator use **primary** for decisions that affect the whole change. **Secondary** workers get a bounded assignment, such as tracing a code path, implementing one phase or rerunning a failed case. A fresh primary model handles the first review and every judge verdict. Use `runweld executor show` for checkout defaults or `runweld executor show PLAN` for the task's recorded roles.
 
 ```mermaid
 flowchart TD

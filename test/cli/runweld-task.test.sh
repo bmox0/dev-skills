@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory() as folder:
              'touch .setup-cache/complete .setup-cache/changed; '
              'printf "%s\\n" "$RUNWELD_SOURCE_CHECKOUT" "$RUNWELD_TASK_PATH" "$RUNWELD_PORT" "$RUNWELD_DATA_DIR" > "$RUNWELD_DATA_DIR/setup"')
     full = 'test -f "$RUNWELD_DATA_DIR/setup"'
-    run(runweld, "init", "--non-interactive", "--provider", "Test", "--primary-model", "primary",
+    run(runweld, "onboard", "--apply", "--primary-provider", "Test", "--secondary-provider", "Test", "--primary-model", "primary",
         "--secondary-model", "secondary", "--port", "--data-dir", "--setup", setup, "--full-check", full)
     run("git", "add", ".")
     run("git", "commit", "-qm", "shared Runweld defaults")
@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory() as folder:
         assert Path(row["artifacts"]).is_relative_to(folder)
         own = json.loads(run(runweld, "next", "--json", cwd=tree))
         assert own["task"]["id"] == row["id"] and own["task"]["artifacts"] == row["artifacts"]
-        assert own["actions"] and row["plan"] in run(runweld, "next", cwd=tree)
+        assert own["actions"] and row["plan"] in run(runweld, "next", "--details", cwd=tree)
         assert row["branch"] == f"runweld/{row['id']}"
         assert (tree / "tracked").exists() and not (Path(row["artifacts"]) / "data").exists()
         assert run("git", "branch", "--show-current", cwd=tree) == row["branch"]
@@ -80,7 +80,7 @@ with tempfile.TemporaryDirectory() as folder:
     # distribution#task-artifacts: the main checkout lists choices without selecting either task.
     choices = json.loads(run(runweld, "next", "--json"))
     assert choices.get("task") is None and {t["id"] for t in choices["tasks"]} == {"one", "two"}
-    assert "runweld next two" in run(runweld, "next")
+    assert "runweld next two" in run(runweld, "next", "--details")
     assert json.loads(run(runweld, "next", "two", "--json"))["task"]["tree"] == b["tree"]
     assert run(runweld, "task", "path", "one", "browser-test") == str(Path(a["artifacts"]) / "browser-test")
     release = (home / "lib/runweld/default").read_text().strip()
@@ -209,7 +209,7 @@ Waits for: nothing
         output = run(runweld, "gate", "start", plan)
         assert "spec write refused" not in output, output
         assert " RED" not in output, output
-        reviewer = Path(run(runweld, "brief", "reviewer", plan, "--provider", "Test"))
+        reviewer = Path(run(runweld, "brief", "reviewer", plan))
         review = next(line.removeprefix("- Complete the review: ") for line in reviewer.read_text().splitlines()
                       if line.startswith("- Complete the review: "))
         run(*shlex.split(review), cwd=home)

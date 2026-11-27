@@ -33,20 +33,20 @@ Before the first verdict, finish the outgoing cycle's evidence.
 last verdict ordered a round:
 
 1. A note that changes a rule changes `## Spec` along with Done first. Then a
-   new `runweld implementer` handed `CLI brief round --provider <provider> <plan>`; its territory
+   new `runweld implementer` handed `CLI brief round <plan>`; its territory
    is what the notes touch. Its checks, as for any phase.
 2. When it has reported, `CLI round done <plan>` writes the rules and runs the
    full checks. Then at once: the reviewer on secondary handed `CLI brief
-   reviewer --provider <provider>`, and the blast radius from the diff. Confined to what the notes
+   reviewer`, and the blast radius from the diff. Confined to what the notes
    name: tell the human what to look at, since they asked for it. Reaching shared
    code, logic or anything else: a fresh worker drives the Done use cases the
-   diff touches through `runweld verify` handed `CLI brief verify --provider <provider> --cases`.
+   diff touches through `runweld verify` handed `CLI brief verify --cases`.
    Give the cases and why; the human can overrule. `CLI status <plan>` names
    pending evidence.
 3. Defects and failed use cases go through `CLI fix`, as gate.md; what
    survives is under Open on the gate page. Conventions go to the judge.
 4. A new note taken adds its use case to Done. After a round at the human gate:
-   the judge, handed `CLI brief judge --provider <provider>`, which lands, and `CLI page` again.
+   the judge, handed `CLI brief judge`, which lands, and `CLI page` again.
 
 After `CLI round done` for a judge's round, use gate.md's targeted re-check,
 then brief the judge again.

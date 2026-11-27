@@ -1,12 +1,13 @@
 # Runweld writes [workflow] version and digest from the selected release.
-# Shared checks and the initiating provider's pair come from .runweld/config.toml.
+# Checks and both assigned roles come from .runweld/config.toml.
 # Choose [finish] per run. The dev command, URL and isolation resources are optional.
-# Join with task start ID --provider NAME to add another provider's pair.
-# Each provider has this shape:
-# [executors."PROVIDER".primary]
+# Task entry accepts role-specific overrides such as --secondary-model.
+# [executors.primary]
+# provider = "provider identifier"
 # model = "model identifier"
 # effort = "optional effort"
-# [executors."PROVIDER".secondary]
+# [executors.secondary]
+# provider = "another provider"
 # model = "model identifier"
 
 # Optional per-run discovery. Missing keys use the pinned release's defaults.
@@ -22,6 +23,7 @@ delete_backups = true
 [checks]
 phase = ["scripts/check"]    # run by an implementer on its own territory
 full = ["scripts/check", "scripts/test"]
+# required = ["scripts/check", "scripts/test"] # captured at task entry, along with [required_check_sources]
 dev = "npm run dev -- --port {port}"   # optional; {port} and {data_dir} stand for the run's allocation
 url = "http://localhost:{port}"        # optional
 

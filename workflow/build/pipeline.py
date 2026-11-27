@@ -9,18 +9,18 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py plan review [--json] PLAN
        pipeline.py plan approve PLAN --revision HASH --by NAME --words TEXT [--acceptor NAME --authority TEXT]
        pipeline.py accept PLAN --by NAME --words TEXT
-       pipeline.py status [--json] [--provider NAME] [--current | PLAN]
+       pipeline.py status [--json] [--current | PLAN]
        pipeline.py workflow [--stage STAGE] [--json]
        pipeline.py GUIDE [--plan PLAN]
        pipeline.py plan status [--note TEXT] PLAN VALUE
        pipeline.py plan base [--note TEXT] PLAN REF
-       pipeline.py build start [--base REF] [--provider NAME] [--worktree PATH] [--json] [--note TEXT] PLAN
+       pipeline.py build start [--base REF] [--worktree PATH] [--json] [--note TEXT] PLAN
        pipeline.py phase start|done [--note TEXT] PLAN N
        pipeline.py phase report --became T --commit SHA [...] [--check COMMAND OUTCOME ...] PLAN N
        pipeline.py owner PLAN PATH
        pipeline.py grant [--note TEXT] PLAN N PATH
        pipeline.py decision --question Q --from S --answer A --why W --cost C PLAN
-       pipeline.py brief implementer PLAN N | brief judge|round|reviewer|fix PLAN | brief verify [--cases N,N] PLAN   --provider NAME [--note TEXT]
+       pipeline.py brief implementer PLAN N | brief judge|round|reviewer|fix PLAN | brief verify [--cases N,N] PLAN   [--note TEXT]
        pipeline.py gate start [--note TEXT] PLAN
        pipeline.py finding --kind K --text T [--where F:L] [--source S] [--again ID] PLAN
        pipeline.py review complete --assignment NAME --range BASE..HEAD PLAN
@@ -35,7 +35,7 @@ Usage: pipeline.py spec check [--base REV] PLAN
        pipeline.py round start [--conflict T] PLAN | round report --became T [--commit SHA ...] PLAN | round done PLAN
        pipeline.py finish [--merged] PLAN
        pipeline.py run new|check PLAN | run show [--json] PLAN
-       pipeline.py executor show --provider NAME [PLAN] [--json]
+       pipeline.py executor show [PLAN] [--json]
 
 check reads the plan's `## Spec` section against docs/spec/ as it is at the
 base (--base, else the base in the plan's Status line, else HEAD) and reports
@@ -58,9 +58,9 @@ build start, compilation and plan approval pick a port under one project-wide lo
 Standalone task entry snapshots project defaults and the selected release.
 Run new copies the latest local run (else its example). Run check prints
 problems as `<code>: … — fix: …`; run show prints approved values and any drift.
-Executor show selects the current project pair before plan approval and the
-frozen snapshot afterward. Briefs use the recorded provider or require --provider,
-and expose the assigned tier/model/effort for explicit dispatch.
+Executor show prints checkout defaults, task choices with PLAN, and the frozen
+snapshot after approval. Briefs use the assigned role's provider/model/effort
+for explicit dispatch.
 
 list prints every area (`<area> — <title>`), its description indented under it, and its rules, indented
 (`  <area>#<rule> — <statement>`), from the working tree. show prints the rule
@@ -107,6 +107,7 @@ import stat
 import tempfile
 import tomllib
 from pathlib import Path
+from textwrap import shorten
 
 sys.dont_write_bytecode = True
 
@@ -816,17 +817,21 @@ def check_epic(root, path, row):
                      "restore the linked epic and its numbered row")
 
 
+def plan_title(lines, mask=None):
+    if mask is None:
+        mask = fenced(lines)
+    return next((line[2:].strip() for line, hidden in zip(lines, mask)
+                 if not hidden and line.startswith("# ") and line[2:].strip()), None)
+
+
 def parse_plan(lines, root, *, check_references=True, history=None):
     """The plan's lines (as far as the CLI reads them) -> (plan dict, problems [(line, message)])."""
     problems = []
     bad = lambda n, m: problems.append((n, m))
     P = {"title": None, "status": None, "branch": None, "base": None, "epic": None, "level": None, "phases": []}
     mask = fenced(lines)
-    for l, f in zip(lines, mask):
-        if l.startswith("# ") and l[2:].strip() and not f:
-            P["title"] = l[2:].strip()
-            break
-    else:
+    P["title"] = plan_title(lines, mask)
+    if P["title"] is None:
         bad(1, "no `# ` title line")
     for n, l in enumerate(header_of(lines), 1):
         if l.startswith("Status:") and not mask[n - 1]:
@@ -1098,7 +1103,7 @@ def state_problem(st, md):
         "land_stops": [{"lands": int, "kind": str, "message": str}],
         "decisions": [{"at": str, "phase": nullable_int, "by": str, "question": str, "source": str, "answer": str, "why": str, "cost": str}],
         "approvals": dict, "summary_required": bool, "run": dict, "alloc": dict, "tree": str, "tail_hash": str, "cleanup_pending": str,
-        "build_provider": str, "integration": {"how": str, "target": str, "landed": str, "commit?": str, "request?": str},
+        "integration": {"how": str, "target": str, "landed": str, "commit?": str, "request?": str},
         "acceptance": {"page": str}, "request": {"tip": str, "acceptance": str}, "pushed": {"tip": str},
         "check_transition": {"cycle": str, "id": str, "command": str, "target": nullable_int, "host": nullable_text,
                              "child": ({"pgid": int, "start": str}, type(None)), "note?": nullable_text},
@@ -1363,10 +1368,10 @@ def ready_phases(st):
 CHOICES = {("finish", "how"): ["merge-request", "ff-only", "no-ff"]}
 RUN_SECTIONS = {
     "finish": {"how": "str", "target": "str", "delete_backups": "bool"},
-    "checks": {"phase": "list", "full": "list", "build": "str", "dev": "str", "url": "str"},
+    "checks": {"phase": "list", "full": "list", "required": "list", "build": "str", "dev": "str", "url": "str"},
     "isolation": {"port": "bool", "data_dir": "bool"},
 }
-RUN_OPTIONAL = {("checks", "build"), ("checks", "dev"), ("checks", "url"), ("isolation", "port"), ("isolation", "data_dir")}
+RUN_OPTIONAL = {("checks", "required"), ("checks", "build"), ("checks", "dev"), ("checks", "url"), ("isolation", "port"), ("isolation", "data_dir")}
 PLACEHOLDER = re.compile(r"\{(port|data_dir)\}")
 EXAMPLE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "run-file", "references", "example.run.toml")
 
@@ -1393,111 +1398,42 @@ def single_line(value):
     return type_ok(value, "str") and bool(value.strip()) and len(value.splitlines()) == 1 and not value.endswith(("\n", "\r"))
 
 
-def executor_diags(values):
-    """Validate the fixed executor structure without restricting provider or model names."""
-    out = []
-    def bad(path, message):
-        out.append(("executor-invalid", f"{path} {message}", "use [executors.\"PROVIDER\".primary] and secondary, each with model and optional effort"))
-    if not isinstance(values, dict) or not values:
-        bad("executors", "must be a nonempty table of provider profiles")
-        return out
-    for provider, profiles in values.items():
-        path = "executors." + json.dumps(provider, ensure_ascii=False)
-        if not single_line(provider):
-            bad(path, "must name a nonblank single-line provider")
-        if not isinstance(profiles, dict):
-            bad(path, "must be a table")
-            continue
-        for tier in sorted(profiles.keys() - {"primary", "secondary"}):
-            bad(f"{path}.{tier}", "is an unknown field")
-        for tier in ("primary", "secondary"):
-            profile = profiles.get(tier)
-            here = f"{path}.{tier}"
-            if not isinstance(profile, dict):
-                bad(here, "must be a table")
-                continue
-            for key in sorted(profile.keys() - {"model", "effort"}):
-                bad(f"{here}.{key}", "is an unknown field")
-            for key in ("model", "effort"):
-                if key == "model" or key in profile:
-                    if not single_line(profile.get(key)):
-                        bad(f"{here}.{key}", "must be a nonblank single-line string")
-    return out
-
-
-def agents_executors(tree):
-    path = os.path.join(tree, "AGENTS.md")
-    fix = f"add ## Executors with one fenced toml block of provider primary/secondary profiles to {path}"
-    dups = []
-    secs = sections(read_required(path, "executors-missing", fix).splitlines(), dups)
-    body = "\n".join(secs.get("Executors", (0, []))[1])
-    blocks = re.findall(r"(?ms)^```toml[ \t]*\n(.*?)^```[ \t]*$", body)
-    if len(blocks) != 1 or any(name == "Executors" for _, name in dups):
-        raise Refuse("executors-missing", f"{path} must have one ## Executors section with one fenced toml block", fix)
-    try:
-        values = tomllib.loads(blocks[0])
-    except tomllib.TOMLDecodeError as e:
-        raise Refuse("executors-bad-toml", f"{path} Executors is not valid TOML ({e})", fix)
-    problems = [("executor-invalid", f"{path}: {key} is an unknown field in Executors", fix) for key in values if key != "executors"]
-    problems += [(code, f"{path}: {message}", fix) for code, message, _ in executor_diags(values.get("executors"))]
-    if problems:
-        raise refuse_all(problems)
-    return values["executors"], path
-
-
-def executor_selection(plan, provider):
-    if not single_line(provider):
-        raise Refuse("bad-provider", "--provider must be a nonblank single-line identifier", "supply the current provider explicitly")
+def executor_selection(plan):
     st = load_state(plan) if plan else None
-    if st and plan_approval(st):
-        values, source = st.get("run", {}).get("executors", {}), "approved run snapshot"
-    elif plan and standalone_bundle() is not None and task_for(plan):
+    if st and (approval := plan_approval(st)):
+        run = st.get("run", {})
+        values, source = run.get("executors"), "approved run snapshot"
+        if approval["run"] != digest(run):
+            raise Refuse("approval-snapshot", "there is no matching approved run snapshot", "restore the saved state")
+    elif plan:
         _, run = read_run_proposal(plan, draft=True)
-        values, source = run.get("executors", {}), run_path(plan)
+        values, source = run.get("executors"), run_path(plan)
     else:
-        if st:
-            tree = tree_of(plan, st)
-        else:
-            directory = os.path.dirname(plan_paths(plan)[0]) if plan else os.getcwd()
-            while not os.path.isdir(directory):
-                directory = os.path.dirname(directory)
-            tree = plan_checkout(os.path.join(directory, "executor.md"))
-        config = None
-        if standalone_bundle() is not None:
-            from runweld_release import project_root
-            if project := project_root(tree):
-                config = project / ".runweld/config.toml"
-        if config is not None and os.path.lexists(config):
-            _, settings = read_project_config(config)
-            values, source = settings["executors"], str(config)
-        else:
-            values, source = agents_executors(tree)
-    if provider not in values:
-        if source == "approved run snapshot":
-            fix = "join with `runweld task start ID --provider NAME` and obtain renewed human approval"
-        elif source.endswith(".run.toml"):
-            fix = "join with `runweld task start ID --provider NAME`"
-        elif source.endswith("/.runweld/config.toml"):
-            fix = "run `runweld init --provider NAME` to add this provider's primary/secondary profiles"
-        else:
-            fix = "add this provider's primary/secondary profiles to AGENTS.md ## Executors"
-        raise Refuse("executor-missing", f"executors.{json.dumps(provider, ensure_ascii=False)} is missing from {source}", fix)
-    problems = executor_diags({provider: values[provider]})
-    if problems:
-        raise refuse_all(problems)
-    return {"provider": provider, "source": source, **values[provider]}
+        from runweld_release import project_root
+        project = project_root(Path.cwd())
+        if project is None:
+            raise Refuse("no-repo", "the current directory is not in a Git project", "run this command in a Git checkout")
+        source = project / ".runweld/config.toml"
+        _, settings = read_project_config(source)
+        values = settings["executors"]
+    if problems := executor_diags(values, complete=True):
+        raise refuse_all([(code, f"{message} ({source})", fix) for code, message, fix in problems])
+    return {"source": str(source), **values}
 
 
-def cmd_executor(plan, provider, as_json):
-    selected = executor_selection(plan, provider)
+def show_executors(values):
+    for tier in EXECUTOR_ROLES:
+        if profile := values.get(tier):
+            print(f"  {tier}: " + " / ".join(profile[field] for field in ("provider", "model", "effort") if field in profile))
+
+
+def cmd_executor(plan, as_json):
+    selected = executor_selection(plan)
     if as_json:
         print(json.dumps(selected, ensure_ascii=False))
     else:
-        print(f"Provider: {provider}\nSource: {selected['source']}")
-        for tier in ("primary", "secondary"):
-            profile = selected[tier]
-            print(f"{tier}: model = {json.dumps(profile['model'], ensure_ascii=False)}" +
-                  (f", effort = {json.dumps(profile['effort'], ensure_ascii=False)}" if "effort" in profile else ""))
+        print(f"Source: {selected['source']}")
+        show_executors(selected)
     return 0
 
 
@@ -1538,14 +1474,14 @@ def toml_value(value):
 
 
 def executor_toml(values):
-    return "\n".join(f"[executors.{toml_value(provider)}.{tier}]\n" +
-                     "\n".join(f"{key} = {toml_value(value)}" for key, value in profile.items()) + "\n"
-                     for provider, profiles in values.items() for tier, profile in profiles.items())
+    return "\n".join(f"[executors.{tier}]\n" +
+                     "".join(f"{key} = {toml_value(value)}\n" for key, value in profile.items())
+                     for tier, profile in values.items())
 
 
 def settings_toml(values):
     sections = []
-    for name in ("workflow", "route", "finish", "checks", "setup", "isolation", "executors", "run"):
+    for name in ("workflow", "route", "finish", "checks", "required_check_sources", "setup", "isolation", "executors", "onboarding", "run"):
         if name not in values:
             continue
         table = values[name]
@@ -1556,7 +1492,9 @@ def settings_toml(values):
         if name == "executors":
             sections.append(executor_toml(table))
         else:
-            sections.append(f"[{name}]\n" + "".join(f"{key} = {toml_value(value)}\n" for key, value in table.items()))
+            sections.append(f"[{name}]\n" + "".join(
+                f"{key if re.fullmatch(r'[A-Za-z0-9_-]+', key) else toml_value(key)} = {toml_value(value)}\n"
+                for key, value in table.items()))
     return "\n".join(sections)
 
 
@@ -1569,6 +1507,14 @@ def read_run_proposal(plan, *, draft=False):
         task_pin(release_pin(values, path), task, path)
     except ReleaseError as error:
         raise Refuse("run-release", str(error), "restore the release recorded at task entry") from None
+    if task:
+        requirements = task.get("requirements")
+        if ("required" not in values["checks"] or "required_check_sources" not in values
+                or requirements != {"commands": values["checks"]["required"], "sources": values["required_check_sources"]}):
+            raise Refuse("run-required-checks", f"{path} must preserve the mandatory checks and sources recorded at task entry",
+                         f"restore them from {Path(plan_paths(plan)[0]).with_suffix('.task.json')}")
+        if problems := executor_diags(values.get("executors"), complete=True):
+            raise refuse_all([(code, f"{message} ({path})", fix) for code, message, fix in problems])
     return text, values
 
 
@@ -1595,7 +1541,7 @@ def read_run_file(path, *, pending_finish=False):
 
 def run_diags(v, *, project=False, pending_finish=False):
     sections = {k: v for k, v in RUN_SECTIONS.items() if not project or k != "finish"}
-    allowed = (*sections, "executors", "setup") + (() if project else ("workflow", "route", "run"))
+    allowed = (*sections, "executors", "setup") + (() if project else ("workflow", "route", "run", "required_check_sources"))
     out = []
     for sec in v:
         if sec not in allowed:
@@ -1608,8 +1554,11 @@ def run_diags(v, *, project=False, pending_finish=False):
             out.append(("run-bad-release", "[workflow] requires a version and its SHA-256 digest", "use the release recorded by runweld when it created the run"))
     if not project and "route" in v:
         out += route_diags(v["route"])
-    if project or "executors" in v:
-        out += executor_diags(v.get("executors"))
+    if "executors" in v:
+        out += executor_diags(v["executors"], complete=not project)
+    if "required_check_sources" in v and not check_sources_ok(v["required_check_sources"]):
+        out.append(("run-required-checks", "required_check_sources must map source kinds to sources and command arrays",
+                    "restore the sources recorded at task entry"))
     if "setup" in v:
         setup = v["setup"]
         if not isinstance(setup, dict) or set(setup) != {"command"} or not single_line(setup["command"]):
@@ -1645,6 +1594,15 @@ def run_diags(v, *, project=False, pending_finish=False):
     finish = v.get("finish", {})
     if not project and isinstance(finish, dict) and "target" in finish and not single_line(finish["target"]):
         out.append(("run-bad-target", "[finish] target must be a nonblank single-line branch", "set a target branch"))
+    if isinstance(checks, dict) and type_ok(checks.get("required"), "list"):
+        if not all(single_line(command) for command in checks["required"]):
+            out.append(("run-required-checks", "[checks] required must contain nonblank single-line commands",
+                        "restore the mandatory checks recorded at task entry"))
+        elif not project and type_ok(checks.get("full"), "list"):
+            missing = [command for command in checks["required"] if command not in checks["full"]]
+            if missing:
+                out.append(("run-required-checks", "mandatory commands missing from [checks] full: " + ", ".join(missing),
+                            "include every recorded mandatory command in full"))
     if isinstance(checks, dict) and isinstance(resources, dict):
         for k, x in checks.items():
             if project and type_ok(x, RUN_SECTIONS["checks"].get(k, "str")) and any(
@@ -1775,9 +1733,69 @@ def free_port(plan, md):
     raise Refuse("no-port", f"no free port in {ports.start}-{ports[-1]}", "stop a plan that holds one, or free a port")
 
 
+EXECUTOR_ROLES = ("primary", "secondary")
+REQUIRED_CHECK_SOURCES = ("required checks", "ci workflow", "CI unresolved")
+AGENTS_ENVIRONMENT = "AGENTS.md ## Environment"
+
+
+def declared_required_checks(sources):
+    required = sources.get("required checks", {})
+    return set(required.get(AGENTS_ENVIRONMENT, [])) | set(required.get(AGENTS_ENVIRONMENT + " (CI checks)", []))
+
+
+def check_sources_ok(sources):
+    return isinstance(sources, dict) and all(isinstance(entries, dict) and all(type_ok(commands, "list") for commands in entries.values())
+                                              for entries in sources.values())
+
+
+def executor_diags(values, *, complete=False):
+    out = []
+    def bad(field, reason):
+        out.append(("executor-invalid", f"executors{field} {reason}",
+                    "use [executors.primary] and [executors.secondary] with provider, model and optional effort"))
+    if not isinstance(values, dict):
+        bad("", "must be a table")
+        return out
+    if complete:
+        for tier in EXECUTOR_ROLES:
+            if tier not in values:
+                bad(f".{tier}", "is missing")
+    for tier, role in values.items():
+        if tier not in EXECUTOR_ROLES or not isinstance(role, dict):
+            bad(f".{tier}", "must be a primary or secondary role table")
+            continue
+        for key in sorted(role.keys() | {"provider", "model"}):
+            if key not in {"provider", "model", "effort"}:
+                bad(f".{tier}.{key}", "is an unknown field")
+            elif not single_line(role.get(key)):
+                bad(f".{tier}.{key}", "must be a nonblank single-line string")
+    return out
+
+
 def validate_project_config(path, values):
-    if problems := run_diags(values, project=True):
+    onboarding = values.get("onboarding", {})
+    problems = []
+    if (not isinstance(onboarding, dict) or type(onboarding.get("setup_known", False)) is not bool
+            or not check_sources_ok(onboarding.get("sources", {}))):
+        problems.append(("project-onboarding", "[onboarding] must contain a boolean setup_known and a table of command sources if supplied",
+                         "review checkout settings with `runweld onboard`"))
+    problems.extend(run_diags({key: val for key, val in values.items() if key != "onboarding"}, project=True))
+    if problems:
         raise refuse_all([(code, f"{message} ({path})", fix) for code, message, fix in problems])
+
+
+def project_pending(settings):
+    roles = settings.get("executors", {})
+    pending = {tier: f"Confirm the {tier} executor in chat or supply its provider, model and optional effort."
+               for tier in EXECUTOR_ROLES if tier not in roles}
+    if "required" not in settings.get("checks", {}):
+        sources = settings.get("onboarding", {}).get("sources", {})
+        options = ("Keep the checks declared in AGENTS.md." if declared_required_checks(sources)
+                   else "Use --no-required-checks if none are mandatory.")
+        pending["required_checks"] = f"Decide in chat which checks are mandatory. Use --required-check for each command. {options}"
+    if "setup" not in settings and not settings.get("onboarding", {}).get("setup_known"):
+        pending["setup"] = "Ask whether a fresh worktree needs setup. Use --setup COMMAND or --no-setup."
+    return pending
 
 
 def read_project_config(path, *, optional=False):
@@ -1786,7 +1804,7 @@ def read_project_config(path, *, optional=False):
     if text is None:
         if optional:
             return None, None
-        raise Refuse("project-not-initialized", f"{path} is missing", "run `runweld init` in this project")
+        raise Refuse("project-needs-onboarding", f"{path} is missing", "run `runweld onboard` in this project")
     try:
         values = tomllib.loads(text)
     except tomllib.TOMLDecodeError as error:
@@ -1794,104 +1812,149 @@ def read_project_config(path, *, optional=False):
     if "finish" in values:
         raise Refuse("project-finish", f"{path} contains a run-specific [finish] table", "remove [finish] from project config and choose the ending in each task")
     validate_project_config(path, values)
+    if not optional and (pending := project_pending(values)):
+        raise Refuse("project-needs-onboarding", f"{path} still needs decisions for {', '.join(pending)}",
+                     "run `runweld onboard` and finish checkout setup in chat")
     return text, values
 
 
-def init_provider():
-    active = [provider for provider, detected in (("GPT", os.environ.get("CODEX_THREAD_ID")),
-                                                   ("Claude", os.environ.get("CLAUDECODE") == "1")) if detected]
-    return active[0] if len(active) == 1 else None
+def personal_executors():
+    from runweld_release import read_data
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    path = config_home / "runweld/config.toml"
+    values = read_data(path, tomllib.loads) or {}
+    roles = values.get("executors", {})
+    if problems := executor_diags(roles):
+        raise refuse_all([(code, f"{message} ({path})", fix) for code, message, fix in problems])
+    return roles, str(path)
 
 
-def init_answer(label, default=None):
-    value = input(f"{label}" + (f" [{default}]" if default is not None else "") + ": ")
-    return value if value.strip() else default
-
-
-def init_optional(label, default):
-    value = init_answer(label + " (optional; - for none)", default)
-    return None if value == "-" else value
-
-
-def init_checks(label, default):
-    hint = " | ".join(default) or "none"
-    first = init_answer(f"{label} (Enter keeps {hint}; - for none)")
-    if first is None:
-        return default
-    if first == "-":
+def plain_ci_commands(workflow):
+    # shortcut: recognize only simple block jobs and steps; ask for an equivalent until broader YAML support is needed.
+    text = "".join(line + "\n" for line in workflow.splitlines() if line.strip() and not line.lstrip().startswith("#"))
+    field = r"(?:name|id): [^\n]+"
+    run = r"run: [^\n]+"
+    step = rf"      - (?:{run}|{field}(?:\n        {field})*\n        {run})(?:\n        {field})*\n"
+    job = rf"  [a-zA-Z_][a-zA-Z0-9_-]*:\n(?:    (?:name: [^\n]+|runs-on: ubuntu-[a-zA-Z0-9.-]+)\n)*    steps:\n(?:{step})+"
+    if not re.fullmatch(rf"(?:(?:name|on): [^\n]+\n)*jobs:\n(?:{job})+", text):
         return []
-    commands = [first]
-    while command := init_answer("Another command (Enter ends the list)"):
-        commands.append(command)
-    return commands
+    commands = []
+    for line in re.findall(r"(?m)^(?:      - |        )run: ([^\n]+)", text):
+        line = line.strip()
+        if line.startswith(("\"", "'")):
+            if len(line) < 2 or line[-1] != line[0] or re.search(r"""[\\'"]""", line[1:-1]):
+                return []
+            line = line[1:-1]
+        elif not line or line[0] in ">|#!&*[{%@`" or line in ("-", "?", ":") or re.search(r"(?:\s#|:\s|:$)", line):
+            return []
+        if not single_line(line) or "${{" in line:
+            return []
+        commands.append(line)
+    return list(dict.fromkeys(commands))
 
 
-def init_bool(label, default):
-    while True:
-        value = init_answer(f"{label} (yes/no)", "yes" if default else "no").lower()
-        if value in ("y", "yes", "n", "no"):
-            return value in ("y", "yes")
-
-
-def init_hints(project, text):
-    _, lines = sections(text.splitlines()).get("Environment", (0, []))
-    hints = {}
+def onboard_discovery(project, agents):
+    from runweld_release import read_data, ReleaseError
+    _, lines = sections(agents.splitlines()).get("Environment", (0, []))
+    hints, sources = {}, {}
+    agents_path = AGENTS_ENVIRONMENT
     for line, masked in zip(lines, fenced(lines)):
         if not masked and (match := re.match(r"(?:[-*]\s+)?\*\*([^*]+)\.\*\*\s+(.+)", line.strip())):
-            hints[match[1].casefold()] = re.findall(r"`([^`]+)`", match[2])
-    first = lambda key: next(iter(hints.get(key, ())), None)
-    core = [commands[0] for key in ("build", "typecheck", "lint") if (commands := hints.get(key))]
-    full = list(dict.fromkeys(core + hints.get("tests", [])[:1]))
-    checks = {"phase": hints.get("phase checks", core), "full": hints.get("full checks", full)}
-    dev = hints.get("dev server", [])
-    for key, value in (("build", first("build")), ("dev", next(iter(dev), None)),
-                       ("url", first("dev url") if "dev url" in hints else next(iter(dev[1:]), None))):
-        if value:
-            checks[key] = value
-    setup_key = next((key for key in ("bootstrap", "worktree setup", "setup") if key in hints), None)
-    script = project / "scripts/setup"
-    setup = first(setup_key) if setup_key else ("scripts/setup" if script.is_file() and os.access(script, os.X_OK) else None)
-    return {"checks": checks, **({"setup": {"command": setup}} if setup else {})}
+            key = match[1].casefold()
+            hints.setdefault(key, []).extend(re.findall(r"`([^`]+)`", match[2]))
+    try:
+        scripts = (read_data(project / "package.json", json.loads) or {}).get("scripts", {})
+    except (AttributeError, ReleaseError):
+        scripts = {}
+    if not isinstance(scripts, dict):
+        scripts = {}
+
+    def record(key, source, commands):
+        sources.setdefault(key, {})[source] = commands
+        return commands
+
+    def candidates(key, script, npm=None):
+        if key in hints:
+            return record(key, agents_path, hints[key])
+        path = project / "scripts" / script
+        if path.is_file() and os.access(path, os.X_OK):
+            rel = path.relative_to(project).as_posix()
+            return record(key, rel, [rel])
+        if isinstance(scripts.get(npm), str):
+            return record(key, "package.json scripts", ["npm run " + npm])
+        return []
+
+    build = candidates("build", "build", "build")
+    core = build + candidates("typecheck", "typecheck", "typecheck") + candidates("lint", "check", "lint")
+    tests = candidates("tests", "test", "test")
+    checks = {}
+    for key, default in (("phase", core), ("full", core + tests)):
+        label = f"{key} checks"
+        choice = record(label, agents_path, hints[label]) if label in hints else default
+        checks[key] = list(dict.fromkeys(choice))
+    dev = candidates("dev server", "dev", "dev")
+    url = hints.get("dev url", dev[1:2])
+    if "dev server" in hints:
+        record("dev server", agents_path, dev[:1])
+    if url or "dev url" in hints:
+        record("dev url", agents_path, url[:1])
+    for key, vals in (("build", build), ("dev", dev), ("url", url)):
+        if vals:
+            checks[key] = vals[0]
+    setup_label = next((key for key in ("worktree setup", "bootstrap", "setup") if key in hints), None)
+    setup = record("setup", agents_path, hints[setup_label]) if setup_label else candidates("setup", "setup")
+
+    declared = []
+    if "required checks" in hints:
+        declared.append(record("required checks", agents_path, hints["required checks"]))
+    if "ci checks" in hints:
+        declared.append(record("required checks", agents_path + " (CI checks)", hints["ci checks"]))
+    designated = set(hints.get("ci workflow", []))
+    if "ci workflow" in hints:
+        record("ci workflow", agents_path, hints["ci workflow"])
+    candidates_ci, unresolved = {}, {}
+    for path in sorted((project / ".github/workflows").glob("*")):
+        if path.suffix not in (".yml", ".yaml") or path.is_symlink() or not path.is_file():
+            continue
+        rel = path.relative_to(project).as_posix()
+        try:
+            workflow = read_data(path, str) or ""
+        except ReleaseError:
+            workflow = ""
+        candidates_ci[rel] = plain_ci_commands(workflow)
+        record("CI candidates", rel, candidates_ci[rel])
+        if not candidates_ci[rel]:
+            fingerprint = hashlib.sha256(workflow.encode()).hexdigest()
+            unresolved[rel] = [f"Confirm an equivalent local command (workflow SHA-256 {fingerprint})."]
+    if designated and "ci checks" not in hints:
+        commands = []
+        for rel in sorted(designated):
+            found = record("required checks", rel, [] if rel in unresolved else candidates_ci.get(rel, []))
+            if not found or rel in unresolved:
+                record("CI unresolved", rel, unresolved.get(rel, ["The designated workflow is missing or not readable."]))
+            commands.extend(found)
+        declared.append(commands)
+    if "CI unresolved" not in sources and (not declared or all(set(commands) == set(declared[0]) for commands in declared)):
+        checks["required"] = list(dict.fromkeys(declared[0])) if declared else []
+    return checks, setup, bool(setup or setup_label), sources
 
 
-def init_settings(project, hints, current, a, interactive):
-    checks = hints.get("checks", {})
-    fields = (
-        ("checks", "phase", a.phase_check, "Phase checks", checks.get("phase", [])),
-        ("checks", "full", a.full_check, "Full checks", checks.get("full", [])),
-        ("checks", "build", a.build, None, checks.get("build")),
-        ("isolation", "port", a.port, "Allocate a port per task", False),
-        ("isolation", "data_dir", a.data_dir, "Allocate a data directory per task", False),
-        ("checks", "dev", a.dev, "Dev command", checks.get("dev")),
-        ("checks", "url", a.url, "Dev URL", checks.get("url")),
-        ("setup", "command", a.setup, "Existing worktree bootstrap command (never run during init)", hints.get("setup", {}).get("command")),
-    )
-    settings = {"checks": {}}
-    for sec, key, supplied, label, default in fields:
-        if current is not None:
-            value = current.get(sec, {}).get(key, False if sec == "isolation" else None)
-            if supplied is not None and supplied != value:
-                raise Refuse("project-default-exists", f"[{sec}] {key} is already configured",
-                             f"edit {project / '.runweld/config.toml'} to change project defaults")
-        elif supplied is not None:
-            value = supplied
-        elif interactive and label:
-            if (sec == "checks" and (sec, key) in RUN_OPTIONAL) or sec == "setup":
-                value = init_optional(label, default)
-            elif isinstance(default, list):
-                value = init_checks(label, default)
-            elif isinstance(default, bool):
-                value = init_bool(label, default)
-            else:
-                value = init_answer(label, default)
-        else:
-            value = default
-        if value is not None and (sec != "isolation" or value):
-            settings.setdefault(sec, {})[key] = value
-    return settings
+def required_checks_changed(settings, checks, sources):
+    before = settings.get("onboarding", {}).get("sources", {})
+    saved = set(settings.get("checks", {}).get("required", []))
+    return (any(sources.get(key) != before.get(key) for key in REQUIRED_CHECK_SOURCES)
+            or bool(declared_required_checks(sources) - saved)
+            or ("required checks" in sources and "required" in checks
+                and set(checks["required"]) != saved))
 
 
-def init_agents(text):
+def checkout_check_question(project, settings, agents):
+    checks, _, _, sources = onboard_discovery(project, agents)
+    if required_checks_changed(settings, checks, sources):
+        return "Review the changed project-designated checks in chat with `runweld onboard`."
+
+
+def onboard_agents(text):
     start, end = "<!-- runweld:begin -->", "<!-- runweld:end -->"
     nl = "\r\n" if "\r\n" in text else "\n"
     block = (nl * 2).join((start, "Start or resume work with `runweld next`.", end))
@@ -1904,199 +1967,202 @@ def init_agents(text):
     return text[:markers[0].start()] + block + text[markers[1].end():]
 
 
-def add_executor_profile(path, text, provider, pair):
-    addition = executor_toml({provider: pair})
-    normal = text + ("\n" if text.endswith("\n") else "\n\n") + addition
-    try:
-        tomllib.loads(normal)
-        return normal
-    except tomllib.TOMLDecodeError:
-        pass
-    cursor = 0
-    for statement, value in toml_statements(text):
-        prefix, _, rhs = statement.partition("=")
-        if (not prefix.lstrip().startswith("[") and value.keys() == {"executors"} and rhs.lstrip().startswith("{")):
-            start = cursor + len(prefix) + 1 + rhs.index("{") + 1
-            candidate = text[:start] + f" {toml_value(provider)} = {toml_value(pair)}," + text[start:]
-            try:
-                if tomllib.loads(candidate)["executors"][provider] == pair:
-                    return candidate
-            except (tomllib.TOMLDecodeError, KeyError):
-                pass
-        cursor += len(statement)
-    raise Refuse("executor-format", f"cannot add this provider without rewriting {path}",
-                 "add the provider with primary and secondary profiles in the executors table")
-
-
-def init_ignore(project, text):
+def onboard_ignore(project, text):
     def ignored(path):
         return git("check-ignore", "-q", "--no-index", "--", path, check=False, cwd=project).returncode == 0
 
-    private = "/" + WORKFLOW_DIR + "/"
+    private = "/.runweld/"
     rules = []
-    if ignored(".runweld/config.toml") or ignored(".runweld/runweld.lock"):
-        if ignored(".runweld/"):
-            rules += ["!/.runweld/", "/.runweld/*"]
-        rules += ["!/.runweld/config.toml", "!/.runweld/runweld.lock"]
-    if rules or private not in text.splitlines() or not ignored(WORKFLOW_DIR + "/"):
+    if private not in text.splitlines() or not ignored(".runweld/"):
         rules.append(private)
+    rules.extend(f"!/{path}" for path in (".gitignore", "AGENTS.md", "runweld.lock") if ignored(path))
     if not rules:
         return text
     nl = "\r\n" if "\r\n" in text else "\n"
     return text + (nl if text and not text.endswith("\n") else "") + nl.join(rules) + nl
 
 
-def write_init_text(path, before, after):
+def write_project_text(path, before, after, mode=0o644):
     from runweld_release import atomic_write
     if before != after:
-        mode = stat.S_IMODE(path.stat().st_mode) if before is not None else 0o644
+        mode = stat.S_IMODE(path.stat().st_mode) if before is not None else mode
         atomic_write(path, after.encode("utf-8"), mode)
 
 
-def cmd_init(bundle, a):
-    from runweld_release import ReleaseError, project_root, read_data, read_lock, write_lock
+def onboard_files(project):
+    from runweld_release import lock_path, read_data
+    lock, config, agents, ignore = lock_path(project), *(project / path for path in (".runweld/config.toml", "AGENTS.md", ".gitignore"))
+    for path in (lock, config.parent, config, agents, ignore):
+        if path.is_symlink():
+            raise Refuse("project-onboard-path", f"{path} is a symbolic link", "use a regular project file or directory")
+    return lock, config, agents, ignore, read_data(agents, str), read_data(ignore, str)
+
+
+def onboard_settings(project, config, agents, a):
+    previous, current = read_project_config(config, optional=True)
+    current = current or {}
+    discovered, setup_options, setup_known, sources = onboard_discovery(project, agents)
+    saved_checks = current.get("checks", {})
+    checks = dict(discovered)
+    old_meta = current.get("onboarding", {})
+    old_sources = old_meta.get("sources", {})
+    if "required" in saved_checks and not required_checks_changed(current, discovered, sources):
+        checks["required"] = saved_checks["required"]
+        if "confirmed required checks" in old_sources:
+            sources["confirmed required checks"] = old_sources["confirmed required checks"]
+    if a.required_check is not None or a.no_required_checks:
+        required = list(dict.fromkeys(a.required_check or []))
+        if missing := declared_required_checks(sources) - set(required):
+            raise Refuse("project-required-checks", "the supplied list omits AGENTS.md checks: " + ", ".join(sorted(missing)),
+                         "keep the designated checks, or revise the declaration in AGENTS.md")
+        if "required" in discovered and "required checks" in sources and set(required) != set(discovered["required"]):
+            raise Refuse("project-required-checks", "the supplied list omits or changes the project-designated requirements",
+                         "keep the designated checks, or revise the declaration in AGENTS.md")
+        checks["required"] = required
+        sources["confirmed required checks"] = {"chat": required}
+
+    for key, label, supplied in (("phase", "phase checks", a.phase_check), ("full", "full checks", a.full_check),
+                                 ("build", "build", a.build), ("dev", "dev server", a.dev), ("url", "dev url", a.url)):
+        confirmed = f"confirmed {key}"
+        if supplied is None and confirmed in old_sources:
+            supplied = saved_checks.get(key)
+        if supplied is not None:
+            checks[key] = supplied
+            sources.pop(label, None)
+            sources[confirmed] = {"chat": supplied if isinstance(supplied, list) else [supplied]}
+    resources = dict(current.get("isolation", {}))
+    for key in ("port", "data_dir"):
+        if (supplied := getattr(a, key)) is not None:
+            resources[key] = supplied
+    bootstrap = next(iter(setup_options), None)
+    if a.setup is not None or "confirmed setup" in old_sources:
+        bootstrap = (a.setup or None) if a.setup is not None else current.get("setup", {}).get("command")
+        setup_known = True
+        sources.pop("setup", None)
+        sources["confirmed setup"] = {"chat": [bootstrap] if bootstrap else []}
+
+    roles = dict(current.get("executors", {}))
+    personal, personal_path = personal_executors() if len(roles) < len(EXECUTOR_ROLES) else ({}, None)
+    offered = {}
+    for tier in EXECUTOR_ROLES:
+        baseline = roles.get(tier) or personal.get(tier) or {}
+        updates = executor_overrides(a, tier)
+        if getattr(a, f"confirm_{tier}") or updates or getattr(a, f"no_{tier}_effort"):
+            if updates.get("provider", baseline.get("provider")) != baseline.get("provider"):
+                baseline = {}
+            role = {**baseline, **updates}
+            if getattr(a, f"no_{tier}_effort"):
+                role.pop("effort", None)
+            roles[tier] = role
+        if tier in roles:
+            offered[tier] = {**roles[tier], "status": "confirmed", "source": str(config)}
+        elif baseline:
+            offered[tier] = {**baseline, "status": "offered", "source": personal_path}
+        else:
+            offered[tier] = {"status": "missing"}
+    settings = {"checks": checks, "onboarding": {"setup_known": setup_known, "sources": sources}}
+    if bootstrap:
+        settings["setup"] = {"command": bootstrap}
+    if resources:
+        settings["isolation"] = resources
+    if roles:
+        settings["executors"] = {tier: roles[tier] for tier in EXECUTOR_ROLES if tier in roles}
+    validate_project_config(config, settings)
+    return previous, current, settings, offered, sources
+
+
+def cmd_onboard(bundle, a):
+    from runweld_release import ReleaseError, project_lock, project_root, read_data, read_lock
     project = project_root(Path.cwd())
     if project is None:
-        raise Refuse("no-repo", "the current directory is not in a Git project", "run `runweld init` in a Git checkout")
-    common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=project).stdout.strip())
-    with (common / "runweld-init.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        config, agents, ignore = (project / path for path in (".runweld/config.toml", "AGENTS.md", ".gitignore"))
-        for path in (config.parent, config, agents, ignore):
-            if path.is_symlink():
-                raise Refuse("project-init-path", f"{path} is a symbolic link", "use a regular project file or directory")
-        previous, current = read_project_config(config, optional=True)
+        raise Refuse("no-repo", "the current directory is not in a Git project", "run `runweld onboard` in a Git checkout")
+
+    def plan_writes():
+        lock, config, agents, ignore, agents_before, ignore_before = onboard_files(project)
+        lock_before = read_data(lock, str)
         locked_release = read_lock(project, bundle.parent.parent)
         if locked_release is not None and locked_release != bundle.name:
-            raise ReleaseError(f"{project} locks {locked_release}; run `runweld init` without a release override")
-        agents_before, ignore_before = (read_data(path, str) for path in (agents, ignore))
-        agents_after = init_agents(agents_before or "")
-        ignore_after = init_ignore(project, ignore_before or "")
+            raise ReleaseError(f"{project} locks {locked_release}; run `runweld onboard` without a release override")
+        previous, current, settings, roles, sources = onboard_settings(project, config, agents_before or "", a)
+        writes = {
+            ignore: (ignore_before, onboard_ignore(project, ignore_before or "")),
+            agents: (agents_before, onboard_agents(agents_before or "")),
+            lock: (lock_before, lock_before if lock_before is not None else project_lock(bundle)),
+            config: (previous, previous if previous is not None and current == settings else settings_toml(settings)),
+        }
+        pending = project_pending(settings)
+        view = {"project": str(project), "release": bundle.name, "mode": "apply" if a.apply else "preview",
+                "complete": not pending and (a.apply or all(before == after for before, after in writes.values())),
+                "executors": roles, "settings": {key: value for key, value in settings.items() if key not in {"executors", "onboarding"}},
+                "sources": sources, "pending": pending, "paths": {}}
+        for path, (before, after) in writes.items():
+            outcome = "unchanged" if before == after else "created" if before is None else "updated"
+            view["paths"][path.relative_to(project).as_posix()] = outcome
+        return writes, config, view
 
-        interactive = sys.stdin.isatty() and not a.non_interactive
-        defaults = init_hints(project, agents_before or "") if current is None else {}
-        if current is None:
-            print("Detected project defaults (commands are not run during init):\n" + settings_toml(defaults).rstrip())
-        provider = a.provider if a.provider is not None else init_provider()
-        if provider is None and interactive:
-            provider = init_answer("Provider name (e.g. GPT or Claude)")
-        if not single_line(provider):
-            raise Refuse("bad-provider", "a nonblank single-line provider is required",
-                         "pass --provider NAME or choose the provider in an interactive terminal")
-        profiles = (current or {}).get("executors", {})
-        try:
-            hints, _ = agents_executors(project) if interactive and provider not in profiles else ({}, None)
-        except Refuse:
-            hints = {}
-        pair = {}
-        for tier in ("primary", "secondary"):
-            model, effort = (getattr(a, f"{tier}_{key}") for key in ("model", "effort"))
-            saved = profiles.get(provider, {}).get(tier)
-            if saved is not None:
-                if (model is not None and model != saved["model"]) or (effort is not None and effort != saved.get("effort")):
-                    raise Refuse("executor-exists", f"executors.{toml_value(provider)}.{tier} already exists",
-                                 f"edit {config} to change an existing profile")
-                pair[tier] = saved
-                continue
-            if interactive:
-                hint = hints.get(provider, {}).get(tier, {})
-                if model is None:
-                    model = init_answer(f"{provider} {tier} model", hint.get("model"))
-                if effort is None:
-                    effort = init_optional(f"{provider} {tier} effort", hint.get("effort"))
-            pair[tier] = {"model": model}
-            if effort is not None:
-                pair[tier]["effort"] = effort
-        settings = init_settings(project, defaults, current, a, interactive)
-        settings["executors"] = {**profiles, provider: pair}
-        validate_project_config(config, settings)
-        updated = settings_toml(settings) if previous is None else previous
-        if previous is not None and provider not in profiles:
-            updated = add_executor_profile(config, previous, provider, pair)
+    if a.apply:
+        common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=project).stdout.strip())
+        with (common / "runweld-onboard.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            writes, config, view = plan_writes()
+            for path, (before, after) in writes.items():
+                if path.is_symlink() or (path == config and config.parent.is_symlink()) or read_data(path, str) != before:
+                    raise Refuse("project-onboard-changed", f"{path} changed during onboarding", "rerun `runweld onboard`")
+                if path == config:
+                    config.parent.mkdir(exist_ok=True)
+                write_project_text(path, before, after, mode=0o600 if path == config else 0o644)
+    else:
+        _, _, view = plan_writes()
 
-        for path, before in ((config, previous), (agents, agents_before), (ignore, ignore_before)):
-            if read_data(path, str) != before:
-                raise Refuse("project-init-changed", f"{path} changed during initialization", "rerun `runweld init`")
-        config.parent.mkdir(exist_ok=True)
-        write_init_text(config, previous, updated)
-        write_init_text(agents, agents_before, agents_after)
-        write_init_text(ignore, ignore_before, ignore_after)
-        # Linked checkouts can be based on a commit made before the shared ignore entry.
-        local_exclude = common / "info/exclude"
-        excluded = read_data(local_exclude, str)
-        private = f"/{WORKFLOW_DIR}/"
-        if private not in (excluded or "").splitlines():
-            if local_exclude.is_symlink():
-                raise Refuse("project-init-path", f"{local_exclude} is a symbolic link", "add the private ignore entries there or use a regular file")
-            workflow_subdir(local_exclude.parent).mkdir(exist_ok=True)
-            write_init_text(local_exclude, excluded, (excluded or "").rstrip("\n") + "\n" + private + "\n")
-        if locked_release is None:
-            write_lock(project, bundle)
-    print(f"Initialized {project} for {provider} on {bundle.name}. Run `runweld next` for the next step.")
+    if a.json:
+        print(json.dumps(view, ensure_ascii=False))
+        return 0
+    print(f"Onboarding {'saved' if a.apply else 'preview'} for {project} on {bundle.name}")
+    print("Executors:")
+    for tier, role in view["executors"].items():
+        assignment = " / ".join(role[key] for key in ("provider", "model", "effort") if key in role)
+        print(f"  {tier}: {assignment or 'no default'} ({role['status']})"
+              + (f" · {role['source']}" if "source" in role else ""))
+    print("Project settings (commands are not run):\n" + settings_toml(view["settings"]).rstrip())
+    if view["sources"]:
+        print("Sources:")
+        for key, sources in view["sources"].items():
+            for source, commands in sources.items():
+                print(f"  {key} · {source}: {', '.join(commands) or 'no command found'}")
+    print("Paths:" if a.apply else "Paths if applied:")
+    for path, outcome in view["paths"].items():
+        print(f"  {path}: {outcome}")
+    if view["pending"]:
+        print("Decisions for chat:")
+        for question in view["pending"].values():
+            print("  " + question)
+    print("Run `runweld next`." if view["complete"] else "Run `runweld onboard --apply` with the confirmed answers.")
     return 0
 
 
-def project_provider(config, profiles, provider):
-    if provider is None:
-        provider = init_provider()
-        if provider is None and len(profiles) == 1:
-            provider = next(iter(profiles))
-    if not single_line(provider):
-        raise Refuse("provider-required", "task entry needs a nonblank single-line provider",
-                     "pass --provider with one of " + ", ".join(profiles))
-    if provider not in profiles:
-        raise Refuse("executor-missing", f"executors.{toml_value(provider)} is missing from {config}",
-                     f"run `runweld init --provider {shlex.quote(provider)}` to add the missing pair")
-    return provider
+def executor_overrides(args, tier):
+    fields = {key: value for key in ("provider", "model", "effort")
+              if (value := getattr(args, f"{tier}_{key}")) is not None}
+    if getattr(args, f"no_{tier}_effort"):
+        fields["effort"] = None
+    return fields
 
 
-def snapshot_run(bundle, project, path, finish, provider):
-    from runweld_release import atomic_write
-    src = project / ".runweld/config.toml"
-    _, settings = read_project_config(src)
-    profiles = settings["executors"]
-    provider = project_provider(src, profiles, provider)
-    settings["executors"] = {provider: profiles[provider]}
+def task_run(bundle, settings, finish, overrides):
+    settings = dict(settings)
+    sources = settings.pop("onboarding", {}).get("sources", {})
+    required_sources = {kind: sources[kind] for kind in (*REQUIRED_CHECK_SOURCES, "confirmed required checks") if kind in sources}
+    checks = settings["checks"] = dict(settings["checks"])
+    checks["full"] = list(dict.fromkeys(checks["full"] + checks["required"]))
+    settings["executors"] = {tier: {key: value for key, value in (role | overrides[tier]).items() if value is not None}
+                             for tier, role in settings["executors"].items()}
     version, digest = bundle.name.split("@")
-    ending = {**finish, "delete_backups": finish.get("delete_backups", True)}
-    values = {"workflow": {"version": version, "digest": digest}, "finish": ending, **settings, "run": {}}
+    ending = {"delete_backups": True, **finish}
+    values = {"workflow": {"version": version, "digest": digest}, "finish": ending, **settings,
+              "required_check_sources": required_sources, "run": {}}
     if problems := run_diags(values, pending_finish=True):
         raise refuse_all(problems)
-    text = settings_toml(values)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Write the complete file before publishing its name, without replacing a concurrent draft.
-    with tempfile.TemporaryDirectory(dir=path.parent) as scratch:
-        candidate = Path(scratch) / path.name
-        atomic_write(candidate, text.encode("utf-8"), 0o600)
-        try:
-            os.link(candidate, path)
-        except FileExistsError:
-            raise Refuse("run-exists", f"{path} already exists", "edit it, or pick another plan name") from None
-    return src
-
-
-def join_run_provider(plan, project, provider):
-    from runweld_release import read_data, read_task_outcome
-    path = Path(run_path(plan))
-    with locked(plan):
-        if outcome := read_task_outcome(plan):
-            raise Refuse("task-closed", f"{plan.stem} is {outcome['outcome']} at {outcome['stage']}",
-                         f"inspect it with `runweld next {plan.stem}`")
-        text, values = read_run_proposal(plan, draft=True)
-        if provider in values.get("executors", {}):
-            return
-        if (state := load_state(plan)) and state["status"] == "merged":
-            raise Refuse("finished", "a merged task cannot add a provider", "start a separate task for new work")
-        if path.is_symlink():
-            raise Refuse("run-path", f"{path} is a symbolic link", "restore a regular run file")
-        config = project / ".runweld/config.toml"
-        _, settings = read_project_config(config)
-        profiles = settings["executors"]
-        project_provider(config, profiles, provider)
-        updated = add_executor_profile(path, text, provider, profiles[provider])
-        if read_data(path, str) != text:
-            raise Refuse("run-changed", f"{path} changed while joining", "retry after the run file is saved")
-        write_init_text(path, text, updated)
+    return values
 
 
 def task_lookup(project, name):
@@ -2106,6 +2172,12 @@ def task_lookup(project, name):
     workflow_subdir(workflow_dir(project) / "plans")
     if plan := task_plan(project, name):
         return task_for(plan, project)
+
+
+def unknown_task(name):
+    return Refuse("no-task", f"no task named {name!r}",
+                  "Run `runweld next` to find open tasks or `runweld status` to include closed tasks."
+                  "\n  For new work, run `runweld task start ID --goal TEXT` with a new ID.")
 
 
 def task_for(plan, project=None):
@@ -2285,7 +2357,7 @@ def cmd_discovery(plan, a):
             stages[stage] = record
             atomic_write(discovery_path(plan), json.dumps(data, ensure_ascii=False).encode(), 0o600)
     stage = task_stage(task)
-    return task_output({**task, "workflow": stage["workflow"], "discovery": stage["discovery"]}, a.json)
+    return task_output({**task, **{k: stage[k] for k in ("workflow", "discovery", "executors") if k in stage}}, a.json)
 
 
 def discovery_actions(task, current, stages, route):
@@ -2332,9 +2404,14 @@ def task_stage(task, *, workflow=True):
     if task["ready"]:
         data = read_discovery(plan)
         stages = data["stages"]
+        run, _ = read_run(plan, draft=True)
         route = proposed_route(plan)
         current = pending_discovery(task, stages, route) or "plan"
         actions = discovery_actions(task, current, stages, route)
+        if run:
+            row["executors"] = run["executors"]
+            tier = "secondary" if current in ("prototype", "reproduce") else "primary"
+            actions[0]["executor"] = run_executor(run, tier, run_path(plan))
         states = discovery_states(task, stages, route)
         view = workflow_view(plan, "plan" if current == "reproduce" else current, actions, states)
         return {**row, "discovery": stages, "workflow": {**view, "stage": current}}
@@ -2368,7 +2445,7 @@ def cmd_path(area):
 
 def task_output(row, as_json):
     if as_json:
-        print(json.dumps(row, ensure_ascii=False))
+        print(json.dumps({key: value for key, value in row.items() if key != "requirements"}, ensure_ascii=False))
     else:
         print(f"Task: {row['id']} · branch `{row['branch']}` · base `{row['base']}`")
         print(f"Tree: {row['tree']}\nPlan: {row['plan']}\nArtifacts: {row['artifacts']}")
@@ -2405,12 +2482,11 @@ def cmd_task_close(bundle, task, a):
         else:
             if compiled_state_missing(plan):
                 raise missing_state(plan, compiled=True)
-            if load_state(plan):
-                workflow = pinned_workflow(bundle, plan, os.getcwd(), None, ("status", str(plan)))
+            if os.path.lexists(plan.with_suffix(".json")):
+                delegated = pinned_view(bundle, plan, os.getcwd(), ("status", str(plan)))
             else:
-                workflow = pinned_workflow(bundle, plan, os.getcwd(), None, preplan_task=task)
-            if workflow is None:
-                workflow = task_next_status(plan, task, os.getcwd(), None)["workflow"]
+                delegated = pinned_view(bundle, plan, os.getcwd(), preplan_task=task)
+            workflow = (delegated or task_next_status(plan, task, os.getcwd()))["workflow"]
             optional = {row["id"]: row["state"] for row in workflow["stages"] if row["id"] in ROUTE_STAGES}
             record = dict(outcome=outcome, stage=workflow["stage"], by=a.by.strip(), reason=a.reason, at=now(),
                           optional_stages=optional)
@@ -2419,7 +2495,7 @@ def cmd_task_close(bundle, task, a):
 
 
 def cmd_task(bundle, a):
-    from runweld_release import TASK_OUTCOMES, ReleaseError, atomic_write, project_root, read_lock, read_task_outcome
+    from runweld_release import TASK_OUTCOMES, ReleaseError, atomic_write, project_root, read_data, read_lock, read_task_outcome
     project = project_root(Path.cwd())
     if project is None:
         raise Refuse("no-repo", "not inside a Git project", "run this command in the project")
@@ -2427,22 +2503,21 @@ def cmd_task(bundle, a):
     row = task_lookup(project, name)
     if a.command != "start":
         if row is None:
-            raise Refuse("no-task", f"there is no task {name}", "use `runweld task start ID` for new work or `runweld status` to find existing work")
+            raise unknown_task(name)
         if a.command == "path":
             print(artifact_path(Path(row["artifacts"]), a.area))
             return 0
         if a.command in TASK_OUTCOMES:
             return cmd_task_close(bundle, row, a)
         if read_task_outcome(row["plan"]) or Path(row["plan"]).is_file():
-            return cmd_status(row["plan"], a.json, os.getcwd(), provider=a.provider)
+            return cmd_status(row["plan"], a.json, os.getcwd())
         if row["ready"]:
             ensure_task_tree(row, project)
         stage = task_stage(row)
-        return task_output({**row, **{k: stage[k] for k in ("workflow", "release", "discovery") if k in stage}}, a.json)
+        return task_output({**row, **{k: stage[k] for k in ("workflow", "release", "discovery", "executors") if k in stage}}, a.json)
 
     root = workflow_dir(project)
-    if a.provider is not None and not single_line(a.provider):
-        raise Refuse("bad-provider", "--provider must be a nonblank single-line identifier", "supply the current provider explicitly")
+    overrides = {tier: executor_overrides(a, tier) for tier in EXECUTOR_ROLES}
     plans = workflow_subdir(root / "plans")
     tree = workflow_subdir(root / "trees") / name
     reservations = workflow_subdir(root / "tasks")
@@ -2461,10 +2536,13 @@ def cmd_task(bundle, a):
             raise Refuse("run-bad-target", "invalid finish target branch", "choose a Git branch name")
         if row is None:
             if read_lock(project, bundle.parent.parent) != bundle.name:
-                raise ReleaseError(f"{project} does not lock {bundle.name}; run `runweld init` or use `runweld` without a release override")
+                raise ReleaseError(f"{project} does not lock {bundle.name}; run `runweld onboard` or use `runweld` without a release override")
             config = project / ".runweld/config.toml"
             _, settings = read_project_config(config)
-            provider = project_provider(config, settings["executors"], a.provider)
+            if question := checkout_check_question(project, settings, read_data(project / "AGENTS.md", str) or ""):
+                raise Refuse("project-needs-onboarding", "required_checks need an updated checkout decision", question)
+            values = task_run(bundle, settings, finish, overrides)
+            requirements = {"commands": values["checks"]["required"], "sources": values["required_check_sources"]}
             base = a.base or "HEAD"
             commit = r("rev-parse", "--verify", "-q", "--end-of-options", f"{base}^{{commit}}")
             if commit.returncode:
@@ -2476,7 +2554,7 @@ def cmd_task(bundle, a):
             if a.goal is not None and not a.goal.strip():
                 raise Refuse("task-goal", "the task goal cannot be blank", "pass --goal with the requested outcome")
             reservation = {"base": commit.stdout.strip(), "branch": branch, "ready": False, "release": bundle.name,
-                           "finish": finish, "provider": provider}
+                           "requirements": requirements}
             if a.goal is not None:
                 reservation["goal"] = a.goal
             if a.bug:
@@ -2484,6 +2562,7 @@ def cmd_task(bundle, a):
             plans.mkdir(exist_ok=True)
             with tempfile.TemporaryDirectory(prefix=".task-", dir=plans) as scratch:
                 atomic_write(Path(scratch) / (name + ".task.json"), json.dumps(reservation).encode(), 0o600)
+                atomic_write(Path(scratch) / (name + ".run.toml"), settings_toml(values).encode(), 0o600)
                 Path(scratch).rename(folder)
             row = task_lookup(project, name)
         plan = Path(row["plan"])
@@ -2496,22 +2575,17 @@ def cmd_task(bundle, a):
             raise ReleaseError(f"this run selects {release}, not {bundle.name}; use `runweld` without a release override")
         if a.base and r("rev-parse", "--verify", "-q", "--end-of-options", f"{a.base}^{{commit}}").stdout.strip() != row["base"]:
             raise Refuse("task-base", f"task {name} already started at {row['base']}", "omit --base to resume this task")
-        if "finish" in row and not run_file.exists():
-            if any(row["finish"].get(key) != value for key, value in finish.items()):
-                raise Refuse("task-finish", "the interrupted task has a reserved ending", "retry without finish flags, then edit the run file")
-            finish = row["finish"]
-        if finish and run_file.exists():
-            from runweld_release import read_data
-            recorded = read_data(run_file, tomllib.loads).get("finish", {})
-            if not isinstance(recorded, dict) or any(recorded.get(key) != value for key, value in finish.items()):
+        if finish or any(overrides.values()) or not row["ready"]:
+            _, recorded = read_run_proposal(plan, draft=True)
+            if any(recorded["finish"].get(key) != value for key, value in finish.items()):
                 raise Refuse("task-finish", "this task already has a run file", f"edit [finish] in {run_file} and approve the run")
+            if any(recorded["executors"][tier].get(key) != value for tier, fields in overrides.items() for key, value in fields.items()):
+                raise Refuse("task-executor", "this task already has recorded role choices", f"omit the role flags or edit [executors] in {run_file} and obtain current approval")
         if row["ready"]:
             state = load_state(plan)
             if not state or state["status"] != "merged":
                 ensure_task_tree(row, project)
         else:
-            if not os.path.lexists(run_file):
-                snapshot_run(bundle, project, run_file, finish, row.get("provider", a.provider))
             plan_dir = plan.parent
             plan_dir.mkdir(parents=True, exist_ok=True)
             tree.parent.mkdir(parents=True, exist_ok=True)
@@ -2524,16 +2598,12 @@ def cmd_task(bundle, a):
                 add = r("worktree", "add", *(("-b", branch, str(tree), row["base"]) if not branch_tip else (str(tree), branch)))
                 if add.returncode:
                     raise Refuse("task-worktree", add.stderr.strip(), f"fix the Git error and retry `runweld task start {name}`")
-            row.pop("finish", None)
-            row.pop("provider", None)
-            row.update(ready=True, release=bundle.name)
-            atomic_write(record_path, json.dumps({k: row[k] for k in ("base", "ready", "branch", "release", "goal", "bug") if k in row}).encode(), 0o600)
-        if a.provider is not None:
-            join_run_provider(plan, project, a.provider)
+            row["ready"] = True
+            atomic_write(record_path, json.dumps({k: row[k] for k in ("base", "ready", "branch", "release", "goal", "bug", "requirements") if k in row}).encode(), 0o600)
     if plan.is_file():
-        return cmd_status(str(plan), a.json, os.getcwd(), provider=a.provider)
+        return cmd_status(str(plan), a.json, os.getcwd())
     stage = task_stage(row)
-    return task_output({**row, **{k: stage[k] for k in ("workflow", "release", "discovery") if k in stage}}, a.json)
+    return task_output({**row, **{k: stage[k] for k in ("workflow", "release", "discovery", "executors") if k in stage}}, a.json)
 
 
 def task_env(task, project, alloc):
@@ -2701,14 +2771,8 @@ def cmd_run(command, plan, as_json):
         if os.path.lexists(path):
             raise Refuse("run-exists", f"{path} already exists", "edit it, or pick another plan name")
         d = os.path.dirname(path)
-        if bundle := standalone_bundle():
-            project = Path(plan_root(plan_paths(plan)[0]))
-            task = task_for(plan, project)
-            if task is None or task["ready"]:
-                raise Refuse("task-required", "standalone runs are created at task entry", "use `runweld task start ID`; restore an existing task's run file from its saved copy")
-            src = snapshot_run(bundle, project, Path(path), task.get("finish", {}), task.get("provider"))
-            print(f"run new: {path} (snapshot from {src})")
-            return 0
+        if standalone_bundle():
+            raise Refuse("task-required", "standalone runs are created at task entry", "use `runweld task start ID`; restore an existing task's run file from its saved copy")
         runs = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".run.toml")] if os.path.isdir(d) else []
         src = max(runs, key=lambda name: os.lstat(name).st_mtime) if runs else os.path.normpath(EXAMPLE)
         text, _ = read_run_file(src)
@@ -2717,10 +2781,10 @@ def cmd_run(command, plan, as_json):
         directory = d
         while not os.path.isdir(directory):
             directory = os.path.dirname(directory)
-        st = load_state(plan)
-        values, _ = agents_executors(tree_of(plan, st) if st else plan_checkout(os.path.join(directory, "executor.md")))
+        config = Path(plan_checkout(os.path.join(directory, "executor.md"))) / ".runweld/config.toml"
+        _, values = read_project_config(config)
         text = without_table(text, "executors")
-        snapshot = executor_toml(values) + "\n"
+        snapshot = executor_toml(values["executors"]) + "\n"
         out = []
         for statement, value in toml_statements(text):
             if snapshot and statement.lstrip().startswith("[") and "run" in value:
@@ -2867,6 +2931,16 @@ def cmd_plan_review(plan, as_json):
     if summary:
         print(f"Approval summary\n\n{summary.rstrip()}\n\nSummary: {Path(result['summary_path']).as_uri()}\nPlan: {Path(md).as_uri()}\n"
               f"Run configuration: {Path(result['run_path']).as_uri()}\nBranch: {st['branch']} · Base: {st['base']}")
+        if executors := run.get("executors"):
+            print("\nExecutors:")
+            show_executors(executors)
+        if required := run["checks"].get("required"):
+            print("\nMandatory checks:")
+            for command in required:
+                print(f"  {command}")
+            for sources in run.get("required_check_sources", {}).values():
+                for source, commands in sources.items():
+                    print(f"  {source}: " + ", ".join(commands))
     else:
         print(f"Plan: {md}\nBranch: {st['branch']} · Base: {st['base']}\n"
               f"Planning content (live progress is separate)\n\n{result['plan'].rstrip()}")
@@ -2951,9 +3025,6 @@ def cmd_plan_approval(plan, a):
         _, values = read_run_proposal(plan)
         if standalone_bundle() and (task := task_for(plan)):
             require_discovery(task, run=values)
-        if st.get("build_provider") and st["build_provider"] not in values.get("executors", {}):
-            raise Refuse("build-assignment", "the proposed run removes the current build provider",
-                         "retain the provider's profiles while this build is assigned")
         head, tail = read_plan(md)
         if problems := drift_diags(plan, st, head, tail):
             raise refuse_all(problems)
@@ -2984,7 +3055,7 @@ def cmd_plan_approval(plan, a):
     if allocated:
         print("facts: " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in allocated.items()))
     if st["status"] == "approved":
-        show_next(start_actions(plan, st, None))
+        show_next(start_actions(plan))
     else:
         head, tail = read_plan(md)
         show_next(summary(plan, st, head, tail, workflow=True)["workflow"]["actions"])
@@ -3005,7 +3076,7 @@ def contract_digest(plan, st):
 
 def require_judge(plan, st):
     require_consent(plan, st)
-    cycle_of(st)
+    cycle = cycle_of(st)
     settled(plan, st)
     v = (st.get("verdicts") or [None])[-1]
     if not v or not (v["kind"] == "pass" or v.get("stop")):
@@ -3019,6 +3090,7 @@ def require_judge(plan, st):
         raise Refuse("judge-stale", "the judge does not cover the current commit, planning content or evidence", "run current checks and the judge, then land and page again")
     if st.get("rounds") and not st["rounds"][-1]["done"]:
         raise Refuse("round-open", "a round is still running", "finish the round and run the judge")
+    require_mandatory_checks(st, cycle, v["head"])
     return v
 
 
@@ -3223,13 +3295,14 @@ def work_action(owner, action, role, kind, **context):
     return workflow_action(owner, "work", action, role=role, assignment={"kind": kind, **context})
 
 
-def show_workflow(view):
+def show_workflow(view, *, actions=True):
     print("Workflow" + (f" for {view['plan']}" if view["plan"] else "") + ":")
     if view["stage"] == "reproduce":
         print("Required before planning: bug reproduction.")
     for stage in view["stages"]:
         print(f"  {stage['label']} — {stage['state']}")
-    show_next(view["actions"])
+    if actions:
+        show_next(view["actions"])
 
 
 def show_discovery(stages):
@@ -3244,11 +3317,15 @@ def show_discovery(stages):
             print(f"  {label}: {question}")
 
 
-def show_next(actions):
+def show_next(actions, *, details=True):
     if actions:
         print("Next:")
         for step in actions:
             print(f"  {step['owner']} — {step['action']} [{step['kind']}]")
+            if not details:
+                for question in step.get("questions", []):
+                    print(f"    {question}")
+                continue
             for command in ([step] if step["kind"] == "run" else [step["command"]] if step.get("command") else []) + step.get("alternatives", []):
                 show_command(command)
                 if effects := step.get("effects"):
@@ -3310,7 +3387,7 @@ def cmd_workflow(as_json, stage=None):
             for event, target in definition["next"].items():
                 print(f"  {event} -> {target}")
         return 0
-    action = (work_action("Planner", "Run `runweld task start ID` for new work, or `runweld status --current` to resume.", "planner", "task-entry")
+    action = (work_action("Planner", "Run `runweld next` to discover setup, new work or a task to resume.", "planner", "task-entry")
               if standalone_bundle() else work_action(
                   "Human and planner", "Discuss open decisions in a grill, or continue to planning. Offer an optional prototype before writing the plan.",
                   "planner", "grill"))
@@ -3345,7 +3422,7 @@ def missing_phase_checks(st, report):
     return [command for command in phase_checks(st) if command not in report.get("check_outcomes", {})]
 
 
-def build_actions(plan, st, ready, provider):
+def build_actions(plan, st, ready):
     done = {p["n"] for p in st["phases"] if p["status"] == "done"}
     actions = []
     for p in st["phases"]:
@@ -3362,7 +3439,7 @@ def build_actions(plan, st, ready, provider):
             elif p.get("report"):
                 actions.append(run_action(plan, "Coordinator", f"Check the report and run `phase done <plan> {n}`.", "phase done", n))
             else:
-                add_brief_actions(actions, plan, st, provider, "implementer", work_action(
+                add_brief_actions(actions, plan, st, "implementer", work_action(
                     owner, f"Work from the phase brief and record `phase report <plan> {n}`.", "implementer", "phase", phase=n), n)
         elif n in ready:
             actions.append(run_action(plan, "Coordinator", f"Start phase {n} with `phase start <plan> {n}`, then issue its implementer brief.", "phase start", n))
@@ -3373,9 +3450,14 @@ def build_actions(plan, st, ready, provider):
     return actions
 
 
-def workflow_brief(st, role):
-    provider = " --provider PROVIDER" if "executors" in st.get("run", {}) else ""
-    return f"brief {role}{provider} <plan>"
+def workflow_brief(role):
+    return f"brief {role} <plan>"
+
+
+def run_executor(run, tier, source="approved run snapshot"):
+    if executor := run.get("executors", {}).get(tier):
+        return {**executor, "tier": tier, "source": source}
+    return None
 
 
 def brief_tier(brief, review_assignment=None):
@@ -3465,7 +3547,7 @@ def herdr_handoff(plan, a):
     return 0
 
 
-def brief_binding(plan, st, kind, provider, *, phase=None, cases=(), review=None):
+def brief_binding(plan, st, kind, executor, *, phase=None, cases=(), review=None):
     if kind == "implementer":
         scope = phase
     elif kind == "round":
@@ -3484,15 +3566,15 @@ def brief_binding(plan, st, kind, provider, *, phase=None, cases=(), review=None
         else:
             scope = [cycle_label(cycle), head, judge_evidence(st)]
         scope = [scope, (st.get("verdicts") or [None])[-1]]
-    return digest([kind, provider, scope, plan_approval(st)])
+    return digest([kind, executor, scope, plan_approval(st)])
 
 
-def prepared_brief(plan, st, kind, provider, args):
+def prepared_brief(plan, st, kind, executor, args):
     if standalone_bundle() is None:
         return None
     phase = args[0] if kind == "implementer" else None
     cases = list(map(int, args[1].split(","))) if kind == "verify" and args else []
-    marker = "Assignment binding: " + brief_binding(plan, st, kind, provider, phase=phase, cases=cases)
+    marker = "Assignment binding: " + brief_binding(plan, st, kind, executor, phase=phase, cases=cases)
     prefix = f"{plan_slug(st)}.brief-{kind}-"
     found = []
     for candidate in Path(plan_paths(plan)[0]).parent.glob("*.md"):
@@ -3507,44 +3589,21 @@ def prepared_brief(plan, st, kind, provider, args):
     return max(found)[1] if found else None
 
 
-def add_brief_actions(actions, plan, st, provider, brief, work, *args):
+def add_brief_actions(actions, plan, st, brief, work, *args):
     actions.append(work)
     bind_assignment(plan, st, brief, work)
-    assignment_args = args
     executor = phase_of(st, args[0]).get("executor") if brief == "implementer" else None
-    provider = provider or st.get("build_provider")
+    executor = executor or run_executor(st.get("run", {}), brief_tier(brief, work["assignment"].get("id")))
     if executor:
-        provider = executor["provider"]
         work["executor"] = executor
-        args = (*args, "--provider", provider)
-        needed = None
-    elif provider is None and "executors" in st.get("run", {}):
-        needed = workflow_action("Coordinator", "ask", "Supply the current provider to get executable brief commands.",
-                                 input="provider", command=plan_command(plan, "status", provider="--provider NAME"))
-    elif provider is not None:
-        try:
-            selection = executor_selection(plan, provider)
-        except Refuse as error:
-            _, message, fix = error.diags[0]
-            needed = workflow_action("Coordinator", "ask", f"{message}. {fix}.", input="provider")
-        else:
-            tier = brief_tier(brief, work["assignment"].get("id"))
-            work["executor"] = {"provider": provider, "source": selection["source"], "tier": tier, **selection[tier]}
-            args = (*args, "--provider", provider)
-            needed = None
+    if path := prepared_brief(plan, st, brief, executor, args):
+        work["action"] += " Recover the prepared brief. Inspect the host for a live assignment before dispatch or continuation."
+        work["assignment"]["brief"] = {"path": path, "dispatch": "unverified"}
     else:
-        needed = None
-    if needed is None:
-        if path := prepared_brief(plan, st, brief, provider, assignment_args):
-            work["action"] += " Recover the prepared brief. Inspect the host for a live assignment before dispatch or continuation."
-            work["assignment"]["brief"] = {"path": path, "dispatch": "unverified"}
-        else:
-            step = run_action(plan, "Coordinator", f"Generate the `brief {brief}` assignment for {work['owner']}.", f"brief {brief}", *args)
-            work["assignment"]["brief"] = {k: step[k] for k in ("argv", "cwd")}
-            actions.append({**step, "role": work["role"], "assignment": work["assignment"]})
-        actions.append(assignment_wait(brief, work))
-    elif needed not in actions:
-        actions.append(needed)
+        step = run_action(plan, "Coordinator", f"Generate the `brief {brief}` assignment for {work['owner']}.", f"brief {brief}", *args)
+        work["assignment"]["brief"] = {k: step[k] for k in ("argv", "cwd")}
+        actions.append({**step, "role": work["role"], "assignment": work["assignment"]})
+    actions.append(assignment_wait(brief, work))
 
 
 def assignment_wait(brief, work):
@@ -3553,7 +3612,7 @@ def assignment_wait(brief, work):
                            condition="after-dispatch", records=work["assignment"]["return_channel"]["records"])
 
 
-def verification_workflow(plan, st, c, tree, provider):
+def verification_workflow(plan, st, c, tree):
     checked = checks_current(st, c, tree)
     actions = []
     if not checked:
@@ -3573,20 +3632,20 @@ def verification_workflow(plan, st, c, tree, provider):
 
     def evidence_work(role, work, *args):
         if checked:
-            add_brief_actions(actions, plan, st, provider, role, work, *args)
+            add_brief_actions(actions, plan, st, role, work, *args)
         else:
             actions.append({**work, "kind": "wait", "waiting_for": "full-checks"})
 
     if not reviewed:
         issue = "stale" if c.get("reviews") else "unrecorded"
         need = f"Review the current baseline to recover missing evidence from {', '.join(baseline)}." if baseline else f"Review completion is {issue}."
-        evidence_work("reviewer", work_action("Reviewer", f"{need}{after_checks} Use `{workflow_brief(st, 'reviewer')}` and record `review complete`.",
+        evidence_work("reviewer", work_action("Reviewer", f"{need}{after_checks} Use `{workflow_brief('reviewer')}` and record `review complete`.",
                                             "reviewer", "review", cycle=label, id=target[0], range=target[1]))
     pending = sorted(set(pending_results(st, c, tree)) | set(baseline_cases))
     if pending:
         cases = ", ".join(f"Done {n}" for n in pending)
         need = f"Drive {cases} on the current baseline to recover missing evidence." if baseline_cases else f"Current evidence is missing for {cases}."
-        evidence_work("verify", work_action("Verify", f"{need}{after_checks} Drive the cases from `{workflow_brief(st, 'verify')}` and record the results.",
+        evidence_work("verify", work_action("Verify", f"{need}{after_checks} Drive the cases from `{workflow_brief('verify')}` and record the results.",
                                           "verify", "verify", cycle=label, id=verify_id, head=head, cases=pending))
     owed = outstanding_evidence(st, c, tree) + baseline_owed
     for request, cases in owed:
@@ -3596,7 +3655,7 @@ def verification_workflow(plan, st, c, tree, provider):
                                            input="evidence-exception"))
             continue
         scope = " --cases " + ",".join(map(str, cases)) if cases else ""
-        action = f"{request['report']}{after_checks} Use `{workflow_brief(st, role)}{scope}` to record the requested evidence."
+        action = f"{request['report']}{after_checks} Use `{workflow_brief(role)}{scope}` to record the requested evidence."
         if role == "reviewer":
             evidence_work(role, work_action("Reviewer", action, role, "review", cycle=label, id=target[0], range=target[1], request=request["n"]))
         else:
@@ -3604,24 +3663,22 @@ def verification_workflow(plan, st, c, tree, provider):
                           "--cases", ",".join(map(str, cases)))
     if checked and reviewed and len(c["fixes"]) < FIXES_PER_CYCLE and any(not taken(c, i["id"]) for i in items(c)):
         actions.append(run_action(plan, "Coordinator", "Open a fix for the outstanding items with `fix start <plan>`.", "fix start"))
+    elif checked and (missing := mandatory_check_failures(st, c, head)):
+        actions.append(work_action("Coordinator", "Mandatory checks must pass: " + ", ".join(missing) +
+                                   ". Fix them and record current full checks before a pass.", "coordinator", "checks"))
     elif checked and reviewed and not any(v["owed"] == "reviewer" for v, _ in owed):
-        judge = workflow_brief(st, "judge")
+        judge = workflow_brief("judge")
         if pending or owed:
             actions.append(workflow_action("Coordinator", "ask", f"For an explicit E2E exception, issue `{judge} --note REASON`. Record the reason with `verdict --evidence-note REASON`.",
-                                           input="evidence-exception", command=judge_note_command(plan, st, provider, "REASON")))
+                                           input="evidence-exception", command=judge_note_command(plan, "REASON")))
         else:
-            add_brief_actions(actions, plan, st, provider, "judge", work_action("Judge", f"Decide from the current evidence in `{judge}`.", "judge", "judge", cycle=label))
+            add_brief_actions(actions, plan, st, "judge", work_action("Judge", f"Decide from the current evidence in `{judge}`.", "judge", "judge", cycle=label))
             return stage_after("build-verification", "evidence_ready"), actions
     return "build-verification", actions
 
 
-def judge_note_command(plan, st, provider, note):
-    provider = provider or st.get("build_provider")
-    args = ("--provider", provider) if provider else ()
-    options = {"note": f"--note {note}"}
-    if not provider and st.get("run", {}).get("executors"):
-        options["provider"] = "--provider NAME"
-    return plan_command(plan, "brief judge", *args, **options)
+def judge_note_command(plan, note):
+    return plan_command(plan, "brief judge", note=f"--note {note}")
 
 
 def finish_workflow(plan, st, tip):
@@ -3647,7 +3704,7 @@ def finish_workflow(plan, st, tip):
     return stage_after("human-review", "accepted"), [run_action(plan, "Coordinator", f"Use `finish <plan>` for the approved ending, {fin['how']} into {fin['target']}.", "finish")]
 
 
-def land_workflow(plan, st, tree, c, verdict, provider):
+def land_workflow(plan, st, tree, c, verdict):
     land = (st.get("lands") or [None])[-1]
     current_land = land and (land.get("judge") == verdict["n"] or same_tree_land(st, c, tree, land, verdict["head"]))
     if current_land and land["difference"] and not land["accepted"]:
@@ -3674,7 +3731,7 @@ def land_workflow(plan, st, tree, c, verdict, provider):
                 for task in action:
                     task["command"] = page_command(plan, st)
             return "judge", action
-        return verification_workflow(plan, st, c, tree, provider)
+        return verification_workflow(plan, st, c, tree)
     if not current_land:
         if dirty := dirty_lines(tree):
             paths = ", ".join(line[3:] for line in dirty)
@@ -3717,21 +3774,16 @@ def page_command(plan, st):
     return plan_command(plan, "page", **options)
 
 
-def start_actions(plan, st, provider):
+def start_actions(plan):
     options = {}
     argv = [*cli_argv(plan), "build", "start", plan_paths(plan)[0]]
     if not task_for(plan):
         options["base"] = "--base REF"
-    presets = st.get("run", {}).get("executors", {})
-    if provider and presets:
-        argv.extend(("--provider", provider))
-    elif len(presets) > 1:
-        options["provider"] = "--provider " + "|".join(presets)
     return [workflow_action("Human", "ask", "Give a separate start instruction when ready. Approval alone starts nothing.",
                             input="start-authorization", command={"cwd": plan_root(plan), "argv": argv, "options": options})]
 
 
-def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
+def workflow_next(plan, st, tree, ready, plan_drift, consent):
     if st["status"] == "merged":
         if reason := st.get("cleanup_pending"):
             return "finish", [run_action(plan, "Coordinator", f"{reason}. Resolve it, then retry only the cleanup with `finish <plan>`.", "finish")]
@@ -3747,7 +3799,7 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
                                 workflow_action("Human", "ask", "Approve the displayed revision or say what should change.", input="plan-approval")]
         return "plan", [work_action("Planner", f"{message} — fix: {fix}", "planner", "repair-file") for _, message, fix in consent]
     if st["status"] in ("draft", "approved"):
-        return "plan", start_actions(plan, st, provider)
+        return "plan", start_actions(plan)
     pending = pending_check(st)
     if pending:
         step = check_action(plan, pending)
@@ -3760,7 +3812,7 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
     if pending:
         return "build-verification", [step]
     if not st.get("cycles"):
-        if actions := build_actions(plan, st, ready, provider):
+        if actions := build_actions(plan, st, ready):
             return stage_after("plan", "start_authorized"), actions
         return stage_after("build", "phases_complete"), [run_action(plan, "Coordinator", "Open build verification with `gate start <plan>`.", "gate start")]
     c = cycle_of(st)
@@ -3768,7 +3820,7 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
     if round_ and not round_["done"]:
         if not round_["report"]:
             actions = []
-            add_brief_actions(actions, plan, st, provider, "round", work_action("Round implementer",
+            add_brief_actions(actions, plan, st, "round", work_action("Round implementer",
                 f"Work from the round {round_['n']} brief and record `round report <plan>`.", "implementer", "round", round=round_["n"], notes=round_["notes"]))
             return "build", actions
         if missing := missing_note_sources(st, round_):
@@ -3780,32 +3832,32 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
     if fix and not fix["done"]:
         if not fix["report"]:
             actions = []
-            add_brief_actions(actions, plan, st, provider, "fix", work_action("Fix implementer",
+            add_brief_actions(actions, plan, st, "fix", work_action("Fix implementer",
                 f"Work from the fix {fix['n']} brief and record `fix report <plan>`.", "implementer", "fix", cycle=cycle_label(c), fix=fix["n"], items=fix["items"]))
             return stage_after("build-verification", "repair"), actions
         return stage_after("build-verification", "repair"), [run_action(plan, "Coordinator", f"Check fix {fix['n']}'s report and run `fix done <plan>`.", "fix done")]
     v = (st.get("verdicts") or [None])[-1]
     if not v or v["cycle"] != cycle_label(c):
-        return verification_workflow(plan, st, c, tree, provider)
+        return verification_workflow(plan, st, c, tree)
     if v["kind"] == "pass" or v.get("stop"):
-        return land_workflow(plan, st, tree, c, v, provider)
+        return land_workflow(plan, st, tree, c, v)
     if v["kind"] == "question":
         if not v.get("answer"):
             return "judge", [workflow_action("Human", "ask", f"Answer the judge's question: {v['question']}", input="judge-answer", verdict=v["n"]),
-                             workflow_action("Coordinator", "wait", f"Relay the human's answer with `{workflow_brief(st, 'judge')} --note ANSWER`.",
-                                             waiting_for="judge-answer", command=judge_note_command(plan, st, provider, "ANSWER"))]
+                             workflow_action("Coordinator", "wait", f"Relay the human's answer with `{workflow_brief('judge')} --note ANSWER`.",
+                                             waiting_for="judge-answer", command=judge_note_command(plan, "ANSWER"))]
         try:
             require_current_checks(plan, st, c)
             require_evidence(st, c, tree, None)
         except Refuse:
-            return verification_workflow(plan, st, c, tree, provider)
+            return verification_workflow(plan, st, c, tree)
         actions = []
-        add_brief_actions(actions, plan, st, provider, "judge", work_action(
-            "Judge", f"Use `{workflow_brief(st, 'judge')}` with the recorded answer.", "judge", "judge", cycle=cycle_label(c), verdict=v["n"]))
+        add_brief_actions(actions, plan, st, "judge", work_action(
+            "Judge", f"Use `{workflow_brief('judge')}` with the recorded answer.", "judge", "judge", cycle=cycle_label(c), verdict=v["n"]))
         return "judge", actions
     if v["kind"] == "round":
         return "judge", [run_action(plan, "Coordinator", "Open the judge-ordered round with `round start <plan>`, then issue the round brief.", "round start")]
-    return verification_workflow(plan, st, c, tree, provider)
+    return verification_workflow(plan, st, c, tree)
 
 
 def status_workflow(plan, head, stage, actions, *, run=None):
@@ -3836,7 +3888,7 @@ except ReleaseError as error:
 """
 
 
-def pinned_workflow(bundle, plan, cwd, provider, command=(), *, preplan_task=None):
+def pinned_view(bundle, plan, cwd, command=(), *, preplan_task=None):
     from runweld_release import PROGRAM, ReleaseError, verify_release
     if bundle is None or not (release := plan_release(plan)) or release == bundle.name:
         return None
@@ -3845,18 +3897,16 @@ def pinned_workflow(bundle, plan, cwd, provider, command=(), *, preplan_task=Non
         argv = [sys.executable, "-B", "-P", "-c", PREPLAN_WORKFLOW, str(engine)]
     elif command:
         argv = [sys.executable, str(engine), *command, "--json"]
-        if provider:
-            argv.extend(("--provider", provider))
     else:
         return None
     result = subprocess.run(argv, capture_output=True, text=True, cwd=cwd,
                             input=json.dumps(preplan_task) if preplan_task is not None else None)
     if result.returncode:
         raise ReleaseError(result.stderr.strip() or result.stdout.strip() or f"{release} could not read {plan}")
-    return json.loads(result.stdout)["workflow"]
+    return json.loads(result.stdout)
 
 
-def summary(plan, st, head, tail=None, *, workflow=False, provider=None, closed=False):
+def summary(plan, st, head, tail=None, *, workflow=False, closed=False):
     """-> the dict `status --json` prints."""
     plan_drift = [] if closed else drift_diags(plan, st, head, tail)
     consent = [] if closed or st["status"] == "merged" else consent_diags(plan, st)
@@ -3870,12 +3920,12 @@ def summary(plan, st, head, tail=None, *, workflow=False, provider=None, closed=
            "drift": [] if closed else [f"{m} — fix: {f}" for _, m, f in plan_drift + run_drift(plan, st) + consent]}
     if not closed and standalone_bundle() is not None:
         out.update(path=plan_paths(plan)[0], release=plan_release(plan))
-    if "build_provider" in st:
-        out["build_provider"] = st["build_provider"]
+    if executors := st.get("run", {}).get("executors"):
+        out["executors"] = executors
     for key in ("rounds", "notes"):
         out[key] = [dict(row, by="human") if human_authored(row) else row for row in out[key]]
     if workflow:
-        out["workflow"] = status_workflow(plan, head, *workflow_next(plan, st, out["tree"], out["ready"], plan_drift, consent, provider),
+        out["workflow"] = status_workflow(plan, head, *workflow_next(plan, st, out["tree"], out["ready"], plan_drift, consent),
                                           run=st.get("run"))
     return out
 
@@ -3885,6 +3935,8 @@ def closed_task_status(task):
     if not task or not (outcome := read_task_outcome(task["plan"])):
         return None
     plan, stage = task["plan"], outcome["stage"]
+    if (bundle := standalone_bundle()) and task["release"] != bundle.name and os.path.lexists(plan_paths(plan)[1]):
+        return pinned_view(bundle, plan, os.getcwd(), ("status", plan))
     state = load_state(plan)
     if state is None and compiled_state_missing(plan):
         return {**stopped_status(plan, task), "outcome": outcome}
@@ -3922,14 +3974,46 @@ def stopped_status(plan, task, branch=None, base=None):
             "release": task["release"] if task else plan_release(md), "workflow": workflow_view(md, None, [step])}
 
 
+def inventory_release_stop(bundle, task, available):
+    from runweld_release import ReleaseError, read_task_outcome, verify_release
+    if not task or task["release"] == bundle.name:
+        return None
+    release = task["release"]
+    if release not in available:
+        try:
+            verify_release(bundle.parents[1], release)
+            available[release] = True
+        except ReleaseError:
+            available[release] = False
+    if available[release]:
+        return None
+    repair = f"install this exact release {release} from its source, then retry"
+    step = workflow_action("Human", "ask", repair, input="pinned-release", release=release)
+    outcome = read_task_outcome(task["plan"])
+    return {**task_stage(task, workflow=False), "status": "stopped",
+            "reason": {"code": "release-unavailable", "path": str(bundle.parent / release), "release": release, "recovery": repair},
+            **({"outcome": outcome} if outcome else {}),
+            "workflow": workflow_view(task["plan"], None, [step])}
+
+
+def stop_detail(reason):
+    detail = f"{reason['code']} — {reason['path']}"
+    if recovery := reason.get("recovery"):
+        detail += f" — fix: {recovery}"
+    return detail
+
+
 def show_stop_reason(row):
     reason = row["reason"]
-    print(f"Status: stopped — {reason['code']}: {reason['path']} does not exist — fix: {row['state_repair']}")
+    if "recovery" in reason:
+        print(f"Status: stopped — {stop_detail(reason)}")
+    else:
+        print(f"Status: stopped — {reason['code']}: {reason['path']} does not exist — fix: {row['state_repair']}")
     if outcome := row.get("outcome"):
         show_outcome(outcome)
 
 
-def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task=None, as_data=False):
+def cmd_status(plan, as_json, cwd, current=False, *, current_task=None, as_data=False, details=False):
     if plan is None:
         root = git("rev-parse", "--show-toplevel", check=False, cwd=cwd)
         if root.returncode:
@@ -3939,11 +4023,21 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
         scoped = current and checkout != os.path.realpath(main)
         bundle = standalone_bundle()
         installed = bundle is not None
-        rows = []
+        rows, available = [], {}
         paths = inventory(main) if current_task is None else ([current_task] if os.path.lexists(current_task) else [])
         for path in paths:
             fn, full = path.name, str(path)
-            if installed and (row := closed_task_status(task_for(full, main))):
+            task = task_for(full, main) if installed else None
+            if row := inventory_release_stop(bundle, task, available):
+                if not scoped or row["tree"] == checkout:
+                    rows.append((row, None))
+                continue
+            if task and task["release"] != bundle.name and os.path.lexists(plan_paths(full)[1]):
+                row = pinned_view(bundle, full, cwd, ("status", full))
+                if not scoped or row["tree"] == checkout:
+                    rows.append((row, None))
+                continue
+            if installed and (row := closed_task_status(task)):
                 if not scoped or row["tree"] == checkout:
                     rows.append((row, None))
                 continue
@@ -3970,9 +4064,10 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
                            "state_repair": f"restore {plan_paths(full)[1]}" if compiled else None}
                     if installed:
                         row.update(branch=m[2], base=m[3], tree=tree if scoped else (task["tree"] if task else branch_tree(main, m[2])),
-                                   release=plan_release(full))
+                                   release=plan_release(full), title=plan_title(head))
                     if current:
-                        delegated = pinned_workflow(bundle, full, cwd, provider, ("status", full) if m[1] == "draft" and not compiled else ())
+                        native = pinned_view(bundle, full, cwd, ("status", full)) if m[1] == "draft" and not compiled else None
+                        delegated = native["workflow"] if native else None
                         if delegated is None:
                             if not compiled and task:
                                 view = task_stage(task)
@@ -3987,22 +4082,19 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
             elif installed or st["status"] in LIVE or (current and (st["status"] == "approved" or st["status"].startswith("http"))):
                 if scoped and os.path.realpath(tree_fact(full, st)) != checkout:
                     continue
-                delegated = pinned_workflow(bundle, full, cwd, provider, ("status", full)) if current else None
-                row = summary(full, st, head, tail, workflow=current and delegated is None, provider=provider)
-                if delegated is not None:
-                    row["workflow"] = delegated
+                row = summary(full, st, head, tail, workflow=current)
                 rows.append((row, st))
         if installed:
             tasks = task_rows(Path(main)) if current_task is None else [task_for(current_task, main)]
             for task in tasks:
                 if task and not os.path.lexists(task["plan"]) and (not scoped or task["tree"] == checkout):
-                    if row := closed_task_status(task):
+                    if row := inventory_release_stop(bundle, task, available) or closed_task_status(task):
                         rows.append((row, None))
                         continue
-                    delegated = pinned_workflow(bundle, task["plan"], cwd, provider, ("task", "resume", task["id"])) if current else None
+                    delegated = pinned_view(bundle, task["plan"], cwd, ("task", "resume", task["id"])) if current else None
                     row = task_stage(task, workflow=current and delegated is None)
                     if delegated is not None:
-                        row["workflow"] = delegated
+                        row["workflow"] = delegated["workflow"]
                     rows.append((row, None))
         if as_data:
             return [r for r, _ in rows]
@@ -4013,7 +4105,28 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
         for i, (r, st) in enumerate(rows):
             if current and i:
                 print()
-            if r["status"] == "stopped":
+            if installed and current and (not details or (st is None and r.get("phases") and not r.get("outcome"))):
+                path = r["path"]
+                task = task_for(path, main)
+                view = r["workflow"]
+                show_task_next({**r, "id": r["plan"], "goal": task_goal(path, task, r)},
+                               view["stage"], view["actions"], details=details)
+                if details:
+                    for fact in next_evidence(r):
+                        print(f"  {fact}")
+            elif installed and not current:
+                task = task_for(r["path"], main)
+                outcome = r.get("outcome")
+                fact = (f"{outcome['outcome']} at {outcome['stage']}" if outcome else r["status"])
+                if "reason" in r:
+                    fact += f": {stop_detail(r['reason'])}"
+                if r.get("cleanup_pending"):
+                    fact += " · cleanup pending"
+                if (phases := r.get("phases")) and not outcome:
+                    fact += f" · {sum(p['status'] == 'done' for p in phases)}/{len(phases)} phases done"
+                label = task_label(r["plan"], r.get("title") or (task or {}).get("goal"))
+                print(f"{label} · {fact}")
+            elif r["status"] == "stopped":
                 print(f"{r['plan']} — ", end="")
                 show_stop_reason(r)
             elif outcome := r.get("outcome"):
@@ -4040,6 +4153,8 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
                       + ("".join(f"\n  {x}" for x in r["drift"])))
                 if reason := r.get("cleanup_pending"):
                     print(f"  Cleanup pending: {reason}")
+        if installed and rows and (not current or not details):
+            print("Use `runweld next ID` for a task's actions or `runweld next ID --details` for paths and evidence.")
         return 0
     md = plan_paths(plan)[0]
     if standalone_bundle() and (row := closed_task_status(task_for(md))):
@@ -4098,7 +4213,7 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
             show_discovery(discovery)
             show_workflow(view)
         return 0
-    s = summary(plan, st, head, tail, workflow=True, provider=provider)
+    s = summary(plan, st, head, tail, workflow=True)
     if as_data:
         return s
     if as_json:
@@ -4108,7 +4223,7 @@ def cmd_status(plan, as_json, cwd, current=False, provider=None, *, current_task
     return 0
 
 
-def task_next_status(plan, task, cwd, provider):
+def task_next_status(plan, task, cwd):
     if task:
         if closed := closed_task_status(task):
             return closed
@@ -4116,7 +4231,32 @@ def task_next_status(plan, task, cwd, provider):
             if compiled_state_missing(plan):
                 return stopped_status(plan, task)
             return task_stage(task)
-    return cmd_status(plan, False, cwd, provider=provider, as_data=True)
+    return cmd_status(plan, False, cwd, as_data=True)
+
+
+def task_goal(plan, task, status):
+    goal = (task or {}).get("goal")
+    if status["status"] != "stopped" and not status.get("outcome") and os.path.lexists(plan):
+        head, _ = read_plan(plan)
+        return "\n".join(sections(head).get("Result", (0, []))[1]).strip() or goal
+    return goal
+
+
+def task_label(identifier, context):
+    return f"{identifier} — {shorten(context, width=88, placeholder='…')}" if context else identifier
+
+
+def show_task_next(task, stage, actions, *, details, purpose=None):
+    print(f"Task: {task_label(task['id'], task.get('title'))}")
+    if task["goal"]:
+        print(f"Goal: {task['goal']}")
+    if task["status"] == "stopped":
+        show_stop_reason(task)
+    elif outcome := task.get("outcome"):
+        show_outcome(outcome)
+    else:
+        print(f"Stage: {stage} · {task['status']}" + (f" — {purpose}" if purpose else ""))
+    show_next(actions, details=details)
 
 
 def cmd_next(a, selected_plan):
@@ -4124,17 +4264,13 @@ def cmd_next(a, selected_plan):
     cwd = Path.cwd()
     project = project_root(cwd)
     if a.id and selected_plan is None:
-        raise Refuse("no-task", f"there is no task {a.id}", "run `runweld next` to list tasks or `runweld task start ID` for new work")
+        raise unknown_task(a.id)
     view = {"project": str(plan_root(plan_paths(selected_plan)[0])) if selected_plan else str(project) if project else None}
     if selected_plan:
         plan = plan_paths(selected_plan)[0]
         task = task_for(plan)
-        goal = task.get("goal") if task else None
-        status = task_next_status(plan, task, cwd, a.provider)
+        status = task_next_status(plan, task, cwd)
         stopped = status["status"] == "stopped"
-        if not stopped and not status.get("outcome") and os.path.lexists(plan):
-            head, _ = read_plan(plan)
-            goal = "\n".join(sections(head).get("Result", (0, []))[1]).strip() or goal
         workflow = status.pop("workflow")
         stage = workflow["stage"]
         actions = workflow["actions"]
@@ -4150,30 +4286,47 @@ def cmd_next(a, selected_plan):
                        if stage == "reproduce" else workflow_catalog()["stages"][stage].get("purpose", stage))
         view.update(task={**status, "id": status["plan"], "path": plan, "release": status["release"],
                           "artifacts": task["artifacts"] if task else str(Path(plan).parent),
-                          "goal": goal, **({"discovery": read_discovery(plan)["stages"]} if task and not stopped else {})},
+                          "goal": task_goal(plan, task, status), **({"discovery": read_discovery(plan)["stages"]} if task and not stopped else {})},
                     stage=stage, purpose=purpose, actions=actions, evidence=next_evidence(status))
     elif not project:
         view["actions"] = [workflow_action("Human", "ask", "Open a Git checkout, clone one, or run `git init` for a new project.", input="project")]
     else:
         root = str(project)
-        config, lock = (project / ".runweld" / name for name in ("config.toml", "runweld.lock"))
-        if not (config.is_file() and lock.is_file()):
-            view["actions"] = [workflow_action("Human", "run", "Set up project defaults and executors with `runweld init`.",
-                                               cwd=root, argv=[*cli_argv(), "init"])]
+        lock, config, agents, ignore, agents_before, ignore_before = onboard_files(project)
+        _, settings = read_project_config(config, optional=True)
+        pending = project_pending(settings) if settings is not None else {"checkout": "Inspect settings and confirm both roles."}
+        if settings is not None and (question := checkout_check_question(project, settings, agents_before or "")):
+            pending.setdefault("required_checks", question)
+        repairs = [path.relative_to(project).as_posix() for path, changed in (
+            (config, settings is None), (lock, not lock.is_file()),
+            (agents, agents_before != onboard_agents(agents_before or "")),
+            (ignore, ignore_before != onboard_ignore(project, ignore_before or ""))) if changed]
+        if pending or repairs:
+            view.update(onboarding={"pending": pending, "paths": repairs},
+                        actions=[workflow_action("Agent", "run", "Inspect or recover checkout setup with `runweld onboard`.",
+                                                 cwd=root, argv=[*cli_argv(), "onboard", "--json"])])
         elif git("rev-parse", "--verify", "HEAD", check=False, cwd=root).returncode:
             view["actions"] = [workflow_action("Human", "ask", "Make an initial Git commit before creating a task worktree.", input="base-commit")]
         else:
             rows = cmd_status(None, False, cwd, as_data=True)
             tasks = [{"id": row["plan"], **{k: row[k] for k in ("path", "status", "tree", "release")},
                       **({"reason": row["reason"]} if "reason" in row else {}),
+                      **({"cleanup_pending": row["cleanup_pending"]} if row.get("cleanup_pending") else {}),
                       **({"title": row["title"]} if row.get("title") else {})}
                      for row in rows if not row.get("outcome") and (row["status"] != "merged" or row.get("cleanup_pending"))]
             actions = []
             for task in tasks:
                 path = task["path"]
-                select = [task["id"]] if task_for(path, project) else ["--plan", path]
+                registration = task_for(path, project)
+                select = [task["id"]] if registration else ["--plan", path]
+                if registration and registration.get("goal"):
+                    task["goal"] = registration["goal"]
                 detail = task["status"]
                 if reason := task.get("reason"):
+                    if recovery := reason.get("recovery"):
+                        actions.append(workflow_action("Human", "ask", f"For {task['id']}, {recovery}.",
+                                                       input="pinned-release", release=task["release"]))
+                        continue
                     detail += f": {reason['code']} — {reason['path']}"
                 actions.append(workflow_action("Planner", "run", f"Inspect {task['id']} ({detail}) with `{shlex.join(['runweld', 'next', *select])}`.",
                                                cwd=root, argv=[*cli_argv(path), "next", *select]))
@@ -4186,27 +4339,45 @@ def cmd_next(a, selected_plan):
         if view["project"]:
             print(f"Project: {view['project']}")
         if task := view.get("task"):
-            print(f"Task: {task['id']} — {task.get('title') or task['status']}")
-            if task["goal"]:
-                print(f"Goal: {task['goal']}")
-            if task["status"] == "stopped":
-                show_stop_reason(task)
+            show_task_next(task, view["stage"], view["actions"], purpose=view["purpose"], details=a.details)
+            if a.details:
+                print(f"Branch: {task['branch']} · Base: {task['base']} · Release: {task['release']}")
+                print(f"Tree: {task['tree']}\nPlan: {task['path']}\nArtifacts: {task['artifacts']}")
+                show_discovery(task.get("discovery", {}))
+                for decision in task.get("decisions") or []:
+                    print(f"Decision ({decision['by']}): {decision['question']} — {decision['answer']}")
+                if approval := task.get("approvals", {}).get("plan"):
+                    print(f"Plan approval: {approval['by']} at revision {approval['revision']}")
+                if view["evidence"]:
+                    print("Evidence:")
+                    for fact in view["evidence"]:
+                        print(f"  {fact}")
             else:
-                print(f"Stage: {view['stage']} — {view['purpose']}")
-            print(f"Branch: {task['branch']} · Base: {task['base']} · Release: {task['release']}")
-            print(f"Tree: {task['tree']}\nPlan: {task['path']}\nArtifacts: {task['artifacts']}")
-            if task["status"] != "stopped" and (outcome := task.get("outcome")):
-                show_outcome(outcome)
-            show_discovery(task.get("discovery", {}))
-            for decision in task.get("decisions") or []:
-                print(f"Decision ({decision['by']}): {decision['question']} — {decision['answer']}")
-            if approval := task.get("approvals", {}).get("plan"):
-                print(f"Plan approval: {approval['by']} at revision {approval['revision']}")
-            if view["evidence"]:
-                print("Evidence:")
-                for fact in view["evidence"]:
-                    print(f"  {fact}")
-        show_next(view["actions"])
+                print("Add `--details` for paths and evidence, or `--json` for executable actions.")
+        elif "tasks" in view and not a.details:
+            print("Open tasks:")
+            for task in view["tasks"]:
+                label = task_label(task["id"], task.get("title") or task.get("goal"))
+                fact = task["status"]
+                if reason := task.get("reason"):
+                    fact += ": " + (stop_detail(reason) if "recovery" in reason else reason["code"])
+                if task.get("cleanup_pending"):
+                    fact += " · cleanup pending"
+                print(f"  {label} · {fact}")
+            if view["tasks"]:
+                print("Use `runweld next ID` to open a task, or add `--details` for exact commands and paths.")
+            else:
+                print("  None.")
+            show_next(view["actions"][-1:], details=False)
+        else:
+            show_next(view["actions"], details=a.details)
+            if onboarding := view.get("onboarding"):
+                if onboarding["pending"]:
+                    print("Decisions for chat:")
+                    for question in onboarding["pending"].values():
+                        print(f"  {question}")
+                if onboarding["paths"]:
+                    print(f"Setup files to create or repair: {', '.join(onboarding['paths'])}")
     return 0
 
 
@@ -4235,13 +4406,17 @@ def next_evidence(status):
 def show_status(s, st):
     print(f"{plan_slug(st)} — {st['title']}")
     print(f"Status: {st['status']} · branch `{st['branch']}` · base `{st['base']}`")
-    if "release" in s:
+    installed = "release" in s
+    if installed:
+        if goal := task_goal(s["path"], task_for(s["path"]), s):
+            print(f"Goal: {goal}")
+        show_next(s["workflow"]["actions"])
         print("Release: " + (s["release"] or "unversioned run"))
     if approval := st.get("approvals", {}).get("plan"):
         print(f"Plan approval: {approval['by']} at revision {approval['revision']}")
     t = s["tree"]
     print(f"Tree: {t}" + ("" if os.path.isdir(t) else " (gone)"))
-    show_workflow(s["workflow"])
+    show_workflow(s["workflow"], actions=not installed)
     if st.get("epic"):
         print(f"Epic: {st['epic']['path']} · row {st['epic']['row']}")
     if st.get("alloc"):
@@ -4374,7 +4549,7 @@ def owner_of(st, path, skip=None):
                  and any(overlaps(path, t) for t in p["territory"] + p.get("grants", []))), None)
 
 
-def cmd_build_start(plan, base, worktree, branch, note, provider, as_json):
+def cmd_build_start(plan, base, worktree, branch, note, as_json):
     md = plan_paths(plan)[0]
     root = plan_root(md)
     with port_lock(md), writing(plan, skip_unchanged=True) as st:
@@ -4383,20 +4558,19 @@ def cmd_build_start(plan, base, worktree, branch, note, provider, as_json):
         if resumed:
             requested_base = git("rev-parse", "--verify", "-q", "--end-of-options", f"{base}^{{commit}}",
                                  check=False, cwd=root).stdout.strip() if base is not None else st["base"]
-            if (provider and st.get("build_provider") and provider != st["build_provider"]
-                    or branch and branch != st["branch"]
+            if (branch and branch != st["branch"]
                     or worktree and os.path.realpath(worktree) != os.path.realpath(st["tree"])
                     or requested_base != st["base"]):
-                raise Refuse("build-assignment", "build start cannot change the existing provider, base, branch or worktree",
+                raise Refuse("build-assignment", "build start cannot change the existing base, branch or worktree",
                              "repeat without overrides to see the current assignment")
             facts = []
         elif st["status"] == "approved":
-            facts = start_build(plan, st, md, root, base, worktree, branch, note, provider)
+            facts = start_build(plan, st, md, root, base, worktree, branch, note)
         else:
             raise Refuse("not-approved", f"{plan_slug(st)} is {st['status']}, not approved",
                          "review and approve the current plan before starting")
     head, tail = read_plan(md)
-    view = summary(plan, st, head, tail, workflow=True, provider=st.get("build_provider") or provider)
+    view = summary(plan, st, head, tail, workflow=True)
     active = [phase for phase in st["phases"] if phase["status"] == "in progress"]
     if as_json:
         print(json.dumps({**view, "resumed": bool(resumed), "active_phases": active, "facts": facts}, ensure_ascii=False))
@@ -4413,16 +4587,7 @@ def cmd_build_start(plan, base, worktree, branch, note, provider, as_json):
     return 0
 
 
-def start_build(plan, st, md, root, base, worktree, branch, note, provider):
-    presets = st.get("run", {}).get("executors", {})
-    if not provider and len(presets) == 1:
-        provider = next(iter(presets))
-    if not provider and presets and "plan" in st.get("approvals", {}):
-        raise Refuse("provider-required", "build start needs the coordinator's provider",
-                     "pass --provider with one of " + ", ".join(presets))
-    if provider:
-        executor_selection(plan, provider)
-        st["build_provider"] = provider
+def start_build(plan, st, md, root, base, worktree, branch, note):
     task = task_for(plan, root)
     if not task:
         root = plan_checkout(md)
@@ -4492,9 +4657,8 @@ def cmd_phase_start(plan, n, note):
     with writing(plan) as st:
         require_consent(plan, st)
         ph = phase_start_ready(st, n, note)
-        if not ph.get("executor") and (provider := st.get("build_provider")):
-            selected = executor_selection(plan, provider)
-            ph["executor"] = {"provider": provider, "source": selected["source"], "tier": "secondary", **selected["secondary"]}
+        if not ph.get("executor") and (executor := run_executor(st.get("run", {}), "secondary")):
+            ph["executor"] = executor
         set_phase(plan, st, n, "in progress", note)
         print(f"phase start: {n} {ph['title']} in progress")
     return 0
@@ -4623,7 +4787,7 @@ def spec_entry_lines(md):
     return out
 
 
-def cmd_brief(plan, kind, n, note, cases=(), provider=None):
+def cmd_brief(plan, kind, n, note, cases=()):
     md = plan_paths(plan)[0]
     lines, _ = read_plan(md)
     st = load_state(plan, required=True)
@@ -4664,22 +4828,14 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
     for condition, dependency in definition.get("when", {}).items():
         if dependency["role"] == role:
             out.append(f"For {condition}: " + ", ".join(os.path.join(package, path) for path in dependency["inputs"]))
-    assigned = phase_of(st, n).get("executor") if kind == "implementer" else None
-    if assigned:
-        if provider is not None and provider != assigned["provider"]:
-            raise Refuse("build-assignment", f"phase {n} is assigned to {assigned['provider']}", "reuse the recorded executor")
-        provider, selected, tier, profile = assigned["provider"], assigned, assigned["tier"], assigned
-    elif provider is not None or (provider := st.get("build_provider")):
-        selected = executor_selection(plan, provider)
-        tier = brief_tier(kind, review[0] if review else None)
-        profile = selected[tier]
-    elif "executors" in st.get("run", {}):
-        raise Refuse("provider-required", "a brief with executor presets requires --provider", "supply the current provider; no provider is inferred from a model")
-    if provider is not None:
-        out += [f"Executor provider: {provider}", f"Executor source: {selected['source']}", f"Executor tier: {tier}",
-                f"Executor model: {profile['model']}"]
-        if "effort" in profile:
-            out.append(f"Executor effort: {profile['effort']}")
+    executor = phase_of(st, n).get("executor") if kind == "implementer" else None
+    tier = brief_tier(kind, review[0] if review else None)
+    executor = executor or run_executor(st.get("run", {}), tier)
+    if executor:
+        out += [f"Executor provider: {executor['provider']}", f"Executor source: {executor['source']}",
+                f"Executor tier: {executor['tier']}", f"Executor model: {executor['model']}"]
+        if "effort" in executor:
+            out.append(f"Executor effort: {executor['effort']}")
         out += ["Apply this model and effort explicitly; do not inherit another role preset.", ""]
     if kind == "implementer":
         ph = phase_of(st, n)
@@ -4748,7 +4904,7 @@ def cmd_brief(plan, kind, n, note, cases=(), provider=None):
                 w["verdicts"][-1]["answer"] = note
                 st = w
     if standalone_bundle() is not None:
-        binding = brief_binding(plan, st, kind, provider, phase=n, cases=cases, review=review)
+        binding = brief_binding(plan, st, kind, executor, phase=n, cases=cases, review=review)
         out += ["", f"Run release: {plan_release(plan) or 'unversioned run'}", f"Assignment binding: {binding}"]
     if task := task_for(plan, root):
         out += [f"Task artifacts: {task['artifacts']}"]
@@ -4921,6 +5077,9 @@ def begin_run(plan, st, cycle, tree, command, pending, *, target=None, note=None
     if pending and (pending["cycle"], pending["target"]) != (cycle_label(cycle), target):
         raise Refuse("checks-recovery-stale", "the original check transition's target changed", "restore the original transition and read status again")
     cmds = checks_of(st)
+    if st["run"]["checks"].get("required") and dirty_lines(tree):
+        raise Refuse("required-checks-dirty", "the worktree has uncommitted paths",
+                     "use a clean worktree so mandatory checks run at the recorded revision")
     spec, cycle["spec_refusal"] = commit_spec(plan, st, tree)
     head = head_sha(None, tree)
     st["check_transition"] = {"id": pending["id"] if pending else secrets.token_hex(16), "command": command,
@@ -4954,10 +5113,12 @@ if start:
 def run_checks(plan, cycle, run_, tree, lease):
     """Run commands outside the plan lock with the process group recorded before each command starts."""
     task = task_for(plan)
+    st = load_state(plan, required=True)
+    required = required_checks(st)
     env = None
     if task and run_["full"]:
         cmd_task_setup(plan, implicit=True)
-        env = task_env(task, plan_root(plan_paths(plan)[0]), load_state(plan, required=True).get("alloc", {}))
+        env = task_env(task, plan_root(plan_paths(plan)[0]), st.get("alloc", {}))
     for cmd in run_["full"]:
         reader, writer = os.pipe()
         process = None
@@ -4974,6 +5135,7 @@ def run_checks(plan, cycle, run_, tree, lease):
                     child = {"pgid": process.pid, "start": born}
                     st["check_transition"]["child"] = child
                 before = tree_snapshot(tree)
+                wrong_revision = cmd in required and (dirty_lines(tree) or run_["head"] != head_sha(None, tree))
                 # EOF cancels the child if the coordinator dies before saving ownership.
                 release.write(b"1")
         except BaseException:
@@ -4986,9 +5148,12 @@ def run_checks(plan, cycle, run_, tree, lease):
             raise Refuse("checks-running" if state == "running" else "checks-owner-unknown",
                          f"check process group {process.pid} has no confirmed stop", "inspect the group, then read status again")
         changed = tree_snapshot(tree) != before
-        res = {"command": cmd, "exit": process.returncode, "changed_tree": changed, "red": bool(process.returncode or changed)}
+        res = {"command": cmd, "exit": process.returncode, "changed_tree": changed, "red": bool(process.returncode or changed or wrong_revision)}
         if res["red"]:
-            res["tail"] = "\n".join((stdout + stderr).rstrip().splitlines()[-20:])
+            lines = (stdout + stderr).rstrip().splitlines()
+            if wrong_revision:
+                lines.append("Mandatory check did not start on the clean recorded revision.")
+            res["tail"] = "\n".join(lines[-20:])
         with writing(plan) as st:
             c = next(c for c in st["cycles"] if cycle_label(c) == cycle_label(cycle))
             run_ = selected_run(c)
@@ -5019,10 +5184,36 @@ def close_check(plan, st, transition, run_, tree):
     del st["check_transition"]
 
 
+def required_checks(st):
+    return fill(st["run"], st.get("alloc"))["checks"].get("required", [])
+
+
+def mandatory_check_failures(st, cycle, head):
+    required = required_checks(st)
+    if not required:
+        return []
+    run = selected_run(cycle)
+    if not run or run["head"] != head or not run.get("done", True) or run["full"] != checks_of(st):
+        return required
+    passed = {check["command"] for check in run["commands"] if not check["red"]}
+    failed = {check["command"] for check in run["commands"] if check["red"]}
+    return [command for command in required if command not in passed or command in failed]
+
+
+def require_mandatory_checks(st, cycle, head):
+    if missing := mandatory_check_failures(st, cycle, head):
+        raise Refuse("required-checks-red", "mandatory checks did not pass at " + head[:7] + ": " + ", ".join(missing),
+                     "fix the failure and run the full checks at the current revision; a judge cannot waive these checks")
+
+
 def checks_current(st, c, tree):
-    r = selected_run(c)
+    run = selected_run(c)
+    if not run or not run.get("done", True) or run["full"] != checks_of(st):
+        return False
+    if st["run"]["checks"].get("required"):
+        return run["head"] == head_sha(None, tree)
     current = tree_id(tree, "HEAD")
-    return bool(current and r and r.get("done", True) and r["full"] == checks_of(st) and current == tree_id(tree, r["head"]))
+    return bool(current and current == tree_id(tree, run["head"]))
 
 
 def require_current_checks(plan, st, c):
@@ -5903,6 +6094,8 @@ def cmd_verdict(plan, a):
         if miss:
             raise Refuse("undecided", f"{', '.join(miss)} has no decision", "pass --decide ID ACTION REASON for each Open entry and Convention")
         stop = (stop_reason(st) or converging_stop(st, len(a.note or []))) if a.kind == "round" else None
+        if a.kind == "pass" or stop:
+            require_mandatory_checks(st, c, head_sha(None, tree))
         v = {"n": len(st.get("verdicts", [])) + 1, "at": now(), "head": head_sha(md, tree_of(plan, st)), "cycle": cycle_label(c), "kind": a.kind,
              "epoch": epoch(st), "report": a.report, "evidence_note": a.evidence_note, "owed": a.owed if owed else None, "decisions": [{"id": i, "action": x, "reason": r} for i, x, r in a.decide or []],
              "notes": [], "stopped_notes": [], "question": a.question, "round": None, "stop": stop}
@@ -6779,6 +6972,17 @@ class RoutingParser(argparse.ArgumentParser):
         raise ParseExit
 
 
+def executor_args(parser, *, confirm=False):
+    for tier in EXECUTOR_ROLES:
+        if confirm:
+            parser.add_argument(f"--confirm-{tier}", action="store_true", help=f"confirm the offered {tier} executor")
+        parser.add_argument(f"--{tier}-provider", help=f"{tier} provider identifier")
+        parser.add_argument(f"--{tier}-model", help=f"{tier} model identifier")
+        effort = parser.add_mutually_exclusive_group()
+        effort.add_argument(f"--{tier}-effort", help=f"{tier} effort identifier (optional)")
+        effort.add_argument(f"--no-{tier}-effort", action="store_true", help=f"use the provider's default for {tier}")
+
+
 def discovery_options(parser):
     parser.add_argument("--result", help="settled decisions or the evidenced cause")
     questions = parser.add_mutually_exclusive_group()
@@ -6822,29 +7026,32 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
         herdr.add_argument("--pane", required=True, help="live Herdr pane ID")
         herdr.add_argument("--agent", help="name of the live agent for an existing assignment")
         next_parser = top.add_parser("next", help="find available actions from this project or task")
-        next_parser.add_argument("--json", action="store_true", help="print the same facts and actions as JSON")
-        next_parser.add_argument("--provider", help="the current provider for executable brief commands")
+        next_parser.add_argument("--details", action="store_true", help="show paths, commands and recorded evidence")
+        next_parser.add_argument("--json", action="store_true", help="print full facts and actions as JSON")
         next_scope = next_parser.add_mutually_exclusive_group()
         next_scope.add_argument("id", nargs="?", help="task ID; omit inside its worktree")
         next_scope.add_argument("--plan", help="inspect a task by its plan path")
-        init = top.add_parser("init", help="initialize project defaults and the current provider's executor pair")
-        init.add_argument("--non-interactive", action="store_true", help="use supplied values and defaults without prompting")
-        init.add_argument("--provider", help="provider identifier (otherwise detected when unambiguous)")
-        for tier in ("primary", "secondary"):
-            init.add_argument(f"--{tier}-model", help=f"{tier} model identifier")
-            init.add_argument(f"--{tier}-effort", help=f"{tier} effort identifier (optional)")
-        init.add_argument("--phase-check", action="append", help="phase check command (repeatable)")
-        init.add_argument("--full-check", action="append", help="full check command (repeatable)")
-        init.add_argument("--build", help="optional project build command")
-        init.add_argument("--port", action=argparse.BooleanOptionalAction, help="allocate a port per task (default: false)")
-        init.add_argument("--data-dir", action=argparse.BooleanOptionalAction, help="allocate a data directory per task (default: false)")
-        init.add_argument("--dev", help="optional development server command")
-        init.add_argument("--url", "--dev-url", help="optional development server URL")
-        init.add_argument("--setup", "--bootstrap", help="optional existing command to prepare a task's worktree when needed")
+        onboard = top.add_parser("onboard", help="preview or save this checkout's Runweld settings")
+        onboard.add_argument("--apply", action="store_true", help="save confirmed inputs and repair shared setup files")
+        onboard.add_argument("--json", action="store_true", help="print settings, sources, pending decisions and path outcomes")
+        executor_args(onboard, confirm=True)
+        required = onboard.add_mutually_exclusive_group()
+        required.add_argument("--required-check", action="append", help="confirmed mandatory check command (repeatable)")
+        required.add_argument("--no-required-checks", action="store_true", help="confirm no mandatory checks where the project allows it")
+        onboard.add_argument("--phase-check", action="append", help="phase check command (repeatable)")
+        onboard.add_argument("--full-check", action="append", help="full check command (repeatable)")
+        onboard.add_argument("--build", help="optional project build command")
+        onboard.add_argument("--port", action=argparse.BooleanOptionalAction, help="allocate a port per task (default: false)")
+        onboard.add_argument("--data-dir", action=argparse.BooleanOptionalAction, help="allocate a data directory per task (default: false)")
+        onboard.add_argument("--dev", help="optional development server command")
+        onboard.add_argument("--url", "--dev-url", help="optional development server URL")
+        setup = onboard.add_mutually_exclusive_group()
+        setup.add_argument("--setup", help="existing command to prepare a task's worktree when needed")
+        setup.add_argument("--no-setup", action="store_const", const="", dest="setup", help="confirm a new worktree needs no setup")
         update_parser = top.add_parser("update", help="update the CLI or this project's release")
         scopes = update_parser.add_mutually_exclusive_group()
         scopes.add_argument("--cli", dest="scope", action="store_const", const="cli",
-                            help="install the current upstream CLI in this launcher's prefix")
+                            help="install the latest published stable CLI in this launcher's prefix")
         scopes.add_argument("--project", dest="scope", action="store_const", const="project",
                             help="select an installed build for new tasks in this project")
         update_parser.add_argument("version", nargs="?", metavar="RELEASE", help="exact release ID (default: most recently installed)")
@@ -6852,7 +7059,7 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
         paths.add_argument("area", nargs="?", help="optional category under the project workflow")
         task_commands = top.add_parser("task", help="start, inspect or close a task in its own worktree").add_subparsers(dest="command", required=True)
         for name, what in (
-            ("start", "create a task and worktree, or join as a provider"),
+            ("start", "create a task and worktree"),
             ("resume", "inspect an existing task and its saved evidence"),
             ("path", "locate the task's artifacts"),
             ("setup", "preview or run the configured worktree setup"),
@@ -6878,15 +7085,13 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
             else:
                 task.add_argument("--json", action="store_true")
             if name == "start":
-                task.add_argument("--provider", help="record this provider's executor pair when starting or joining")
+                executor_args(task)
                 task.add_argument("--base", help="project base ref (default: source checkout HEAD)")
                 task.add_argument("--goal", help="the task's requested outcome")
                 task.add_argument("--bug", action="store_true", help="require a red reproduction before planning")
                 task.add_argument("--finish-how", choices=CHOICES["finish", "how"], help="agreed ending for this run")
                 task.add_argument("--finish-target", help="integration branch for this run")
                 task.add_argument("--delete-backups", action=argparse.BooleanOptionalAction, help="delete backups after this run finishes")
-            if name == "resume":
-                task.add_argument("--provider", help="the current provider for executable brief commands")
             if name in ("complete", "cancel"):
                 task.add_argument("--by", required=True, help="the owner's name")
                 task.add_argument("--reason", required=True, help="why the owner is closing the task")
@@ -6903,7 +7108,8 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     s.add_argument("plan", help="the plan file")
     s = top.add_parser("status", help="one plan's state, the live inventory, or current workflow guidance")
     s.add_argument("--json", action="store_true", help="print as JSON")
-    s.add_argument("--provider", help="the current provider for executable brief commands in workflow guidance")
+    if standalone:
+        s.add_argument("--details", action="store_true", help="include paths and history with --current")
     status_scope = s.add_mutually_exclusive_group()
     status_scope.add_argument("plan", nargs="?", help="the plan file, any status; omit to list all project plans" if standalone else
                               "the plan file, any status; omit to list plans from building through passed")
@@ -6934,7 +7140,6 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     s = bp.add_subparsers(dest="command", required=True).add_parser(
         "start", help="start an approved build, or show the existing assignment without restarting it")
     s.add_argument("--base", help="base ref for an unregistered plan; tasks already have a base")
-    s.add_argument("--provider", help="the coordinator's provider from the approved run")
     s.add_argument("--json", action="store_true", help="print the build and its active assignments as JSON")
     s.add_argument("--worktree", metavar="PATH", help="cut the branch in a new git worktree at PATH instead of here")
     s.add_argument("--branch", metavar="NAME", help="the branch to cut, when not the plan's Status line's")
@@ -6998,8 +7203,6 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     s = bsub.add_parser("fix", help="the running fix's items with file:line and text, and the command to record its report")
     s.add_argument("--note", help="what only the orchestrator knows")
     s.add_argument("plan", help="the plan file")
-    for parser in bsub.choices.values():
-        parser.add_argument("--provider", help="the current provider, required for runs with executor presets")
     gp = top.add_parser("gate", help="the E2E gate")
     s = gp.add_subparsers(dest="command", required=True).add_parser(
         "start", help="write and commit the rules, compute the level, run the full checks unless this HEAD has a run")
@@ -7128,9 +7331,8 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
                 "copy the newest run file in the plan's directory, else the shipped example")
     s = rsub.add_parser("new", help=new_help + "; refused if the file exists")
     s.add_argument("plan", help="the plan file, which need not exist")
-    ep = top.add_parser("executor", help="select the current provider's primary/secondary executors")
+    ep = top.add_parser("executor", help="show the primary and secondary executors")
     s = ep.add_subparsers(dest="command", required=True).add_parser("show", help="read a task's recorded pair or, without a plan, the project defaults")
-    s.add_argument("--provider", required=True, help="the current provider's opaque identifier")
     s.add_argument("--json", action="store_true")
     s.add_argument("plan", nargs="?", help="omit to read current project profiles for planning helpers")
     s = rsub.add_parser("check", help="print every problem of the run file, silent when it is sound")
@@ -7233,10 +7435,15 @@ def print_guide(name, browser_args=(), plan=None):
 def agent_help(bundle):
     from runweld_release import GUIDE_COMMANDS
     print(f"Runweld {bundle.name}\n")
-    print("Run `runweld next` in a Git checkout or task worktree. Add `--json` for machine-readable actions.")
-    print("If the project isn't initialized, `runweld init` previews and saves its settings and executor pair.")
-    print("Start with `runweld task start ID --goal TEXT` (add `--bug` for a reproduction), or resume with `runweld next ID`.")
-    print("From a task worktree, `runweld next` finds the assignment and its release without an ID.")
+    print("Run `runweld next` in the Git checkout. It offers checkout setup, open tasks, or the current assignment.")
+    print("For setup, use `runweld onboard` to preview commands, sources and both executor roles without writing.")
+    print("Confirm both roles and any unresolved settings in chat. Save only confirmed answers with `runweld onboard --apply`.")
+    print("Summarize saved settings and file outcomes. Commit runweld.lock, AGENTS.md and .gitignore. Keep .runweld/ local.")
+    print("Use `runweld task start ID --goal TEXT` for new work (add `--bug` for a reproduction) or `runweld next ID` to resume.")
+    print("In a task worktree, omit ID. Use `next --details` for evidence and paths, or `next --json` for exact actions.")
+    print("For a JSON run action, use its argv and cwd. Ask the named owner for any decision before running its command.")
+    print("Human approval of the plan and run does not start a build. Wait for a separate start instruction.")
+    print("Use `runweld help COMMAND` for usage and examples.")
     print("\nWorkflow:")
     catalog = workflow_catalog()
     for stage in catalog["order"]:
@@ -7276,13 +7483,11 @@ def main(*, current_task=None, lifecycle=False):
             if a.group == "update":
                 update_installation(bundle.parents[1], a.scope, a.version)
                 return 0
-            if a.group == "init":
+            if a.group == "onboard":
                 try:
-                    return cmd_init(bundle, a)
-                except (EOFError, KeyboardInterrupt):
-                    raise ReleaseError("initialization cancelled; rerun `runweld init` to continue") from None
+                    return cmd_onboard(bundle, a)
                 except (OSError, Fail) as error:
-                    raise ReleaseError(f"initialization could not finish: {error}; correct the issue and rerun `runweld init`") from None
+                    raise ReleaseError(f"onboarding could not finish: {error}; correct the issue and rerun `runweld onboard`") from None
             if a.group == "discovery" or a.group == "task" and a.command == "stage":
                 return cmd_discovery(selected_plan, a)
             if a.group == "task" and a.command not in ("setup", "stage"):
@@ -7322,7 +7527,8 @@ def main(*, current_task=None, lifecycle=False):
                     a.base = task["base"]
             return run(a.command, task["plan"] if task else a.plan, a.base, cwd=task["tree"] if task else None)
         if a.group == "status":
-            return cmd_status(a.plan, a.json, os.getcwd(), a.current, a.provider, current_task=current_task)
+            return cmd_status(a.plan, a.json, os.getcwd(), a.current, current_task=current_task,
+                              details=getattr(a, "details", False))
         if plan_arg and a.group not in ("run", "spec", "executor") and not os.path.isfile(plan_arg):
             read_plan(plan_paths(plan_arg)[0])
         if a.group == "accept":
@@ -7330,7 +7536,7 @@ def main(*, current_task=None, lifecycle=False):
         if a.group == "run":
             return cmd_run(a.command, a.plan, getattr(a, "json", False))
         if a.group == "executor":
-            return cmd_executor(a.plan, a.provider, a.json)
+            return cmd_executor(a.plan, a.json)
         if a.group == "approve":
             return cmd_approve(a.plan, a.json)
         if a.group == "workflow":
@@ -7342,7 +7548,7 @@ def main(*, current_task=None, lifecycle=False):
                 return transition(cmd_plan_approval(a.plan, a))
             return cmd_plan(a.command, a.plan, a.value, a.note)
         if a.group == "build":
-            return cmd_build_start(a.plan, a.base, a.worktree, a.branch, a.note, a.provider, a.json)
+            return cmd_build_start(a.plan, a.base, a.worktree, a.branch, a.note, a.json)
         if a.group == "phase":
             return transition({"start": lambda: cmd_phase_start(a.plan, a.n, a.note), "report": lambda: cmd_phase_report(a.plan, a.n, a),
                                "done": lambda: cmd_phase_done(a.plan, a.n, a.note)}[a.command]())
@@ -7380,13 +7586,16 @@ def main(*, current_task=None, lifecycle=False):
         if a.group == "decision":
             return cmd_decision(a.plan, a)
         if a.group == "brief":
-            return cmd_brief(a.plan, a.command, getattr(a, "n", None), a.note, [int(x) for x in getattr(a, "cases", "").split(",") if x.strip()], a.provider)
+            return cmd_brief(a.plan, a.command, getattr(a, "n", None), a.note, [int(x) for x in getattr(a, "cases", "").split(",") if x.strip()])
     except ReleaseError as error:
         print(f"runweld: {error}", file=sys.stderr)
         return 1
     except Refuse as e:
         for code, message, fix in e.diags:
-            print(f"{code}: {message} — fix: {fix}")
+            if bundle is not None:
+                print(f"{code}: {message}\n  Recovery: {fix}")
+            else:
+                print(f"{code}: {message} — fix: {fix}")
         return 1
 
 

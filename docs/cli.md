@@ -1,61 +1,61 @@
 # CLI reference
 
+## Install the published CLI
+
+Follow the [installation quick start](../README.md#install). It resolves the
+latest published stable tag to an exact Git commit and runs that commit's
+installer. The default launcher is `~/.local/bin/runweld`.
+
 ## Install from a checkout
 
-Run `./scripts/install-runweld` from the Runweld checkout. The default launcher
-is `~/.local/bin/runweld`. Use `./scripts/install-runweld --prefix DIR` to choose
-another location.
+Run `./scripts/install-runweld` to install the files in a Runweld source
+checkout. This is useful for testing local changes. Use
+`./scripts/install-runweld --prefix DIR` to choose another location.
 
 ## Update the CLI
 
-Run `runweld update --cli` from any directory to install the current version
-from `main` into the same prefix as the CLI you invoked. Existing project locks
-and running tasks keep their selected builds. To install directly:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bash
-```
+Run `runweld update --cli` from any directory to install the latest published
+stable release into the current launcher's prefix. A failed lookup or install
+leaves the working selection in place. Project and task pins stay unchanged.
 
 ## Update a project
 
-Run `runweld update --project` in an initialized checkout to select the installed
-default for new tasks. Commit `.runweld/runweld.lock` to share the selection.
-Lock format 3 records the exact release ID and 64-digit SHA-256 hashes under
+Run `runweld update --project` in an onboarded checkout to select the installed
+default for new tasks. Commit `runweld.lock` at the Git root to share the selection.
+The lock records the exact release ID and SHA-256 component hashes under
 `[guides]`, `[roles]`, `[cli]` and `[adapters]`. Updating only the grill
 interview changes two values in Git: the release ID and `guides.grill`.
 Runweld verifies every installed file against the release manifest.
-Existing tasks retain their release and route. Older releases retain their
-lock layout. Models and checks live in `.runweld/config.toml`.
+Existing tasks retain their release and route. Confirmed executors and checkout
+settings live in the ignored `.runweld/config.toml`.
 
 Use `runweld update --project RELEASE` to select a specific installed build ID.
-That changes the release for new tasks only. From an older task’s worktree,
-`runweld next` still uses that task’s release for commands, roles and references.
-Keep both builds installed while tasks use them. Tasks from versions before
-`runweld next` and dated task directories are not migrated. Start a new task
-to use this workflow.
+That changes the release for new tasks only. From a task’s worktree,
+`runweld next` uses that task’s release for commands, roles and references.
+Keep builds installed while tasks use them.
 
 In a terminal, `runweld update` asks you to choose `cli` or `project`.
-Scripts must pass a scope explicitly. Outside an initialized project,
+Scripts must pass a scope explicitly. Outside an onboarded project,
 `runweld --version` prints the installed default version. Inside one, it prints both `CLI` (the installed default) and `Project`
 (the version in the project lock). Add `--verbose` for the exact build IDs.
 
 ## Update or repair a release
 
-For a project with an existing lock, install the Git revision that produced
-its release ID. Set `revision` to that published tag or commit, then run:
+Set `RUNWELD_REF` to select an explicit tag, commit or development ref in the
+CLI updater or the bootstrap script from a Runweld source checkout:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | RUNWELD_REF="$revision" bash
+RUNWELD_REF="$revision" runweld update --cli
+RUNWELD_REF="$revision" bash ./install.sh
 ```
 
-To install into a separate prefix, pass `--prefix DIR` via
-`bash -s -- --prefix DIR`. The project lock stores the release ID. It does
-not fetch source code or select a Git revision for the installer.
+Use `--prefix DIR` with the bootstrap to choose an installation location.
+The lock holds a Runweld release ID, not a Git revision.
 
 To repair a missing or damaged release, reinstall the source revision that
-produced its exact ID. Reinstalling
-preserves the project lock. Use `runweld help agents --plan "$plan"` to verify
-that the original run can read its instructions again.
+produced its exact ID without changing the lock. Check the installed ID with
+`runweld --version --verbose` outside the project. Use
+`runweld help agents --plan "$plan"` to verify the run can read its instructions.
 
 ## Find a command
 
@@ -72,19 +72,28 @@ runweld task complete --help
 Examples in terminal help use placeholders such as `PLAN` for the plan path
 printed by task entry. For the workflow, roles and approval boundaries, use
 `runweld help agents`. Add `--plan PLAN` to read the run's pinned agent
-guidance rather than the current project's release. An older selected release
-retains its own help and may not have the detailed command pages.
+guidance for the task's release.
 
 ## Run a guide
 
 Run `runweld grill` to print the interview and its rules, or `runweld plan` to print the planning instructions. The bare commands for build, review, land and finish also print instructions. Pass the operational arguments to carry out an action, such as `runweld finish PLAN`. Use `--plan PLAN` to read instructions from a task’s pinned release. Run `runweld browser-test` for browser guidance and `runweld browser-test up URL` to open the browser.
 
-## Start or resume a task
+## Onboard a checkout
 
-In a clean Git checkout, start with `runweld help agents` and `runweld next`.
-If prompted, run `runweld init`. It previews project defaults without running
-the commands. Commit the shared config, lock and project instructions, and
-make an initial Git commit if the checkout has none.
+Run `runweld next` from your Git checkout. If setup is needed, use
+`runweld onboard` to preview the two executor roles, project commands,
+sources and unanswered questions. It does not write files or run the commands.
+Confirm both roles in chat, even when personal defaults are offered. Resolve
+any ambiguous checks or preparation commands, then use `--apply` to save the
+confirmed answers. A later preview continues from a partial save. It can also
+identify shared files that need repair. See [checkout configuration](../workflow/run-file/references/project-config.md).
+
+Read the per-path outcomes and keep `.runweld/` local. Commit the root
+`runweld.lock`, `AGENTS.md` and `.gitignore` so colleagues can clone and
+onboard with their own roles. The checkout needs an initial Git commit
+before creating a task worktree.
+
+## Start or resume a task
 
 ```sh
 runweld task start report-search --goal "Search reports by title"
@@ -95,7 +104,11 @@ From the printed task worktree, use `runweld next` without an ID. From the
 main checkout, use `runweld next ID` or `runweld next --plan "$plan"` with the
 printed plan path. A fresh agent only needs the worktree and the instruction
 to run `runweld next`. It can recover the goal, saved decisions, evidence,
-current owner and what has to happen before work advances.
+current owner and what has to happen before work advances. The ordinary
+output leads with the next action. Use `runweld next --details` for exact
+commands, paths and recorded evidence. `runweld status` lists all tasks,
+including closed ones. Use `runweld status --current` to see the actions
+for this checkout or `runweld status "$plan"` for the full plan status.
 
 Follow the available actions through discovery and planning. With the default
 route, complete Grill and Prototype or skip each with a reason before validating
@@ -109,9 +122,7 @@ the plan and run settings. Use the six headings from the worked summary, or
 number their translations from 1 to 6. `next` identifies missing and empty
 sections. Review includes the recorded prototype or bug cause, reproduction
 command and artifact. With `--json`, read these from `evidence` beside `summary`.
-Previously compiled plans without a summary display in full and return `null`
-for `summary`. Use the displayed
-approval command with the human’s name and words. Approval records the
+Use the displayed approval command with the human’s name and words. Approval records the
 decision. A separate instruction authorizes the displayed build-start command.
 
 At the human gate, use the displayed `page --show` command to recover the
@@ -152,8 +163,7 @@ launcher refuses workflow writes, including completion and cancellation.
 Restore the original state file to resume at the saved stage. An uncompiled
 draft can still be closed.
 
-Use an up-to-date installed launcher even for tasks pinned to older releases.
-Closing waits for writes already running through that launcher. Subsequent
+Closing waits for writes already running through the launcher. Subsequent
 workflow writes are refused, including commands copied before closure with an
 explicit release pin. Closing does not stop agents or commands running directly
 in the worktree.
@@ -167,7 +177,7 @@ These commands and agent briefs read the installed release's
 [workflow definition](../references/workflow.toml). Runtime evidence and approvals
 determine which transition a task may take.
 
-## Set a task's route and providers
+## Set a task's route and executors
 
 Before compiling the plan, edit the companion `.run.toml` file. For example,
 skip Grill and require a Prototype for just that task.
@@ -183,13 +193,13 @@ default, currently `"ask"` for both stages. `"skip"` bypasses a stage that hasn'
 started. It doesn't erase saved progress or remove mandatory stages. Run
 `runweld next ID` to see the selected stage and its allowed actions.
 
-Pass `--provider NAME` to `task start` when needed to choose the initiating
-provider. The task records only that provider's primary and secondary pair.
-Run `runweld task start ID --provider NAME` again to join an existing task
-with a new provider. Repeating a recorded provider never changes its pair
-or effort. Use `runweld executor show --provider NAME PLAN` to inspect the
-pair. If the run is already approved, joining updates the proposal. The
-approved snapshot stays frozen until renewed human approval.
+New tasks record the checkout's confirmed primary and secondary executors.
+Set a task-specific choice at entry using role flags, for example
+`runweld task start report-search --secondary-model MODEL`. Each unspecified
+field keeps its checkout default. Use `runweld executor show PLAN` to inspect
+both recorded roles, or omit `PLAN` for checkout defaults. Reusing a task ID
+does not replace its settings. To propose different executors for an existing
+task, edit `[executors]` in its run file and obtain current human approval.
 
 ## Choose the ending for a task
 
@@ -214,7 +224,7 @@ use `{data_dir}` in check commands. Setup receives the corresponding
 
 ## Workflow actions
 
-Use `runweld next --json` for the same guidance in machine-readable form.
+Use `runweld next --json` for full evidence and machine-readable actions.
 Each entry in `actions` names its `owner`, has readable `action` text, and
 supplies a `kind`.
 
@@ -229,9 +239,10 @@ supplies a `kind`.
   `after-dispatch` applies only after you confirm dispatch. Generating a brief
   is not dispatch. Run `next` again when the expected result arrives.
 - `ask` identifies a decision or missing input. Obtain it from the named owner
-  before running its command, if one is shown.
+  before running its command, if one is shown. At acceptance, it includes the
+  named acceptor and recorded authority when available.
 
-If prompted, pass `--provider NAME` to `next` for executable brief commands using
-the approved executor snapshot. For inventory, use `runweld status`. After
+Task actions use the recorded executor choices, frozen at approval. For
+inventory, use `runweld status`. After
 finish and cleanup, `actions` is empty. Guidance is a snapshot and each
 command still checks whether it can run.

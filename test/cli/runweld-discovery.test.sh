@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory() as tmp:
     run("git", "add", "example.txt")
     run("git", "commit", "-qm", "base")
     setup = r'printf "%s\n" "$RUNWELD_PORT" > "$RUNWELD_DATA_DIR/ready"'
-    run(cli, "init", "--non-interactive", "--provider", "Test", "--primary-model", "planner",
+    run(cli, "onboard", "--apply", "--primary-provider", "Test", "--secondary-provider", "Test", "--primary-model", "planner",
         "--secondary-model", "helper", "--setup", setup, "--data-dir", "--port")
     run("git", "add", ".")
     run("git", "commit", "-qm", "shared settings")
@@ -64,14 +64,14 @@ with tempfile.TemporaryDirectory() as tmp:
     first = next_from(feature)
     assert first["task"]["goal"] == "Make the result readable" and first["stage"] == "grill"
     start = action(first, ("grill", "start", feature["plan"]))
-    assert shlex.join(start["argv"]) in run(cli, "next", cwd=feature["tree"])
+    assert shlex.join(start["argv"]) in run(cli, "next", "--details", cwd=feature["tree"])
     follow(start)
     run(cli, "grill", "save", "--result", "Keep the existing order", "--question", "Which format?", cwd=feature["tree"])
     resumed = next_from(feature)
     grill = resumed["task"]["discovery"]["grill"]
     assert grill["entered"] and grill["status"] == "active"
     assert grill["result"] == "Keep the existing order" and grill["questions"] == ["Which format?"]
-    output = run(cli, "next", cwd=feature["tree"])
+    output = run(cli, "next", "--details", cwd=feature["tree"])
     assert "Keep the existing order" in output and "Which format?" in output
     guide = next(step["assignment"] for step in resumed["actions"] if step["kind"] == "work")
     guide_out = run(*guide["instructions"][0], cwd=guide["cwd"])
@@ -93,8 +93,7 @@ with tempfile.TemporaryDirectory() as tmp:
     # planning#run-route distribution#project-lock: each task has its own route.
     direct = new("direct", "No discovery needed")
     layout = new("layout", "A prototype is needed")
-    shared = {repo / ".runweld" / name: (repo / ".runweld" / name).read_bytes()
-              for name in ("config.toml", "runweld.lock")}
+    shared = {path: path.read_bytes() for path in (repo / ".runweld/config.toml", repo / "runweld.lock")}
 
     def route(row, settings):
         path = Path(row["plan"]).with_suffix(".run.toml")
@@ -247,7 +246,7 @@ none
     assert planned["stage"] == "plan"
     evidence = planned["task"]["discovery"]["reproduce"]
     assert evidence["command"] == reproduction and evidence["artifact"] == str(art)
-    assert reproduction in run(cli, "next", cwd=bug["tree"])
+    assert reproduction in run(cli, "next", "--details", cwd=bug["tree"])
     assert earlier in run(cli, "spec", "check", plan, "--base", "main", ok=False)
     plan.write_text(draft.replace(earlier, run("git", "rev-parse", "HEAD")))
     assert earlier in run(cli, "spec", "check", plan, ok=False)

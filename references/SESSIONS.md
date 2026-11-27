@@ -4,8 +4,9 @@
 
 ## Select executors
 
-`CLI` is `runweld`. `CLI executor show --provider NAME` reads literal profiles
-from `.runweld/config.toml`. Add `PLAN` for recorded or frozen profiles.
+`CLI` is `runweld`. `CLI executor show` reads the checkout's confirmed roles.
+Add `PLAN` for the recorded or approved roles. Each binds its own provider,
+model and optional effort.
 
 Planning, coordination, first review (including small gates) and judges use
 primary. Helpers, prototypes, implementation, fixes, verify/E2E, rechecks and
@@ -41,7 +42,7 @@ available prototypes, screenshots, bug cause and evidence. Explain changes on
 reapproval. Record one decision per revision.
 A separate start instruction chooses **herdr**, a **native independent
 session**, or **manual handoff** and authorizes `CLI build start <plan>`.
-Use `--provider NAME` for multiple providers. Repeat to see the existing assignment.
+Repeat to see the existing assignments.
 Record plan/run/build-skill paths, tree, session IDs, contact/channel and
 the human's language beside the plan. Approval records acceptance authority.
 Tracked documents and examples follow comparable project documents' language.
@@ -49,10 +50,9 @@ The coordinator owns phase/build/gate transitions; workers retain prescribed
 reporting, verdict and land commands. A controller only relays unless granted
 acceptance authority; it cannot approve its own result.
 
-On resume run `CLI next` to find the task, or `CLI next --plan <plan>` to
-select it explicitly. Inspect the existing writer, reports and Git
-facts before resending. Timeout, idle, delivery and prompts imply no completion
-or approval.
+Resume with `CLI next` or `CLI next --plan <plan>`. Add `--details` for paths
+and reports or `--json` for exact actions. Check the writer, reports and Git
+before resending. Timeout, idle, delivery and prompts imply no approval or completion.
 Retain role, brief, assignment, executor, tree, contact, reporting and pending
 questions/answers. Resume without repeating `phase start` or completed work.
 

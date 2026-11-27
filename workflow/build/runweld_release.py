@@ -122,7 +122,8 @@ def release_manifest(root, release):
             raise ValueError("invalid release manifest")
         return expected
     except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
-        raise ReleaseError(f"{release} at {root}: {error}; install this exact release from its source") from None
+        raise ReleaseError(f"{release} at {root}: {error}\n"
+                           "  Recovery: install this exact release from its source, then retry.") from None
 
 
 def verify_release(store, release):
@@ -135,7 +136,8 @@ def verify_release(store, release):
             changed = next(p for p in sorted(files.keys() | actual.keys()) if files.get(p) != actual.get(p))
             raise ValueError(f"damaged release resource {changed}")
     except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
-        raise ReleaseError(f"{release} at {root}: {error}; install this exact release from its source") from None
+        raise ReleaseError(f"{release} at {root}: {error}\n"
+                           "  Recovery: install this exact release from its source, then retry.") from None
     return root
 
 
@@ -223,7 +225,7 @@ def command_plan(args, cwd):
 
 
 def lock_path(project):
-    return project / ".runweld" / "runweld.lock"
+    return project / "runweld.lock"
 
 
 def component_key(path):
@@ -366,9 +368,8 @@ def read_lock(project, store):
 def write_lock(project, bundle):
     path = lock_path(project)
     if path.is_symlink() or path.parent.is_symlink():
-        raise ReleaseError(f"{path} must be a regular project file in a real .runweld directory")
+        raise ReleaseError(f"{path} must be a regular root project file")
     try:
-        path.parent.mkdir(exist_ok=True)
         atomic_write(path, project_lock(bundle).encode())
     except OSError as error:
         raise ReleaseError(f"cannot write {path}: {error}; repair the project lock location") from None
@@ -391,17 +392,14 @@ def read_task_record(path, name):
     value = read_data(path, json.loads)
     if value is None and not path.exists():
         return None
+    # The launcher validates shared identity before handing a record to its pinned engine.
     fields = {"base", "ready", "branch", "release"}
-    if (not isinstance(value, dict) or not fields <= value.keys() <= fields | {"finish", "goal", "bug", "provider"} or
+    if (not isinstance(value, dict) or not fields <= value.keys() or
             not isinstance(value["base"], str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["base"]) or
             type(value["ready"]) is not bool or value["branch"] != "runweld/" + name or
             not valid_release(value["release"]) or
             ("goal" in value and (not isinstance(value["goal"], str) or not value["goal"].strip())) or
-            ("bug" in value and value["bug"] is not True) or
-            ("provider" in value and (value["ready"] or not isinstance(value["provider"], str) or
-                                      not value["provider"].strip() or "\0" in value["provider"] or
-                                      len(value["provider"].splitlines()) != 1 or value["provider"].endswith(("\n", "\r")))) or
-            ("finish" in value and (value["ready"] or not isinstance(value["finish"], dict)))):
+            ("bug" in value and value["bug"] is not True)):
         raise ReleaseError(f"{path} has an invalid task record; restore the task record from a known-good copy")
     return value
 
@@ -514,7 +512,7 @@ def update_installation(store, scope, requested):
     if project is None:
         raise ReleaseError("outside a Git repository; run `runweld update --project` from an initialized project checkout")
     if not os.path.lexists(lock_path(project)):
-        raise ReleaseError(f"{lock_path(project)} is missing; run `runweld init` in this repository or restore its lock")
+        raise ReleaseError(f"{lock_path(project)} is missing; run `runweld onboard` in this repository or restore its lock")
     release = requested if requested is not None else installed_default(store)
     bundle = verify_release(store, release)
     write_lock(project, bundle)

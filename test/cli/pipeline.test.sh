@@ -510,7 +510,22 @@ assert_contains "$out" "pipeline.py approve" "the fix is approve" || exit 1
 
 # run#starts-from-last: run new copies the newest run file, else the example, and never overwrites
 r=$(mktemp_dir)
-cd "$r" && git init -q && cp "$repo_root/AGENTS.md" AGENTS.md && mkdir -p .runweld/workflow/plans && cd .runweld/workflow/plans || exit 1
+cd "$r" && git init -q && mkdir -p .runweld/workflow/plans || exit 1
+cat > .runweld/config.toml <<'TOML'
+[executors.primary]
+provider = "fixture"
+model = "primary"
+[executors.secondary]
+provider = "fixture"
+model = "secondary"
+[checks]
+phase = []
+full = []
+required = []
+[onboarding]
+setup_known = true
+TOML
+cd .runweld/workflow/plans || exit 1
 out=$(cli run new 2026-11-20-a.md); rc=$?
 assert_eq 0 "$rc" "run new: $out" || exit 1
 assert_contains "$out" "2026-11-20-a.run.toml" "run new names the file" || exit 1
@@ -792,9 +807,11 @@ gate_fixture() {
   fi
   edit "${route%.md}.run.toml" 'full = ["scripts/check", "scripts/test"]' "full = [\"$2\"]"
   cat >> "${route%.md}.run.toml" <<'TOML'
-[executors.fixture.primary]
+[executors.primary]
+provider = "fixture"
 model = "first"
-[executors.fixture.secondary]
+[executors.secondary]
+provider = "fixture"
 model = "followup"
 TOML
   approve_plan "$route" >/dev/null || fail 'approve fixture'
@@ -821,7 +838,7 @@ failed=0
   gate_fixture small 'grep -q fixed src/a'
   first_head=$(git rev-parse HEAD)
   base=$(git rev-parse main)
-  first_brief=$(cli brief reviewer "$route" --provider fixture) || fail 'dispatch initial reviewer'
+  first_brief=$(cli brief reviewer "$route") || fail 'dispatch initial reviewer'
   if next_actions | grep -q 'fix start'; then fail 'build#review-completion: status must wait for initial review before suggesting a fix'; fi
   cli fix start "$route" >/dev/null || fail 'open fix before review reply'
   commit_fixture fixed
@@ -832,58 +849,56 @@ failed=0
   assert_eq 1 "$rc" 'build#review-completion: late reviewer cannot attest to the new tip' || exit 1
   out=$(cli review complete "$route" --assignment gate-fix-1 --range "$first_head..$tip"); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: the fix range alone cannot cover the implementation' || exit 1
-  brief=$(cli brief reviewer "$route" --provider fixture) || fail 'brief recovered reviewer'
+  brief=$(cli brief reviewer "$route") || fail 'brief recovered reviewer'
   assert_contains "$(cat "$brief")" "Range: $base..$tip" 'build#review-completion: recovered assignment includes the implementation' || exit 1
   assert_contains "$(cat "$brief")" 'Executor tier: primary' 'build#review-completion: recovered first review uses primary' || exit 1
   assert_contains "$(cat "$first_brief")" "Range: $base..$first_head" 'build#review-completion: the first reviewer retains the original brief' || exit 1
-  complete_review "$route" --provider fixture || fail 'record full review after fix'
+  complete_review "$route" || fail 'record full review after fix'
   cli verdict pass "$route" --predicted pass --engine fixture --report reviewed >/dev/null || fail 'pass reviewed fixture'
 ) || failed=1
 (
   # build#review-completion: same-tree commits preserve captures, but start a new pre-land review.
   gate_fixture normal true
-  complete_review "$route" --provider fixture || fail 'complete first review'
+  complete_review "$route" || fail 'complete first review'
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'record first capture'
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'record second capture'
   cli verdict pass "$route" --predicted pass --engine fixture --report reviewed >/dev/null || fail 'pass initial tip'
   git commit -q --allow-empty -m 'same tree at a new tip' || fail 'commit on same tree'
-  out=$(cli brief judge "$route" --provider fixture); rc=$?
+  out=$(cli brief judge "$route"); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: a same-tree commit still needs its exact review' || exit 1
   assert_contains "$out" 'review-missing' 'build#review-completion: the outstanding evidence is review' || exit 1
   cli land draft "$route" >/dev/null || fail 'draft land shape'
   out=$(cli land "$route"); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: the old verdict cannot land a different commit history' || exit 1
   assert_contains "$out" 'judge-stale' 'build#review-completion: land refuses the stale verdict' || exit 1
-  brief=$(cli brief reviewer "$route" --provider fixture) || fail 'brief same-tree reviewer'
+  brief=$(cli brief reviewer "$route") || fail 'brief same-tree reviewer'
   assert_contains "$(cat "$brief")" "Range: $(git rev-parse main)..$(git rev-parse HEAD)" 'build#review-completion: same-tree reviewer sees the new tip' || exit 1
-  complete_review "$route" --provider fixture || fail 'record exact same-tree review'
-  cli brief judge "$route" --provider fixture >/dev/null || fail 'build#review-completion: existing same-tree captures remain applicable'
+  complete_review "$route" || fail 'record exact same-tree review'
+  cli brief judge "$route" >/dev/null || fail 'build#review-completion: existing same-tree captures remain applicable'
 ) || failed=1
 (
-  # build#workflow-progress: each published role command accepts the run's provider.
+  # build#workflow-progress: each published role command carries its recorded assignment.
   gate_fixture normal true
   actions=$(next_actions)
-  assert_contains "$actions" 'brief reviewer --provider PROVIDER <plan>' 'build#workflow-progress: status binds the reviewer provider' || exit 1
-  assert_contains "$actions" 'brief verify --provider PROVIDER <plan>' 'build#workflow-progress: status binds the Verify provider' || exit 1
-  typed_action "$route" build-verification work Reviewer 'brief reviewer' '{"executor":{"provider":"fixture","source":"approved run snapshot","tier":"primary","model":"first"}}' inspect --provider fixture
-  typed_action "$route" build-verification work Verify 'brief verify' '{"executor":{"provider":"fixture","source":"approved run snapshot","tier":"secondary","model":"followup"}}' inspect --provider fixture
-  typed_action "$route" build-verification run Coordinator 'brief reviewer' '{}' run --provider fixture
-  typed_action "$route" build-verification run Coordinator 'brief verify' '{}' run --provider fixture
-  complete_review "$route" --provider fixture || fail 'complete provider fixture review'
-  assert_contains "$(next_actions)" 'brief judge --provider PROVIDER <plan> --note REASON' 'build#workflow-progress: E2E exception includes a provider' || exit 1
+  assert_contains "$actions" 'brief reviewer <plan>' 'build#workflow-progress: status gives the reviewer command' || exit 1
+  assert_contains "$actions" 'brief verify <plan>' 'build#workflow-progress: status gives the Verify command' || exit 1
+  typed_action "$route" build-verification work Reviewer 'brief reviewer' '{"executor":{"provider":"fixture","source":"approved run snapshot","tier":"primary","model":"first"}}' inspect
+  typed_action "$route" build-verification work Verify 'brief verify' '{"executor":{"provider":"fixture","source":"approved run snapshot","tier":"secondary","model":"followup"}}' inspect
+  typed_action "$route" build-verification run Coordinator 'brief reviewer' '{}' run
+  typed_action "$route" build-verification run Coordinator 'brief verify' '{}' run
+  complete_review "$route" || fail 'complete provider fixture review'
+  assert_contains "$(next_actions)" 'brief judge <plan> --note REASON' 'build#workflow-progress: E2E exception includes a reason input' || exit 1
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'record first case'
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'record second case'
-  assert_contains "$(next_actions)" 'brief judge --provider PROVIDER <plan>' 'build#workflow-progress: ready judge includes a provider' || exit 1
+  assert_contains "$(next_actions)" 'brief judge <plan>' 'build#workflow-progress: ready judge includes a command' || exit 1
   typed_action "$route" judge run Coordinator 'brief judge' '{}' run
-  typed_action "$route" judge run Coordinator 'brief judge' '{}' run --provider fixture
-  typed_action "$route" judge ask Coordinator 'approved run snapshot' '{}' inspect --provider missing
   cli verdict question "$route" --predicted pass --engine fixture --report 'need input' --question 'Is this right?' >/dev/null || fail 'ask fixture question'
-  assert_contains "$(next_actions)" 'brief judge --provider PROVIDER <plan> --note ANSWER' 'build#workflow-progress: judge question includes a provider' || exit 1
+  assert_contains "$(next_actions)" 'brief judge <plan> --note ANSWER' 'build#workflow-progress: judge question includes an answer input' || exit 1
 ) || failed=1
 (
   # build#workflow-progress: an owed recapture remains assigned until that case is recorded again.
   gate_fixture normal true
-  complete_review "$route" --provider fixture || fail 'complete evidence fixture review'
+  complete_review "$route" || fail 'complete evidence fixture review'
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'record first case'
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'record second case'
   cli verdict evidence-owed "$route" --owed verify --report 'Capture Done 1 again' >/dev/null || fail 'record judge recapture request'
@@ -891,7 +906,7 @@ failed=0
   cli verdict evidence-owed "$route" --owed verify --case 2 --report 'Capture the other case' >/dev/null || fail 'request a second recapture'
   cli result "$route" --case 2 --outcome passed --capture unrelated >/dev/null || fail 'record unrelated capture'
   route_step build-verification Verify 'Capture Done 1 again'
-  out=$(cli brief judge "$route" --provider fixture); rc=$?
+  out=$(cli brief judge "$route"); rc=$?
   assert_eq 1 "$rc" 'build#workflow-progress: earlier captures do not satisfy a requested recapture' || exit 1
   assert_contains "$out" 'Done 1 lacks current E2E evidence' 'build#workflow-progress: the refused brief identifies the owed case' || exit 1
   cli result "$route" --case 1 --outcome passed --capture relevant >/dev/null || fail 'record owed capture'
@@ -900,21 +915,21 @@ failed=0
   cli verdict evidence-owed "$route" --owed reviewer --report 'Review the range again' >/dev/null || fail 'record review request'
   cli result "$route" --case 1 --outcome passed --capture unrelated >/dev/null || fail 'record unrelated result'
   route_step build-verification Reviewer 'Review the range again'
-  complete_review "$route" --provider fixture || fail 'record owed review'
+  complete_review "$route" || fail 'record owed review'
   route_step judge Coordinator 'brief judge'
   cli verdict evidence-owed "$route" --owed verify --case 2 --report 'New screenshot requested' >/dev/null || fail 'scope evidence request explicitly'
-  route_step build-verification Verify 'brief verify --provider PROVIDER <plan> --cases 2'
+  route_step build-verification Verify 'brief verify <plan> --cases 2'
   cli verdict pass "$route" --predicted pass --engine fixture --report 'Existing case reviewed' --evidence-note 'Second capture unavailable in the fixture' >/dev/null || fail 'record explicit resolution'
   route_step judge Judge 'land draft'
 ) || failed=1
 (
   # build#review-completion: independent requests survive until fresh, matching evidence or an E2E exception.
   gate_fixture normal true
-  complete_review "$route" --provider fixture || fail 'complete initial review'
+  complete_review "$route" || fail 'complete initial review'
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'record first case'
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'record second case'
   cli verdict evidence-owed "$route" --owed reviewer --report 'Revisit the review' >/dev/null || fail 'request new review'
-  out=$(cli brief judge "$route" --provider fixture); rc=$?
+  out=$(cli brief judge "$route"); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: the older completion cannot meet a fresh review request' || exit 1
   assert_contains "$out" 'review-missing' 'build#review-completion: the refusal names review' || exit 1
   cli verdict evidence-owed "$route" --owed verify --case 1 --report 'Recapture the first case' >/dev/null || fail 'request first case'
@@ -922,37 +937,37 @@ failed=0
   route_step build-verification Reviewer 'Revisit the review'
   route_step build-verification Verify 'Recapture the first case'
   route_step build-verification Verify 'Recapture the second case'
-  brief=$(cli brief verify "$route" --provider fixture) || fail 'brief both requested cases'
+  brief=$(cli brief verify "$route") || fail 'brief both requested cases'
   assert_contains "$(cat "$brief")" '1. a → b' 'build#review-completion: Verify gets the first case' || exit 1
   assert_contains "$(cat "$brief")" '2. c → d' 'build#review-completion: Verify gets the second case' || exit 1
   cli result "$route" --case 2 --outcome passed --capture new-second >/dev/null || fail 'recapture second case'
   out=$(cli verdict pass "$route" --predicted pass --engine fixture --report premature --evidence-note 'Waive capture'); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: an E2E exception cannot waive a review request' || exit 1
   assert_contains "$out" 'review-missing' 'build#review-completion: the verdict needs the new review' || exit 1
-  complete_review "$route" --provider fixture || fail 'complete requested review'
+  complete_review "$route" || fail 'complete requested review'
   route_step build-verification Verify 'Recapture the first case'
   if next_actions | grep -Eq 'Revisit the review|Recapture the second case|Generate the `brief judge'; then fail 'build#review-completion: only first recapture and its exception remain'; fi
-  out=$(cli brief judge "$route" --provider fixture); rc=$?
+  out=$(cli brief judge "$route"); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: the first request still gates the brief' || exit 1
   assert_contains "$out" 'Done 1 lacks current E2E evidence' 'build#review-completion: the brief names only the remaining requested case' || exit 1
   out=$(cli verdict pass "$route" --predicted pass --engine fixture --report premature); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: the first request still gates the verdict' || exit 1
   assert_contains "$out" 'Done 1 lacks current E2E evidence' 'build#review-completion: the verdict names only the remaining requested case' || exit 1
   cli result "$route" --case 1 --outcome passed --capture new-first >/dev/null || fail 'recapture first case'
-  cli brief judge "$route" --provider fixture >/dev/null || fail 'all requests satisfied by matching evidence'
+  cli brief judge "$route" >/dev/null || fail 'all requests satisfied by matching evidence'
   cli verdict evidence-owed "$route" --owed verify --case 1 --report 'Capture first again' >/dev/null || fail 'request first again'
   cli verdict evidence-owed "$route" --owed verify --case 2 --report 'Capture second again' >/dev/null || fail 'request second again'
-  route_step build-verification Coordinator 'brief judge --provider PROVIDER <plan> --note REASON'
-  cli brief judge "$route" --provider fixture --note 'Fixture has no new captures' >/dev/null || fail 'brief with explicit exception'
+  route_step build-verification Coordinator 'brief judge <plan> --note REASON'
+  cli brief judge "$route" --note 'Fixture has no new captures' >/dev/null || fail 'brief with explicit exception'
   cli verdict pass "$route" --predicted pass --engine fixture --report 'Reviewed with exception' --evidence-note 'Fixture has no new captures' >/dev/null || fail 'record explicit resolution of both requests'
   route_step judge Judge 'land draft'
-  cli brief judge "$route" --provider fixture >/dev/null || fail 'resolved requests no longer gate a new brief'
+  cli brief judge "$route" >/dev/null || fail 'resolved requests no longer gate a new brief'
   assert_contains "$(cli status "$route")" 'owed by verify: Capture first again' 'build#review-completion: the request history is retained' || exit 1
 ) || failed=1
 (
   # build#review-completion: the result shown to the judge determines whether a requested capture is present.
   gate_fixture normal true
-  complete_review "$route" --provider fixture || fail 'complete review before recaptures'
+  complete_review "$route" || fail 'complete review before recaptures'
   cli verdict evidence-owed "$route" --owed verify --case 1 --case 2 --report 'Recapture both cases' >/dev/null || fail 'request both recaptures'
   cli result "$route" --case 1 --outcome passed --capture superseded >/dev/null || fail 'recapture first case'
   cli result "$route" --case 1 --outcome not-reached --detail 'Fixture stopped before the capture' >/dev/null || fail 'replace first result'
@@ -960,25 +975,25 @@ failed=0
   out=$(cli verdict pass "$route" --predicted pass --engine fixture --report premature); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: a superseded capture cannot satisfy a recapture' || exit 1
   assert_contains "$out" 'Done 1 lacks current E2E evidence' 'build#review-completion: the verdict names the case still owed' || exit 1
-  route_step build-verification Verify 'brief verify --provider PROVIDER <plan> --cases 1'
-  out=$(cli brief judge "$route" --provider fixture); rc=$?
+  route_step build-verification Verify 'brief verify <plan> --cases 1'
+  out=$(cli brief judge "$route"); rc=$?
   assert_eq 1 "$rc" 'build#review-completion: the judge brief also requires the outstanding recapture' || exit 1
   assert_contains "$out" 'Done 1 lacks current E2E evidence' 'build#review-completion: the brief names the case still owed' || exit 1
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'record current first capture'
-  cli brief judge "$route" --provider fixture >/dev/null || fail 'current captures fulfill both requests'
+  cli brief judge "$route" >/dev/null || fail 'current captures fulfill both requests'
   cli verdict pass "$route" --predicted pass --engine fixture --report reviewed >/dev/null || fail 'pass after both current captures'
 ) || failed=1
 (
   # build#workflow-progress: a small gate's explicit Verify request can be fulfilled through the cases in its brief.
   gate_fixture small true
-  complete_review "$route" --provider fixture || fail 'complete small-gate review'
+  complete_review "$route" || fail 'complete small-gate review'
   cli verdict evidence-owed "$route" --owed verify --report 'Recapture all assigned cases' >/dev/null || fail 'request assigned cases'
-  brief=$(cli brief verify "$route" --provider fixture) || fail 'brief the assigned cases'
+  brief=$(cli brief verify "$route") || fail 'brief the assigned cases'
   assert_contains "$(cat "$brief")" '1. a → b' 'build#workflow-progress: the first assigned case is in the brief' || exit 1
   assert_contains "$(cat "$brief")" '2. c → d' 'build#workflow-progress: the second assigned case is in the brief' || exit 1
   cli result "$route" --case 1 --outcome passed --capture first >/dev/null || fail 'recapture first assigned case'
   cli result "$route" --case 2 --outcome passed --capture second >/dev/null || fail 'recapture second assigned case'
-  out=$(cli brief judge "$route" --provider fixture); rc=$?
+  out=$(cli brief judge "$route"); rc=$?
   assert_eq 0 "$rc" "build#workflow-progress: fresh captures fulfill the unscoped small-gate request ($out)" || exit 1
   route_step judge Judge 'Decide from the current evidence'
   if next_actions | grep -q 'Recapture all assigned cases'; then fail 'build#workflow-progress: the fulfilled request leaves no work for Verify'; fi
@@ -986,14 +1001,14 @@ failed=0
 (
   # build#workflow-progress: a Verify request with zero assigned cases has an explicit resolution.
   gate_fixture small true human
-  complete_review "$route" --provider fixture || fail 'complete small-gate review'
+  complete_review "$route" || fail 'complete small-gate review'
   cli verdict evidence-owed "$route" --owed verify --report 'Recapture all assigned cases' >/dev/null || fail 'request captures'
   route_step build-verification Coordinator 'No Done cases are assigned to Verify'
   if next_actions | grep -q 'brief verify'; then fail 'build#workflow-progress: zero assigned cases leave no work for Verify'; fi
-  out=$(cli brief judge "$route" --provider fixture); rc=$?
+  out=$(cli brief judge "$route"); rc=$?
   assert_eq 1 "$rc" 'build#workflow-progress: the judge must explicitly resolve an empty request' || exit 1
   assert_contains "$out" 'no assigned Done cases' 'build#workflow-progress: the refusal explains why no result can resolve the request' || exit 1
-  cli brief judge "$route" --provider fixture --note 'Both cases require human review' >/dev/null || fail 'brief the judge with an explicit exception'
+  cli brief judge "$route" --note 'Both cases require human review' >/dev/null || fail 'brief the judge with an explicit exception'
   cli verdict pass "$route" --predicted pass --engine fixture --report reviewed --evidence-note 'Both cases require human review' >/dev/null || fail 'resolve the empty request'
   route_step judge Judge 'land draft'
 ) || failed=1
@@ -1008,29 +1023,29 @@ failed=0
   assert_contains "$out" '(reused, run' 'build#checks-by-code: the earlier completed check is reused' || exit 1
   assert_contains "$(cli status "$route")" "Checks at ${checked:0:7}: green" 'build#checks-by-code: status shows the selected check' || exit 1
   if next_actions | grep -q 'Full checks are missing or stale'; then fail 'build#checks-by-code: reused check is the current evidence'; fi
-  complete_review "$route" --provider fixture || fail 'build#checks-by-code: the reviewer can complete after reuse'
+  complete_review "$route" || fail 'build#checks-by-code: the reviewer can complete after reuse'
 ) || failed=1
 (
   # build#review-completion: generated commits are in pinned fix and round ranges even after empty reports.
   gate_fixture small true
   cli finding "$route" --kind defect --where src/a:1 --source plan --text 'needs generated fix' >/dev/null || fail 'record fixture defect'
-  complete_review "$route" --provider fixture || fail 'complete review before generated fix'
+  complete_review "$route" || fail 'complete review before generated fix'
   cli fix start "$route" >/dev/null || fail 'open generated fix'
   from=$(git rev-parse HEAD)
   cli fix report "$route" --became 'No implementer changes' >/dev/null || fail 'record empty fix report'
   commit_fixture generated-fix
   cli fix done "$route" >/dev/null || fail 'finish fix with generated commit'
-  brief=$(cli brief reviewer "$route" --provider fixture) || fail 'brief fix reviewer'
+  brief=$(cli brief reviewer "$route") || fail 'brief fix reviewer'
   assert_contains "$(cat "$brief")" "Range: $from..$(git rev-parse HEAD)" 'build#review-completion: the brief shows the actual nonempty fix range' || exit 1
   assert_contains "$(cat "$brief")" 'Executor tier: secondary' 'build#review-completion: the targeted fix review uses secondary' || exit 1
-  complete_review "$route" --provider fixture || fail 'complete review before round'
+  complete_review "$route" || fail 'complete review before round'
   cli verdict round "$route" --predicted round --engine fixture --report round --note 'Review the generated change' bug >/dev/null || fail 'order round'
   cli round start "$route" >/dev/null || fail 'start round'
   from=$(git rev-parse HEAD)
   cli round report "$route" --became 'No implementer changes' >/dev/null || fail 'record empty round report'
   commit_fixture generated
   cli round done "$route" >/dev/null || fail 'finish round with generated commit'
-  brief=$(cli brief reviewer "$route" --provider fixture) || fail 'brief round reviewer'
+  brief=$(cli brief reviewer "$route") || fail 'brief round reviewer'
   assert_contains "$(cat "$brief")" "Range: $from..$(git rev-parse HEAD)" 'build#review-completion: the brief shows the actual nonempty round range' || exit 1
 ) || failed=1
 [ "$failed" -eq 0 ] || exit 1

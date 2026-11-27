@@ -17,20 +17,20 @@ and never edits code. Select each worker's executor from the shared contract.
 Read the plan, its epic and the project's `AGENTS.md`.
 Use `runweld` as `CLI`. `CLI status` lists project runs. Report shared
 territories to the contact. Run `CLI build start <plan>` to reuse the task checkout.
-Supply `--provider NAME` when more than one is configured. The command sets
-`building`; repeating it shows the same active assignments and worktree.
+The command sets `building`; repeating it shows the same active assignments and worktree.
 Every phase commits in that worktree.
 Give each worker that tree and the absolute plan path. See
 [workflow paths](../../references/WORKFLOW-PATHS.md) for history and setup.
 
-On resume, use `CLI status --current` to find plans or `CLI status <plan>`
-to see its tree, owner and next action. Reuse the existing writer. Follow
-[typed actions](../../docs/cli.md#workflow-actions) with `--json --provider NAME`.
+On resume, use `CLI next` to find tasks or `CLI next --plan <plan>`
+to see the owner and next action. Add `--details` for the tree and evidence.
+Reuse the existing writer. Follow
+[typed actions](../../docs/cli.md#workflow-actions) with `--json`.
 
 ## 2. The graph
 
 `CLI status <plan>` names the phases that are ready. Per ready phase, all at
-once: `CLI phase start <plan> <n>`, then `CLI brief implementer --provider <provider> <plan> <n>`,
+once: `CLI phase start <plan> <n>`, then `CLI brief implementer <plan> <n>`,
 and a `runweld implementer` in the background whose prompt is the path it
 prints. To go against a fact the CLI reports, pass `--note` with your reason; it
 reaches the gate page. When an implementer finishes, `CLI phase done <plan>
@@ -63,7 +63,7 @@ Then the rest of the gate, by [gate.md](references/gate.md); read it then, not
 before.
 
 Then a fresh `runweld judge` ([judge.md](references/judge.md)): `CLI brief
-judge --provider <provider> [--note "<…>"] <plan>`, and the prompt is the path it prints. The judge
+judge [--note "<…>"] <plan>`, and the prompt is the path it prints. The judge
 records its verdict with `CLI verdict` and returns:
 
 - `pass: <path>` and its report: the branch is landed. Go to 4.
@@ -75,7 +75,7 @@ records its verdict with `CLI verdict` and returns:
   `CLI verdict evidence-owed`. Follow `CLI status <plan>` for the reviewer
   brief, Verify cases, or the explicit E2E exception. Then run the judge again.
 - `land stopped: <…>`: the judge again. Code turns a stop that keeps coming
-  into a question to the human; `CLI brief judge --provider <provider>` refuses until `--note`
+  into a question to the human; `CLI brief judge` refuses until `--note`
   holds their answer.
 
 A verdict that stops rounds says why in `CLI status`; it lands as a pass.
@@ -106,4 +106,4 @@ human correct it (`CLI note edit`), and mark its source against
 the approach or leaving the territories is proposed as `task`; on the human’s
 confirmation, list it without building it. A round, on the human's word, builds
 every open note or a conflict at `finish` like a phase (reviewer using secondary),
-then the judge, dispatched through `CLI brief judge --provider <provider>` like every judge, which lands, and back to the gate.
+then the judge, dispatched through `CLI brief judge` like every judge, which lands, and back to the gate.

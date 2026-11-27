@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # distribution#command-help: every shipped group, nested action and guide uses the same entry points.
     commands = """
-        help reference handoff next init update path task spec approve status workflow plan build
+        help reference handoff next onboard update path task spec approve status workflow plan build
         phase owner grant decision brief gate finding review result fix verdict land page accept
         note round finish run executor writing-guides grill prototype run-file verify bug epic retro
         domain-modeling tdd browser-test commit-work implementer reviewer judge build-verification human-review
@@ -108,9 +108,9 @@ with tempfile.TemporaryDirectory() as tmp:
     project.mkdir()
     subprocess.run(["git", "init", "-qb", "main"], cwd=project, env=env, check=True)
     subprocess.run(["git", "commit", "--allow-empty", "-qm", "base"], cwd=project, env=env, check=True)
-    assert "runweld init" in run("next", cwd=project)
-    run("init", "--non-interactive", "--provider", "GPT", "--primary-model", "primary",
-        "--secondary-model", "secondary", cwd=project)
+    assert "runweld onboard" in run("next", cwd=project)
+    run("onboard", "--apply", "--primary-provider", "GPT", "--secondary-provider", "GPT", "--primary-model", "primary",
+        "--secondary-model", "secondary", "--no-setup", cwd=project)
     for args in examples(root):
         run(*args, cwd=project)
     task_state = json.loads(run("next", "report-search", "--json", cwd=project))

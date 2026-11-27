@@ -3,7 +3,7 @@
 The judge (`agents/judge.md`) uses fresh primary and decides from gate evidence.
 It runs no checks, review or use cases.
 
-Your brief is `CLI brief judge --provider <provider>`. For the first substantive
+Your brief is `CLI brief judge`. For the first substantive
 verdict read all gate evidence and completed rounds' notes and re-checks.
 Evidence-owed does not count. On later rounds and answers read only the judge
 file, scoped evidence and rules a note cites. The re-check finds regressions.
@@ -20,7 +20,7 @@ file, scoped evidence and rules a note cites. The re-check finds regressions.
    Read only the plan's slug, title and `land`.
    Review completion is required. A decision with missing or stale E2E results
    must be explicit and reasoned. Brief with
-   `CLI brief judge --provider <provider> --note "<reason>"`, then record
+   `CLI brief judge --note "<reason>"`, then record
    `--evidence-note "<reason>"` on the verdict, shown on the gate page;
    neither substitutes for real E2E evidence.
 3. Decide every Open entry and Convention in the current cycle. Earlier cycles
@@ -34,7 +34,8 @@ file, scoped evidence and rules a note cites. The re-check finds regressions.
    `--decide ID ACTION REASON` for each decision, `--note TEXT CAUSE` for each
    round note, `--question` for a question. Code refuses while one is
    undecided. A round or a question: return and stop, without passing or
-   landing; you run again after the re-check or the answer. When `CLI verdict
+   landing; you run again after the re-check or the answer. Mandatory checks
+   must pass at the judged revision and cannot be waived. When `CLI verdict
    round` prints that the round stopped, it opened none: go on as on a pass.
    After a round, each
    of its notes needs a commit and a passing check; a note still standing or a

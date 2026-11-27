@@ -19,6 +19,11 @@
   checkout and resources without running it. Run without `--preview` to
   prepare or retry. For an active pre-plan bug reproduction, add
   `--reproduction` to both commands. Reuse the worktree and allocated resources.
+  `[setup].command` runs in the task worktree and receives
+  `RUNWELD_SOURCE_CHECKOUT`, `RUNWELD_TASK_PATH`, `RUNWELD_PLAN`,
+  `RUNWELD_WORKFLOW`, `RUNWELD_ARTIFACTS` and any allocated
+  `RUNWELD_PORT` or `RUNWELD_DATA_DIR`. Use these locations to keep the
+  checkout clean. A successful setup is reused for the same inputs.
 - Finish keeps private history. If integration succeeds and cleanup refuses a
   worktree with unsaved or ignored local files, keep those files or move them
   out, then rerun `runweld finish PLAN` for cleanup alone.

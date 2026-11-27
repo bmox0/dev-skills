@@ -49,17 +49,31 @@ with tempfile.TemporaryDirectory() as tmp:
     base = run("git", "rev-parse", "HEAD")
     signal, resume = root / "setup-started", root / "setup-resume"
     setup = f"touch '{signal}'; while [ ! -e '{resume}' ]; do sleep .05; done"
-    run(cli, "init", "--non-interactive", "--provider", "Test",
-        "--primary-model", "main", "--secondary-model", "helper", "--setup", setup)
+    models = ("--primary-model", "main", "--secondary-model", "helper", "--setup", setup)
+    onboard = ("onboard", "--apply", "--primary-provider", "Test", "--secondary-provider", "Test", *models)
+    if legacy:
+        run(cli, "init", "--non-interactive", "--provider", "Test", *models)
+    else:
+        run(cli, *onboard)
 
-    def start(name):
-        return view("task", "start", name, "--goal", "Preserve the evidence",
-                    "--finish-how", "ff-only", "--finish-target", "main")
+    def start(name, *, use_current=False):
+        args = ("task", "start", name, "--goal", "Preserve the evidence",
+                "--finish-how", "ff-only", "--finish-target", "main")
+        if legacy and prior_config.is_file() and not use_current:
+            saved = config.read_bytes()
+            config.write_bytes(prior_config.read_bytes())
+            try:
+                return view("--release", pin, *args)
+            finally:
+                config.write_bytes(saved)
+        return view(*args)
 
     def snapshot(plan):
         return {path: path.read_bytes() for path in plan.parent.iterdir()
                 if path.is_file() and not path.name.endswith((".outcome.json", ".lock"))}
 
+    config = project / ".runweld/config.toml"
+    prior_config = root / "prior-config.toml"
     prototype = start("prototype-only")
     preplan = Path(prototype["plan"])
     run(cli, "grill", "skip", preplan, "--reason", "The questions are settled")
@@ -118,13 +132,14 @@ none
     rev = view("plan", "review", plan)["revision"]
     run(cli, "plan", "approve", plan, "--revision", rev, "--by", "Owner", "--words", "Approve this plan")
     run(cli, "build", "start", plan)
-    status = view("next", "compiled", "--provider", "Test")
+    status = view("next", "compiled")
     stale = next(step for step in status["actions"] if step.get("argv", [])[-4:] == ["phase", "start", str(plan), "1"])
     assert pin in stale["argv"] and status["stage"] == "build"
     evidence = Path(compiled["artifacts"]) / "evidence.txt"
     evidence.write_text("Keep this file\n")
     before = snapshot(preplan)
-    lock = (project / ".runweld/runweld.lock").read_bytes()
+    prior_lock = project / (".runweld/runweld.lock" if legacy else "runweld.lock")
+    prior_lock_contents = prior_lock.read_bytes()
     candidate = root / "candidate"
     candidate.mkdir()
     for name in ("workflow", "agents", "references", "adapters", "scripts", "docs", "bin"):
@@ -135,6 +150,10 @@ none
     catalog.write_text(catalog.read_text().replace('grill = "ask"', 'grill = "skip"'))
     run(candidate / "scripts/install-runweld", "--prefix", prefix)
     assert pin != (store / "default").read_text().strip()
+    if legacy:
+        config.rename(prior_config)
+        run(cli, *onboard)
+    lock = (project / "runweld.lock").read_bytes()
 
     owner = ("--by", "Owner", "--reason", "The goal was reached")
 
@@ -162,7 +181,7 @@ none
     assert inventory["status"] == "stopped" and inventory["reason"] == state_reason, inventory
     listed = next(row for row in view("next")["tasks"] if row["id"] == "compiled")
     assert listed["status"] == "stopped" and listed["reason"] == state_reason, listed
-    assert str(state_path) in run(cli, "next") and str(state_path) in run(cli, "status")
+    assert str(state_path) in run(cli, "next", "--details") and str(state_path) in run(cli, "status")
     assert str(state_path) in run(cli, "--release", pin, "next", "compiled")
     for args in (stale["argv"], (cli, "--release", pin, "approve", plan),
                  (cli, "--release", pin, "grill", "skip", plan, "--reason", "Stale discovery"),
@@ -173,7 +192,7 @@ none
     assert snapshot(plan) == blocked_snapshot and not plan.with_suffix(".outcome.json").exists()
     assert evidence.read_text() == "Keep this file\n"
     state_path.write_bytes(state)
-    resumed = view("next", "compiled", "--provider", "Test")
+    resumed = view("next", "compiled")
     assert resumed["stage"] == "build" and resumed["task"]["status"] == "building", resumed
     assert stale in resumed["actions"] and not resumed["task"].get("outcome"), resumed
 
@@ -194,11 +213,11 @@ none
     assert view("status", "--current", cwd=prototype["tree"])[0]["outcome"] == decision
     terminal = view("next", cwd=prototype["tree"])
     assert terminal["stage"] == "plan" and terminal["actions"] == [] and terminal["task"]["outcome"] == decision
-    description = run(cli, "next", "prototype-only")
+    description = run(cli, "next", "prototype-only", "--details")
     assert "completed" in description and "plan" in description and str(artifact) in description
     assert run(cli, "task", "path", "prototype-only") == prototype["artifacts"]
     assert artifact.read_text() == "Approved prototype\n"
-    assert snapshot(preplan) == before and (project / ".runweld/runweld.lock").read_bytes() == lock
+    assert snapshot(preplan) == before and (project / "runweld.lock").read_bytes() == lock
     assert [task["id"] for task in view("next")["tasks"]] == ["compiled"]
     assert "task-closed" in run(cli, "task", "start", "prototype-only", ok=False)
     assert "task-closed" in run(cli, "--release", pin, "grill", "skip", preplan, "--reason", "Old command", ok=False)
@@ -282,8 +301,9 @@ none
         assert run("git", "rev-parse", task["branch"]) == base
     assert view("next")["tasks"] == []
 
+    assert prior_lock.read_bytes() == prior_lock_contents
     run(cli, "update", "--project")
-    draft_task = start("compiled-draft")
+    draft_task = start("compiled-draft", use_current=True)
     draft = Path(draft_task["plan"])
     run(cli, "prototype", "skip", draft, "--reason", "Not needed")
     draft.write_text(draft_text.replace("runweld/compiled", draft_task["branch"]))
