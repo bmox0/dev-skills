@@ -1738,9 +1738,8 @@ REQUIRED_CHECK_SOURCES = ("required checks", "ci workflow", "CI unresolved")
 AGENTS_ENVIRONMENT = "AGENTS.md ## Environment"
 
 
-def declared_required_checks(sources):
-    required = sources.get("required checks", {})
-    return set(required.get(AGENTS_ENVIRONMENT, [])) | set(required.get(AGENTS_ENVIRONMENT + " (CI checks)", []))
+def known_required_checks(sources):
+    return {command for commands in sources.get("required checks", {}).values() for command in commands}
 
 
 def check_sources_ok(sources):
@@ -1790,7 +1789,7 @@ def project_pending(settings):
                for tier in EXECUTOR_ROLES if tier not in roles}
     if "required" not in settings.get("checks", {}):
         sources = settings.get("onboarding", {}).get("sources", {})
-        options = ("Keep the checks declared in AGENTS.md." if declared_required_checks(sources)
+        options = ("Keep all known project-designated checks." if known_required_checks(sources)
                    else "Use --no-required-checks if none are mandatory.")
         pending["required_checks"] = f"Decide in chat which checks are mandatory. Use --required-check for each command. {options}"
     if "setup" not in settings and not settings.get("onboarding", {}).get("setup_known"):
@@ -1943,7 +1942,7 @@ def required_checks_changed(settings, checks, sources):
     before = settings.get("onboarding", {}).get("sources", {})
     saved = set(settings.get("checks", {}).get("required", []))
     return (any(sources.get(key) != before.get(key) for key in REQUIRED_CHECK_SOURCES)
-            or bool(declared_required_checks(sources) - saved)
+            or bool(known_required_checks(sources) - saved)
             or ("required checks" in sources and "required" in checks
                 and set(checks["required"]) != saved))
 
@@ -2012,8 +2011,8 @@ def onboard_settings(project, config, agents, a):
             sources["confirmed required checks"] = old_sources["confirmed required checks"]
     if a.required_check is not None or a.no_required_checks:
         required = list(dict.fromkeys(a.required_check or []))
-        if missing := declared_required_checks(sources) - set(required):
-            raise Refuse("project-required-checks", "the supplied list omits AGENTS.md checks: " + ", ".join(sorted(missing)),
+        if missing := known_required_checks(sources) - set(required):
+            raise Refuse("project-required-checks", "the supplied list omits project-designated checks: " + ", ".join(sorted(missing)),
                          "keep the designated checks, or revise the declaration in AGENTS.md")
         if "required" in discovered and "required checks" in sources and set(required) != set(discovered["required"]):
             raise Refuse("project-required-checks", "the supplied list omits or changes the project-designated requirements",
