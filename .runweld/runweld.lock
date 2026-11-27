@@ -1,0 +1,168 @@
+lock_version = 2
+release = "7.2.0@37298fb2c5ba67f9152043540034db7cf3d648e850be74c538f35a5aba334123"
+stage_order = ["grill", "prototype", "plan", "build", "build-verification", "judge", "human-review", "finish"]
+
+[adapters]
+"antigravity" = "sha256:11659f95adf7e8a807334337bfd244d778647a6ec35c5d82bb4a9545406d64aa"
+"claude" = "sha256:f7577101a1722fe139ae2422ff58192883074268097d0f69b5fb6427b260dfa9"
+"codex" = "sha256:b92611b32f2a8246d60969c4875c3cf1f0ad8db9e1bab0e4bdd9ca82370138bd"
+
+[cli]
+"engine" = "sha256:98f73bea62dd67b9e54fbdde98d53ab6abf85bb3c15df3eb953a54df86660a08"
+"launcher" = "sha256:78e4403d42962b2dd1f64dd512ed197e064c50ab5ec017a6a6429115b6d30a72"
+
+[guides]
+"browser-test" = "sha256:c37e14c2bc5adf41eb7b649a9fe1cd9682ddf038166cb74e25cdb73e3cf78057"
+"bug" = "sha256:c43ff76081f1cce3cbb674bc83603b9364459d31af9a0d9dfab8328c0c4f777b"
+"build" = "sha256:ca65647eefc1f5beda5c64fe0ae33bed8ca8fbe9760e65dd4f9e4183a64a4158"
+"commit-work" = "sha256:44f448ca733b4a69d2ed3ff8b8576d2b52a29ac6a1ab1d136c22f82e863ab522"
+"domain-modeling" = "sha256:3ded249e0cc6c1246a1dc4c5e5fb4c582bff6cbdd962c04b5a14aa32cf05aedb"
+"epic" = "sha256:3de8d48e324c40c5f7048122e7e3373b62a94460f16246efa5a2d50ebfb85c43"
+"finish" = "sha256:1a7f3641e6c1d318ef8562a1477a1f476af9b8919c09a1958f1b71914c4e983a"
+"grill" = "sha256:2fedf1a526d6673bf17827078afb301c3885fd29b6aab83d71b0d8e69dcf6b7c"
+"handoff" = "sha256:9e804f74f99a2e470876d7479bd5ea2a64a2e1f60d0762388da8eb1df571df35"
+"land" = "sha256:756fe2b848ea7a789ffcf00ebf74763fa101b5985d18ebeb943a03bf03c42bba"
+"plan" = "sha256:fae59415b5f718618645b4624f7a7ac1e1adf8c615d7796f1ba06358d1db1669"
+"prototype" = "sha256:7f6f05afae38f2ebf1cc4899ec0714ca9356af56c5aca48caffc715ec32b4dc3"
+"retro" = "sha256:f8183500cb337c45a416e3b101452cd793fb8aaca885656a7360e4de501e2c1f"
+"review" = "sha256:a9c7ed0a091947a8ee69a72e83ac0528656dac44c3105f606dbbf0cf6698e88b"
+"run-file" = "sha256:dcb0710e928e92092c1f1f3e04b419812442f6f18c4ea8bb377b5a521d98e511"
+"spec" = "sha256:ed147e696c6a39410b311a600aed348c5663777201f8297d80544ef9d6840d24"
+"tdd" = "sha256:fbf2f94d87a7e1d4cddb6da095585e6ffe85fc15e9979fd16bbc96047e1d1cb0"
+"verify" = "sha256:e179d29d3d42be605719171f459bedbaecb6b1652bdf0e4346d33fdab0eed430"
+"writing-guides" = "sha256:38c18aaf98ad9f6e958127fc50702725cfa13e09f4866019e68e0a382080a6f2"
+
+[resources]
+"LICENSE" = "sha256:a3215502a3bf5fad70b7a66cde423001dec81e270961690d419c17b4a217d314"
+"README.md" = "sha256:f9a6703ce6be825f130c22f148e0dd7dbc6dacd66690aac1305d07150315c735"
+"VERSION" = "sha256:4735a5193efab95104fddb08f2ec0ca21f4d9b02e9cfff8aec7ecee6b62d1b6a"
+"adapters" = "sha256:45a40a8fdcd4a2b815de7d57c0185b109a54154e1ee51730d9e5596b3c262d6c"
+"docs" = "sha256:f4a16687c71c304dfe9ddca3d23a15cf2a9ba5e97ad9d88194f33c4de1446701"
+"install.sh" = "sha256:b756104469f1294de5952bebbf8a85f5556e7b2b5c13775f05219f24d429d6b4"
+"references" = "sha256:e82fc8a36fe48071fd3ff0f8d34795d6da212a3a04763aa66f67814fd9523033"
+"scripts" = "sha256:0f4e3a2a89c2b7d5803255766d129b3fd5e86f4608be76ac643084f8c2ba1789"
+
+[roles]
+"implementer" = "sha256:80501537db02a6b9db8b272aa43940c0a6415f95ff99c90752bc50d4adc4a6c6"
+"judge" = "sha256:653dc351633360c6e28d89f92a21c81b2ee4658d533b431bba41c4ee5c9b8333"
+"reviewer" = "sha256:d938641ab305242f3c38952485573dc68617e6450787fb54f55f2f474eae0305"
+
+[stages.grill]
+label = "Grill (optional)"
+digest = "sha256:7fe2d9017892c8d68392c6ad22d6bbce34c0b6be42596e765c1bb98de63b4a3d"
+next."prototype_requested" = "prototype"
+next."ready_to_plan" = "plan"
+[stages.grill.inputs]
+"references/SESSIONS.md" = "sha256:26148ceff373a8cf29c4c567cb32d686576726283cd10ff169234f49ec585a64"
+"references/WORKFLOW-PATHS.md" = "sha256:9011204d3d6209e9562005c29b29410ac492e67da19e470ecb4d65bf2b525941"
+"workflow/domain-modeling/GUIDE.md" = "sha256:db6941760d1e95081c149910f767bcd23fe29c5284275d3fef43b6da2a66f62c"
+"workflow/domain-modeling/references/ADR-FORMAT.md" = "sha256:f1f36cd3f8d3b6474ddd5855da4e233bfc4ae1a1c5024909ccf11871819a41b2"
+"workflow/domain-modeling/references/CONTEXT-FORMAT.md" = "sha256:b8cc318f2a4285b530e908b6bc43901c3c5cd11100362636bbc4216639bef597"
+"workflow/grill/GUIDE.md" = "sha256:6b91bad45a08e2cb56efc1bc4589571e2974c4b64c8ef2747593bc0d2f972f31"
+"workflow/grill/references/INTERVIEW.md" = "sha256:c6c61745dd0687759f2eeb71068bc4f6ebd15901399132a60a1eb4ea339a854a"
+"workflow/spec/references/FORMAT.md" = "sha256:a34745471cdb4520dbc943578aebe7ee437037f9118027c5c415bfcbd125a8a4"
+
+[stages.prototype]
+label = "Prototype (optional)"
+digest = "sha256:761c421a9b40408bc28e0bdb076c136b7008b36219aced447c0fc7f54059b1b6"
+next."ready_to_plan" = "plan"
+[stages.prototype.inputs]
+"references/SESSIONS.md" = "sha256:26148ceff373a8cf29c4c567cb32d686576726283cd10ff169234f49ec585a64"
+"references/WORKFLOW-PATHS.md" = "sha256:9011204d3d6209e9562005c29b29410ac492e67da19e470ecb4d65bf2b525941"
+"workflow/prototype/GUIDE.md" = "sha256:1a0be5ad78a1d9cf819fd4903bae9200fcc4015b6e0ef9db4969d7e4c2e345a3"
+"workflow/prototype/references/LOGIC.md" = "sha256:5e6601b8239b5e042abc6ea9e7e6b7eceeeacdef6f4ac75dce222f3c0a6b3d94"
+"workflow/prototype/references/UI.md" = "sha256:96ef070bec0ce5fcd56575b8df891c34345f18ec56ff452a0f504080932ec477"
+
+[stages.plan]
+label = "Plan"
+digest = "sha256:0ee6767392c691b513d96e29aba17b41096bbf1041e9a066d37582cac832f464"
+next."start_authorized" = "build"
+[stages.plan.inputs]
+"references/SESSIONS.md" = "sha256:26148ceff373a8cf29c4c567cb32d686576726283cd10ff169234f49ec585a64"
+"references/WORKFLOW-PATHS.md" = "sha256:9011204d3d6209e9562005c29b29410ac492e67da19e470ecb4d65bf2b525941"
+"workflow/build/references/gate.md" = "sha256:e46b70947f3be923a33153ff5bf6528f1fb560fce14624284f012797c89e8956"
+"workflow/plan/GUIDE.md" = "sha256:1800b2cd541b5481796bf00d2c8ed9764d76ea5d551db9388301638c4abc6bfa"
+"workflow/plan/references/environment-contract.md" = "sha256:bfadd667f8ca17a4743ed0d97f52c51fab2339be994ca6c0c8877b7e1078cb88"
+"workflow/plan/references/example.md" = "sha256:cebdb6bf3477fd281bc1174a1479f645b313e0dd78183462594dca9601fd4682"
+"workflow/plan/references/resume.example.md" = "sha256:ecf340b503fc4d6246eda25dc056a5f6d10a64c9848cf187dd25f50ef1206f57"
+"workflow/run-file/GUIDE.md" = "sha256:585676970647d6bf4a55d1e1c15d1c6061c1ea0012467c7421c691103f640025"
+"workflow/run-file/references/example.run.toml" = "sha256:4a2cf4f73d452738c6890fe507d5da39fa612074f832f933046b0f7f641a5058"
+"workflow/run-file/references/project-config.md" = "sha256:7d39ee4211442cf6173fc2664a6ab36a8e13dd473c3339dd1c8120cc1cde8b19"
+"workflow/spec/references/FORMAT.md" = "sha256:a34745471cdb4520dbc943578aebe7ee437037f9118027c5c415bfcbd125a8a4"
+
+[stages.build]
+label = "Build"
+digest = "sha256:c39369eadbd812bdd877b177ab572db9fd77c4b6a3a6afd245cfa88c39d0ac56"
+next."phases_complete" = "build-verification"
+roles."implementer" = "agents/implementer.md"
+[stages.build.inputs]
+"agents/implementer.md" = "sha256:8701ce03e512a0857485df540c79ae8824acae4a790b58e7334465bdc833934f"
+"references/SESSIONS.md" = "sha256:26148ceff373a8cf29c4c567cb32d686576726283cd10ff169234f49ec585a64"
+"references/WORKFLOW-PATHS.md" = "sha256:9011204d3d6209e9562005c29b29410ac492e67da19e470ecb4d65bf2b525941"
+"workflow/build/GUIDE.md" = "sha256:c22d59e45b665fec1ac28bd89b4de087fb29599d78a2fb0e48f0bf96f7017256"
+"workflow/build/references/rounds.md" = "sha256:b95e7acdbfda61a994353789ba77bcbfff0914a11652ac8ed45d12523f87188e"
+"workflow/tdd/GUIDE.md" = "sha256:5dafffff8157b7561225ebf9a2dbf06f353f0d73a0f5862b6e214e76fe8767ae"
+
+[stages.build-verification]
+label = "Build verification"
+digest = "sha256:50d05cd1958cda0464864f02f72ebdb92d8161243e3c36adf7b09892998e47bf"
+next."repair" = "build-verification"
+next."evidence_ready" = "judge"
+when."web-or-electron".role = "verify"
+when."web-or-electron".inputs = ["workflow/browser-test/GUIDE.md", "workflow/browser-test/tab.mjs", "workflow/browser-test/references/WEBSOCKETS.md"]
+roles."reviewer" = "agents/reviewer.md"
+roles."verify" = "workflow/verify/GUIDE.md"
+[stages.build-verification.inputs]
+"agents/implementer.md" = "sha256:8701ce03e512a0857485df540c79ae8824acae4a790b58e7334465bdc833934f"
+"agents/reviewer.md" = "sha256:52382aacc1628f523293fcec5734c033157eafc8cc0f634b77c8bce0f635da58"
+"references/SESSIONS.md" = "sha256:26148ceff373a8cf29c4c567cb32d686576726283cd10ff169234f49ec585a64"
+"references/WORKFLOW-PATHS.md" = "sha256:9011204d3d6209e9562005c29b29410ac492e67da19e470ecb4d65bf2b525941"
+"workflow/browser-test/GUIDE.md" = "sha256:76707f46e2ce9c3db4a11fa498b3593169c19a241dc64062f2fb36f4d1c7975b"
+"workflow/browser-test/references/WEBSOCKETS.md" = "sha256:1c2df86788c315e1b59505e83fd311742ce35416bcc22ce37e0e9712fb7ab97c"
+"workflow/browser-test/tab.mjs" = "sha256:170f96fe690bddf3fa7d2d5a841e3dc362a9c80eeab907feee13b887368f6104"
+"workflow/build/GUIDE.md" = "sha256:c22d59e45b665fec1ac28bd89b4de087fb29599d78a2fb0e48f0bf96f7017256"
+"workflow/build/references/gate.md" = "sha256:e46b70947f3be923a33153ff5bf6528f1fb560fce14624284f012797c89e8956"
+"workflow/build/references/rounds.md" = "sha256:b95e7acdbfda61a994353789ba77bcbfff0914a11652ac8ed45d12523f87188e"
+"workflow/review/GUIDE.md" = "sha256:742bc4c407f4987c6182ec7a21199963aac53407d33e14c747dedfdad737d510"
+"workflow/review/references/CRITERIA.md" = "sha256:6ce3653d1d7984865efc8fba6293c0757d814df26c7d0e026c1017e27a8dbb5b"
+"workflow/tdd/GUIDE.md" = "sha256:5dafffff8157b7561225ebf9a2dbf06f353f0d73a0f5862b6e214e76fe8767ae"
+"workflow/verify/GUIDE.md" = "sha256:786081c3135cdaf068ba188eee4835054b6d20d7bf37d66c99d70fb593eb92b6"
+
+[stages.judge]
+label = "Judge"
+digest = "sha256:040c1718411e19b8821158da4851a0c9d1cfdfe2e60648f23f293a42fe13532e"
+next."round" = "build"
+next."evidence_owed" = "build-verification"
+next."landed" = "human-review"
+roles."judge" = "agents/judge.md"
+[stages.judge.inputs]
+"agents/judge.md" = "sha256:ea80e0d9523e43308ff9fb00f878e9e6db1a009f262ebb2aea778ec524306a7b"
+"references/SESSIONS.md" = "sha256:26148ceff373a8cf29c4c567cb32d686576726283cd10ff169234f49ec585a64"
+"references/WORKFLOW-PATHS.md" = "sha256:9011204d3d6209e9562005c29b29410ac492e67da19e470ecb4d65bf2b525941"
+"workflow/build/GUIDE.md" = "sha256:c22d59e45b665fec1ac28bd89b4de087fb29599d78a2fb0e48f0bf96f7017256"
+"workflow/build/references/gate.md" = "sha256:e46b70947f3be923a33153ff5bf6528f1fb560fce14624284f012797c89e8956"
+"workflow/build/references/judge.md" = "sha256:6097b8bb6f3c512509c227c024b0763f439c78bd6219d7ca9a4e19dc15bef989"
+"workflow/commit-work/GUIDE.md" = "sha256:3854d95da0a3f3145c880816b4d1a442f516f5a4beca8ec8ed345d0b148ab6cb"
+"workflow/commit-work/references/commit-message-template.md" = "sha256:4df9475bfb8f0b24b0b7d83d374c9792dd0eb869b1cfe352e3d43a03b75a7325"
+"workflow/land/GUIDE.md" = "sha256:0296bd5bb15f3797b84b58f9268dc66178c5503ec5e53c4ad702ebd7419d576c"
+
+[stages.human-review]
+label = "Human review"
+digest = "sha256:df6c4f28350d02ec065e858e4f531d2ed683442aef8c708a915ea4d9626d192f"
+next."round_authorized" = "build"
+next."accepted" = "finish"
+[stages.human-review.inputs]
+"references/SESSIONS.md" = "sha256:26148ceff373a8cf29c4c567cb32d686576726283cd10ff169234f49ec585a64"
+"references/WORKFLOW-PATHS.md" = "sha256:9011204d3d6209e9562005c29b29410ac492e67da19e470ecb4d65bf2b525941"
+"workflow/build/GUIDE.md" = "sha256:c22d59e45b665fec1ac28bd89b4de087fb29599d78a2fb0e48f0bf96f7017256"
+"workflow/build/references/example.guide.md" = "sha256:f41cd7c488a4e869d5fdbe7cad15ba9d6783f29cf694f4aa4306c120e0bda8fe"
+"workflow/build/references/human-guide.md" = "sha256:218dca932393fb9df02f1fcdef6f5e2c0f576743680e4688eebed6d25a85a0f6"
+"workflow/build/references/rounds.md" = "sha256:b95e7acdbfda61a994353789ba77bcbfff0914a11652ac8ed45d12523f87188e"
+
+[stages.finish]
+label = "Finish"
+digest = "sha256:78b860e64b0e25579302e730357e878b6d09739b0e695a7350084f7df5601fea"
+[stages.finish.inputs]
+"references/SESSIONS.md" = "sha256:26148ceff373a8cf29c4c567cb32d686576726283cd10ff169234f49ec585a64"
+"references/WORKFLOW-PATHS.md" = "sha256:9011204d3d6209e9562005c29b29410ac492e67da19e470ecb4d65bf2b525941"
+"workflow/finish/GUIDE.md" = "sha256:f755de50e720ff3bc1521c4604bbc1008d995bb7add16bb4832ef22c3a07f032"

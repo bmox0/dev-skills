@@ -48,3 +48,9 @@ effort = "xhigh"
 model = "claude-sonnet-5-5"
 effort = "medium"
 ```
+
+<!-- runweld:begin -->
+
+Start or resume work with `runweld next`.
+
+<!-- runweld:end -->

@@ -1,0 +1,27 @@
+[checks]
+phase = ["scripts/check"]
+full = ["scripts/check", "scripts/test"]
+
+[executors."GPT".primary]
+model = "gpt-6.2-astra"
+effort = "high"
+
+[executors."GPT".secondary]
+model = "gpt-6.2-sol"
+effort = "high"
+
+[executors."Qwen".primary]
+model = "qwen4-max"
+effort = "xhigh"
+
+[executors."Qwen".secondary]
+model = "qwen4-max"
+effort = "high"
+
+[executors."Claude".primary]
+model = "claude-opus-5-5"
+effort = "xhigh"
+
+[executors."Claude".secondary]
+model = "claude-sonnet-5-5"
+effort = "medium"
