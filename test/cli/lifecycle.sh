@@ -10,7 +10,8 @@ approve_plan() {
 }
 
 approve_revision() {
-  local revision
+  local revision summary="${1%.md}.summary.md"
+  [ -f "$summary" ] || cp "$repo_root/test/lib/summary.md" "$summary"
   revision=$(cli plan review "$1" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])') || return
   cli plan approve "$1" --revision "$revision" --by 'Fixture Human' --words 'Fixture plan and run approved'
 }

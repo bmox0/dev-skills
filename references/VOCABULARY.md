@@ -41,7 +41,7 @@ finishes as the run file says. Agents decide; it manages.
 
 **Plan.** The file a change is built from, one screen: Result,
 Approach, Out of scope, Phases, Checks, Done, Spec, and the prototype's link. Its
-result is a finished feature. `plan review` displays the plan and run together.
+result is a finished feature. `plan review` shows the planner's approval summary and links to the plan and run.
 Approval of that revision starts nothing. `build start` is separate.
 
 **Phase.** One task in a plan, for one implementer: what to build and why, its

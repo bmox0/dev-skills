@@ -180,6 +180,7 @@ assert [(s["id"], s["state"]) for s in view["stages"][:2]] == [("grill", "done")
 assert "approve" in view["actions"][0]["action"], view
 ' "$plan" || fail "build#workflow-progress: the draft shows recorded optional history"
 [ ! -e "${plan%.md}.json" ] || fail "build#workflow-progress: inspection compiles nothing"
+cp "$repo_root/test/lib/summary.md" "${plan%.md}.summary.md"
 typed_action "$plan" plan run Planner 'Validate the draft' '{}' run
 assert_contains "$(cli status "$plan")" 'plan review' "build#workflow-progress: a validated draft awaits one human approval" || exit 1
 typed_action "$plan" plan run Planner 'plan review' '{}' run

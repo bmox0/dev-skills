@@ -2,6 +2,7 @@
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export INSTALLER="$repo_root/scripts/install-runweld"
+export SUMMARY_FIXTURE="$repo_root/test/lib/summary.md"
 python3 -B <<'PY'
 import json
 import os
@@ -181,6 +182,7 @@ none
     assert '[finish] how is missing' in runweld('approve', first, ok=False)
     first_values.write_bytes(agreed)
     runweld('approve', first)
+    first.with_suffix(".summary.md").write_bytes(Path(os.environ["SUMMARY_FIXTURE"]).read_bytes())
     review = json.loads(runweld('plan', 'review', first, '--json'))
     runweld('plan', 'approve', first, '--revision', review['revision'], '--by', 'Mina', '--words', 'Approve first plan and run')
     clone = home / 'Claude clone'

@@ -73,7 +73,7 @@ approve compiles a plan into `<slug>.json` (the state) after a strict check, who
 problems are `<plan>:<line>: <message>`, exit 1; it renders the code-owned lines
 back into the plan and the plan's row in its epic, and adopts a plan that has no
 state as its file stands. Compilation never records consent. `plan review` shows
-the complete planning content and run configuration together. `plan approve`
+the planner's summary and paths to the complete plan and run configuration. `plan approve`
 records the human's unchanged words for that revision. Approval starts nothing;
 a separate `build start` command opens the build. Reapproval
 preserves progress. `accept` binds the designated acceptor's words to the current
@@ -1097,7 +1097,7 @@ def state_problem(st, md):
                       "stopped_notes?": [[str]], "owed_cases?": [int], "review_count?": int, "result_count?": int}],
         "land_stops": [{"lands": int, "kind": str, "message": str}],
         "decisions": [{"at": str, "phase": nullable_int, "by": str, "question": str, "source": str, "answer": str, "why": str, "cost": str}],
-        "approvals": dict, "run": dict, "alloc": dict, "tree": str, "tail_hash": str, "cleanup_pending": str,
+        "approvals": dict, "summary_required": bool, "run": dict, "alloc": dict, "tree": str, "tail_hash": str, "cleanup_pending": str,
         "build_provider": str, "integration": {"how": str, "target": str, "landed": str, "commit?": str, "request?": str},
         "acceptance": {"page": str}, "request": {"tip": str, "acceptance": str}, "pushed": {"tip": str},
         "check_transition": {"cycle": str, "id": str, "command": str, "target": nullable_int, "host": nullable_text,
@@ -1163,7 +1163,7 @@ def state_problem(st, md):
                 return problem
     approvals = st.get("approvals", {})
     if "plan" in approvals:
-        fields = {"revision": str, "planning": [str], "run": str, "by": str, "words": str,
+        fields = {"revision": str, "planning": [str], "summary?": str, "run": str, "by": str, "words": str,
                   "at": str, "acceptor": str, "authority": nullable_text}
         if problem := check_state_fields(approvals["plan"], fields, "state.approvals.plan"):
             return problem
@@ -2787,8 +2787,41 @@ def plan_approval(st):
     return st.get("approvals", {}).get("plan")
 
 
-def approval_revision(st, lines, run):
-    return digest([st["plan"], lines, run])
+SUMMARY_SECTIONS = ("Result", "Phases", "Spec change", "Checks", "Scope and limits", "Your approval")
+
+
+def read_approval_summary(md, st):
+    path = Path(md).with_suffix(".summary.md")
+    example = Path(__file__).resolve().parents[1] / "plan/references/resume.example.md"
+    fix = f"write the summary in {path} following {example} (up to 350 words), then run `plan review`"
+    required = st.get("summary_required") or "summary" in (plan_approval(st) or {})
+    text = read_required(path, "bad-summary", fix, optional=not required)
+    if text is None:
+        return None
+    if len(text.split()) > 350:
+        raise Refuse("bad-summary", f"{path} exceeds 350 words", fix)
+    duplicates = []
+    bodies = sections(text.splitlines(), duplicates)
+    if duplicates:
+        raise Refuse("bad-summary", f"{path} repeats the section {duplicates[0][1]!r}", fix)
+    headings = list(bodies)
+    for number, expected in enumerate(SUMMARY_SECTIONS, 1):
+        heading = headings[number - 1] if number <= len(headings) else ""
+        if heading != expected and not re.fullmatch(rf"{number}\.\s+\S.*", heading):
+            raise Refuse("bad-summary", f"{path} needs section {number} ({expected}) in this position", fix)
+        body = re.sub(r"<!--.*?-->", "", "\n".join(bodies[heading][1]), flags=re.S)
+        if not body.strip():
+            raise Refuse("bad-summary", f"{path} has an empty section: {heading}", fix)
+    if len(headings) > len(SUMMARY_SECTIONS):
+        raise Refuse("bad-summary", f"{path} has an unexpected section: {headings[len(SUMMARY_SECTIONS)]}", fix)
+    return text
+
+
+def approval_revision(st, lines, run, summary):
+    proposal = [st["plan"], lines, run]
+    if summary is not None:
+        proposal.append(summary)
+    return digest(proposal)
 
 
 def approval_argv(plan, revision):
@@ -2805,16 +2838,24 @@ def cmd_plan_review(plan, as_json):
     st = load_state(plan, required=True)
     text, run = read_run_proposal(plan)
     lines = planning_lines(head)
-    revision = approval_revision(st, lines, run)
+    summary = read_approval_summary(md, st)
+    revision = approval_revision(st, lines, run, summary)
     diff = []
     if previous := st.get("approvals", {}).get("plan"):
         diff += review_diff(previous["planning"], lines, "plan")
+        diff += review_diff(previous.get("summary", "").splitlines(), (summary or "").splitlines(), "summary")
     if plan_approval(st) and "run" in st:
         settings = lambda values: json.dumps(values, sort_keys=True, indent=2, ensure_ascii=False).splitlines()
         diff += review_diff(settings(st["run"]), settings(run), "run configuration")
     validation = drift_diags(plan, st, head, tail)
-    consent = consent_diags(plan, st, head=head, values=run)
-    result = {"plan_path": md, "plan": "\n".join(lines), "run_path": run_path(plan), "run_toml": text, "run": run,
+    consent = consent_diags(plan, st, head=head, values=run, summary=summary)
+    evidence = {stage: {key: record[key] for key in ("result", "command", "artifact") if key in record}
+                for stage, record in read_discovery(plan)["stages"].items()
+                if stage in ("prototype", "reproduce") and record["status"] == "done"}
+    result = {"summary": summary, "summary_path": str(Path(md).with_suffix(".summary.md")) if summary else None,
+              "evidence": evidence,
+              "plan_path": md, "plan": "\n".join(lines),
+              "run_path": run_path(plan), "run_toml": text, "run": run,
               "branch": st["branch"], "base": st["base"], "revision": revision, "diff": diff,
               "approval": plan_approval(st),
               "current": not (consent or validation), "diagnostics": [dict(code=c, message=m, fix=f) for c, m, f in validation + consent],
@@ -2823,9 +2864,20 @@ def cmd_plan_review(plan, as_json):
     if as_json:
         print(json.dumps(result, ensure_ascii=False))
         return 0
-    print(f"Plan: {md}\nBranch: {st['branch']} · Base: {st['base']}\n"
-          f"Planning content (live progress is separate)\n\n{result['plan'].rstrip()}")
-    print(f"\nRun configuration: {result['run_path']}\n\n{text.rstrip()}")
+    if summary:
+        print(f"Approval summary\n\n{summary.rstrip()}\n\nSummary: {Path(result['summary_path']).as_uri()}\nPlan: {Path(md).as_uri()}\n"
+              f"Run configuration: {Path(result['run_path']).as_uri()}\nBranch: {st['branch']} · Base: {st['base']}")
+    else:
+        print(f"Plan: {md}\nBranch: {st['branch']} · Base: {st['base']}\n"
+              f"Planning content (live progress is separate)\n\n{result['plan'].rstrip()}")
+        print(f"\nRun configuration: {result['run_path']}\n\n{text.rstrip()}")
+    for stage, record in evidence.items():
+        print(f"\n{'Prototype' if stage == 'prototype' else 'Bug cause'}: {record.get('result', '')}")
+        if "command" in record:
+            print(f"Reproduce with: {record['command']}")
+        if "artifact" in record:
+            artifact = Path(record["artifact"])
+            print(f"Artifact: {artifact.as_uri() if artifact.is_absolute() else artifact}")
     if diff:
         print("\nChanges since approval:\n" + "\n".join(diff))
     for code, message, fix in validation:
@@ -2841,7 +2893,7 @@ def cmd_plan_review(plan, as_json):
     return 0
 
 
-def consent_diags(plan, st, *, head=None, values=None):
+def consent_diags(plan, st, *, head=None, values=None, summary=None):
     review = shlex.join([*cli_argv(plan), "plan", "review", plan_paths(plan)[0]])
     fix = f"run `{review}` and obtain current human approval"
     if values is None:
@@ -2850,15 +2902,21 @@ def consent_diags(plan, st, *, head=None, values=None):
             if not plan_approval(st) and "run" not in st and not os.path.lexists(run_path(plan)):
                 return [("plan-unapproved", problems[0][1], f"{problems[0][2]}, then {fix}")]
             return problems
+        try:
+            summary = read_approval_summary(plan_paths(plan)[0], st)
+        except Refuse as error:
+            return error.diags
     if approval := plan_approval(st):
         if "run" not in st or approval["run"] != digest(st["run"]):
             return [("approval-snapshot", f"{plan_paths(plan)[1]} has no matching approved run snapshot", "restore the saved state")]
         if head is None:
             head, _ = read_plan(plan_paths(plan)[0])
         lines = planning_lines(head)
-        if approval["revision"] != approval_revision(st, approval["planning"], st["run"]):
+        if approval["revision"] != approval_revision(st, approval["planning"], st["run"], approval.get("summary")):
             return [("approval-snapshot", f"{plan_paths(plan)[1]} has no matching approved plan snapshot", "restore the saved state")]
         drift = []
+        if summary != approval.get("summary"):
+            drift.append(("plan-stale", "the approval summary differs from the reviewed text", fix))
         if lines != approval["planning"]:
             drift.append(("plan-stale", "the plan content, including its Done or Spec criteria, differs from its approval", fix))
         if digest(values) != approval["run"]:
@@ -2900,11 +2958,14 @@ def cmd_plan_approval(plan, a):
         if problems := drift_diags(plan, st, head, tail):
             raise refuse_all(problems)
         lines = planning_lines(head)
-        revision = approval_revision(st, lines, values)
+        summary_text = read_approval_summary(md, st)
+        revision = approval_revision(st, lines, values, summary_text)
         if a.revision != revision:
-            raise Refuse("review-stale", "the plan or run configuration no longer matches the reviewed revision",
+            raise Refuse("review-stale", "the summary, plan or run configuration no longer matches the reviewed revision",
                          f"present the current proposal with {shlex.join([*cli_argv(plan), 'plan', 'review', md])} and obtain human approval")
         approval = {**entry, "revision": revision, "planning": lines, "run": digest(values), "acceptor": acceptor, "authority": a.authority}
+        if summary_text is not None:
+            approval["summary"] = summary_text
         approvals = st.setdefault("approvals", {})
         previous = approvals.get("plan") or {}
         if any(previous.get(k) != v for k, v in approval.items() if k != "at"):
@@ -3031,7 +3092,7 @@ def cmd_approve(plan, as_json):
                 expected = f"draft · branch `{task['branch']}` · base `{task['base']}`"
                 raise Refuse("task-identity", "a new task plan must be a draft on its registered branch and base", f"write Status: {expected}")
             how = "validated" if P["status"] == "draft" else "adopted"
-            st = {"version": 1, "plan": os.path.basename(md), "status": P["status"],
+            st = {"version": 1, "plan": os.path.basename(md), "status": P["status"], "summary_required": P["status"] == "draft",
                   "branch": P["branch"], "base": P["base"], "history": [], "phases": []}
             if how == "adopted" and (t := branch_tree(root, P["branch"])):
                 st["tree"] = t
@@ -3677,12 +3738,12 @@ def workflow_next(plan, st, tree, ready, plan_drift, consent, provider):
         return "finish", []
     if plan_drift:
         return "plan", [work_action("Planner", fix, "planner", "repair-plan") for _, _, fix in plan_drift] + (
-            [run_action(plan, "Planner", "Show the proposed changes with `plan review`.", "plan review")]
+            [run_action(plan, "Planner", "Present the summary and explain the proposed changes with `plan review`.", "plan review")]
             if any(code == "plan-stale" for code, _, _ in consent) else [])
     if consent:
         if all(code in ("plan-unapproved", "run-stale", "plan-stale") for code, _, _ in consent):
             if os.path.isfile(run_path(plan)):
-                return "plan", [run_action(plan, "Planner", "Show the complete plan, configuration and any changes with `plan review`.", "plan review"),
+                return "plan", [run_action(plan, "Planner", "Present the summary, plan, configuration, supporting material and any changes with `plan review`.", "plan review"),
                                 workflow_action("Human", "ask", "Approve the displayed revision or say what should change.", input="plan-approval")]
         return "plan", [work_action("Planner", f"{message} — fix: {fix}", "planner", "repair-file") for _, message, fix in consent]
     if st["status"] in ("draft", "approved"):
@@ -6852,7 +6913,7 @@ def parse_cli(argv, *, standalone=False, routing=False, version=None):
     s.add_argument("--json", action="store_true", help="print the workflow as JSON")
     pp = top.add_parser("plan", help="the plan's own status and base")
     psub = pp.add_subparsers(dest="command", required=True)
-    s = psub.add_parser("review", help="show the complete plan and proposed run configuration, revision and changes")
+    s = psub.add_parser("review", help="show the planner's summary, plan and configuration paths, revision and changes")
     s.add_argument("--json", action="store_true")
     s.add_argument("plan")
     s = psub.add_parser("approve", help="record one human decision for the displayed plan and run revision")

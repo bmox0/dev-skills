@@ -31,13 +31,13 @@ inputs = ["workflow/prototype/GUIDE.md"]
 
 [stages.plan]
 label = "Plan"
-purpose = "Turn the decisions and project base into a checked plan and run config. Human approval and a separate start open the build."
+purpose = "Present the planner's summary of the checked plan and run configuration. One human approval and a separate start open the build."
 next = { start_authorized = "build" }
 inputs = ["workflow/plan/GUIDE.md"]
 
 [stages.plan.references]
 "workflow/plan/references/example.md" = "See a completed plan"
-"workflow/plan/references/resume.example.md" = "See the human approval, start and resume commands"
+"workflow/plan/references/resume.example.md" = "See the structured summary presented for approval"
 "workflow/plan/references/environment-contract.md" = "Read the project's environment instructions"
 "workflow/run-file/GUIDE.md" = "Configure this task's run"
 "workflow/run-file/references/project-config.md" = "Read the project defaults"

@@ -3,6 +3,7 @@ set -euo pipefail
 unset CODEX_THREAD_ID CLAUDECODE
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export INSTALLER="$repo_root/scripts/install-runweld"
+export SUMMARY_FIXTURE="$repo_root/test/lib/summary.md"
 python3 -B <<'PY'
 from datetime import date
 import json
@@ -161,6 +162,7 @@ Waits for: nothing
         run_file.write_text(snapshot)
         run(runweld, "approve", path, cwd=home)
         skill.unlink()
+        path.with_suffix(".summary.md").write_bytes(Path(os.environ["SUMMARY_FIXTURE"]).read_bytes())
         revision = json.loads(run(runweld, "plan", "review", path, "--json"))["revision"]
         approval = ("plan", "approve", path, "--revision", revision, "--by", "Fixture Human", "--words", "Approve the plan and run")
         run_file.write_text(unpinned)

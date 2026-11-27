@@ -132,8 +132,43 @@ effort = "high"
     plan.write_text(plan.read_text().replace('Prototype: none', 'Epic: .runweld/workflow/epic.md · row 1\nPrototype: none'))
     cli('approve', plan)
     assert state()['status'] == 'draft', 'validation must not grant consent'
+    summary_path = plan.with_suffix('.summary.md')
+    cli('plan', 'review', plan, ok=False, code='bad-summary')
+    unchanged('plan', 'approve', plan, '--by', 'Mina', '--words', 'yes', '--revision', 'old', code='bad-summary')
+    current_state = compiled.read_bytes()
+    legacy_state = state()
+    del legacy_state['summary_required']
+    compiled.write_text(json.dumps(legacy_state))
+    legacy = json.loads(cli('plan', 'review', plan, '--json'))
+    assert legacy['summary'] is None and '1. a → b' in cli('plan', 'review', plan)
+    compiled.write_bytes(current_state)
+    for invalid in ['', 'word ' * 351]:
+        summary_path.write_text(invalid)
+        cli('plan', 'review', plan, ok=False, code='bad-summary')
+    example = pathlib.Path(os.environ['PIPELINE']).resolve().parents[1] / 'plan/references/resume.example.md'
+    summary = example.read_text().replace('(example.md)', f'({plan.name})').replace(
+        '(../../run-file/references/example.run.toml)', f'({run.name})')
+    assert [s for s in summary.splitlines() if s.startswith('## ')] == [
+        '## Result', '## Phases', '## Spec change', '## Checks', '## Scope and limits', '## Your approval']
+    summary_path.write_text(summary + ' word' * (350 - len(summary.split())))
+    assert json.loads(cli('plan', 'review', plan, '--json'))['summary'] == summary_path.read_text()
+    summary_path.write_text(summary.replace('## Checks', '## 4. Проверки'))
+    assert 'Проверки' in cli('plan', 'review', plan)
+    for invalid, reason in [(summary.replace('## Checks', '## 5. Проверки'), 'section 4 (Checks)'),
+                            (summary.replace('## Scope and limits', '## Checks'), 'repeats'),
+                            (summary[:summary.index('## Your approval')], 'section 6 (Your approval)'),
+                            (summary.split('## Your approval')[0] + '## Your approval\n<!-- TODO -->', 'empty section')]:
+        summary_path.write_text(invalid)
+        assert reason in cli('plan', 'review', plan, ok=False, code='bad-summary')
+    summary_path.write_text(summary)
     before = compiled.read_bytes(), plan.read_bytes(), git('show-ref')
     review = json.loads(cli('plan', 'review', plan, '--json'))
+    assert review['summary'] == summary and review['revision'] != legacy['revision'], review
+    assert review['summary_path'] == str(summary_path)
+    screen = cli('plan', 'review', plan)
+    assert screen.startswith('Approval summary\n\n' + summary) and plan.as_uri() in screen and run.as_uri() in screen
+    assert summary_path.as_uri() in screen
+    assert '1. a → b' not in screen and '[executors.GPT.primary]' not in screen
     assert '1. a → b' in review['plan'] and 'target = "main"' in review['run_toml'], review
     assert (compiled.read_bytes(), plan.read_bytes(), git('show-ref')) == before, 'review is read-only'
     run.write_text(run.read_text().replace('delete_backups = false', 'delete_backups = true'))
@@ -171,6 +206,14 @@ effort = "high"
     assert approved['status'] == 'approved' and git('show-ref') == before
     assert set(approved['approvals']) == {'plan'} and approved['approvals']['plan']['by'] == human
     assert approved['approvals']['plan']['acceptor'] == human
+    assert approved['approvals']['plan']['summary'] == summary
+    summary_path.write_text(summary + '\nChanged promise.')
+    assert '+Changed promise.' in display()['diff'] and not display()['current']
+    unchanged('plan', 'approve', plan, '--revision', review['revision'], '--by', human, '--words', 'yes', code='review-stale')
+    unchanged('build', 'start', plan, '--base', 'main', code='plan-stale')
+    summary_path.unlink()
+    unchanged('build', 'start', plan, '--base', 'main', code='bad-summary')
+    summary_path.write_text(summary)
     approve_revision()
     assert state() == approved, 'a duplicate approval must not create a new decision'
     unchanged('phase', 'start', plan, '1', '--note', 'shortcut', code='not-building')
@@ -180,6 +223,7 @@ effort = "high"
     fresh = display()
     assert not fresh['current'] and fresh['revision'] != review['revision']
     assert '+    "target": "release"' in fresh['diff'] and '-    "target": "main"' in fresh['diff']
+    assert '+    "target": "release"' in cli('plan', 'review', plan)
     assert '[finish] target' in cli('status', plan)
     unchanged('plan', 'approve', plan, '--revision', review['revision'], '--by', human,
               '--words', 'yes', code='review-stale')

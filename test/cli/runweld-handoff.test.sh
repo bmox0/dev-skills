@@ -2,6 +2,7 @@
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export SOURCE="$repo_root"
+export SUMMARY_FIXTURE="$repo_root/test/lib/summary.md"
 python3 -B <<'PY'
 import json
 import os
@@ -297,6 +298,18 @@ none
 
         advertised("spec", "check")
         advertised("approve")
+        summary = plan.with_suffix(".summary.md")
+        valid = Path(os.environ["SUMMARY_FIXTURE"]).read_text()
+        for invalid in (None, "word " * 351, valid.split("## Checks")[0], valid.split("## Your approval")[0] + "## Your approval"):
+            if invalid is not None:
+                summary.write_text(invalid)
+            repair, = actions()
+            assert repair["owner"] == "Planner" and repair["kind"] == "work"
+            assert str(summary) in repair["action"] and "resume.example.md" in repair["action"]
+            if invalid and "## Phases" in invalid:
+                assert ("empty section: Your approval" if "## Your approval" in invalid else "section 4 (Checks)") in repair["action"]
+            assert "bad-summary" in run(cli, "build", "start", plan, ok=False)
+        summary.write_text(valid)
         assert "plan-unapproved" in run(cli, "build", "start", plan, ok=False)
         requested("plan-approval")
         proposal = json.loads(advertised("plan", "review", extra=("--json",)))

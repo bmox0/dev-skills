@@ -2,6 +2,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PIPELINE="$here/../../workflow/build/pipeline.py"
+export SUMMARY_FIXTURE="$here/../lib/summary.md"
 python3 -B <<'PY'
 import json, os, pathlib, shlex, subprocess, tempfile, tomllib
 
@@ -151,6 +152,7 @@ none
     cli('approve', plan)
     agents.write_text(presets.replace('gpt-custom', 'current-gpt'))
     assert json.loads(cli('executor', 'show', plan, '--provider', 'GPT', '--json'))['primary']['model'] == 'current-gpt'
+    plan.with_suffix(".summary.md").write_bytes(pathlib.Path(os.environ["SUMMARY_FIXTURE"]).read_bytes())
     review = json.loads(cli('plan', 'review', plan, '--json'))
     cli('plan', 'approve', plan, '--revision', review['revision'], '--by', 'Mina', '--words', 'approve fixture plan and run')
     agents.write_text('## Executors\n\n```toml\ninvalid TOML\n```\n')

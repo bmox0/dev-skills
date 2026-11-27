@@ -101,7 +101,15 @@ route, complete Grill and Prototype or skip each with a reason before validating
 the draft. Save open questions if you stop mid-interview. Add `--bug` when
 starting a task that needs a red reproduction instead.
 When the draft is ready, `runweld plan review "$plan"`
-shows the full plan, run settings and the revision to approve. Use its
+shows the planner's text from `<slug>.summary.md` beside the plan, links to all
+three files, changes since approval, and the revision to approve. The approval
+saves the reviewed summary alongside the plan snapshot. The summary links to
+the plan and run settings. Use the six headings from the worked summary, or
+number their translations from 1 to 6. `next` identifies missing and empty
+sections. Review includes the recorded prototype or bug cause, reproduction
+command and artifact. With `--json`, read these from `evidence` beside `summary`.
+Previously compiled plans without a summary display in full and return `null`
+for `summary`. Use the displayed
 approval command with the human’s name and words. Approval records the
 decision. A separate instruction authorizes the displayed build-start command.
 

@@ -2,11 +2,11 @@
 
 Interviewing, configuring a run and approving its execution summary.
 
-### summary-before-build — A human approves the displayed complete plan and configuration together before a separate build start
+### summary-before-build — The planner presents a summary of at most 350 words before one human approval of the plan and configuration revision
 
 Why: one decision covers the exact work and execution terms presented together
 
-- Review a complete plan and its config, approve once, then start separately. Change a criterion or finish target and see the affected approval become stale. Repeated start preserves the phase, worktree and executor.
+- Read the same summary in the terminal and conversation, with links to the full plan and configuration. Approve once, then start separately. Change a criterion or finish target and review what changed before reapproval. Repeated start preserves the phase, worktree and executor.
 
 ### early-progress — Explicit stage entry, completion and optional skips preserve decisions across sessions
 

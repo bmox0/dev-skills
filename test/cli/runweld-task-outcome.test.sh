@@ -3,6 +3,7 @@ set -euo pipefail
 unset CODEX_THREAD_ID CLAUDECODE
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export SUMMARY_FIXTURE="$repo_root/test/lib/summary.md"
 REPO_ROOT="$repo_root" python3 - <<'PY'
 import json
 import os
@@ -113,6 +114,7 @@ none
     draft = view("next", "compiled")
     assert draft["stage"] == "plan" and not draft["task"].get("reason"), draft
     run(cli, "approve", plan)
+    plan.with_suffix(".summary.md").write_bytes(Path(os.environ["SUMMARY_FIXTURE"]).read_bytes())
     rev = view("plan", "review", plan)["revision"]
     run(cli, "plan", "approve", plan, "--revision", rev, "--by", "Owner", "--words", "Approve this plan")
     run(cli, "build", "start", plan)

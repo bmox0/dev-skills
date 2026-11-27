@@ -31,7 +31,7 @@ Before compiling, set `[route]` preferences for `grill` and `prototype`.
 `"ask"` keeps the choice interactive. Omitted keys use the pinned release's
 defaults. Discovery records and mandatory gates stay intact.
 
-The planner presents this configuration together with the complete plan using
-`CLI plan review <plan>`. One human approval binds both at the displayed
+The planner links this configuration and the complete plan alongside the summary
+from `CLI plan review <plan>`. One human approval binds both at the displayed
 revision. Approved readers use the frozen snapshot. A material change requires
 another review and approval, even if the plan itself did not change.

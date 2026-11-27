@@ -128,9 +128,16 @@ Before showing it:
   [gate.md](../build/references/gate.md).
 
 Run `CLI approve <plan>` until validation passes; compilation records no consent.
-Use `CLI plan review <plan>` to show the complete plan, run configuration,
-revision and any changes since approval. Ask the human once to approve that
-proposal. Record their unchanged decision with the command printed by review:
+Write `<slug>.summary.md` beside the plan in the conversation language (≤350 words).
+Follow [the worked summary](references/resume.example.md), preserving its six
+sections in order. Number translated headings (`## 4. Проверки`); write a
+brief answer under each. Link the plan and run at the top. Review includes the
+recorded prototype or bug cause, red command and evidence. Attach available
+screenshots. On reapproval, explain the diff. Under Your approval, give the
+finish method and target and ask for one decision.
+
+Present the saved summary from `CLI plan review <plan>` in chat, link all three
+files and attach the evidence. Record the human's unchanged words:
 `CLI plan approve <plan> --revision <revision> --by <name> --words "<unchanged approval>"`.
 The approver is the acceptor unless the human explicitly delegates. Record
 that grant with `--acceptor <name> --authority "<unchanged grant>"`.
@@ -138,6 +145,5 @@ Material edits require human approval of the new revision. Compile plan edits
 before recording consent. Prior execution progress is not part of the revision.
 
 **STOP.** Approval launches nothing. A separate start instruction chooses a
-handoff and authorizes `CLI build start <plan>`. See the
-[approval and resume example](references/resume.example.md) and
+handoff and authorizes `CLI build start <plan>`. See
 [SESSIONS.md](../../references/SESSIONS.md).

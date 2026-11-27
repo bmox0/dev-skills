@@ -152,7 +152,7 @@ DETAILS = {
     "spec write": ("Check the plan and apply its Spec section and archive entry to the worktree. Inspect the resulting diff. "
                    "Use the gate for normal tracked integration of the rules.", "spec write PLAN"),
     "approve": ("Strictly check the draft and compile its execution state. This writes records but is not human approval. "
-                "Correct reported problems, then use runweld plan review PLAN to show the exact plan and run to the human.",
+                "Correct reported problems, then present the summary from runweld plan review PLAN to the human.",
                 "approve PLAN"),
     "status": ("Read a plan by path, or omit it for project inventory. Use --current for current workflow guidance "
                "and --json for evidence and actions in a machine-readable form.", "status --current", "status PLAN --json"),
@@ -160,7 +160,7 @@ DETAILS = {
                  "For a task’s actual stage and evidence, use runweld next.", "workflow --stage build-verification --json"),
     "plan": ("Run bare for the planning guide. Review the complete plan and run before recording the human’s decision. "
              "Approval starts no build.", "plan", "plan review PLAN"),
-    "plan review": ("Show the proposal and its revision, including run settings, changes and the approval command. "
+    "plan review": ("Show the planner's summary, plan and configuration paths, changes since approval, revision and approval command. "
                     "Review that revision with the human. " + ROUTE, "plan review PLAN"),
     "plan approve": ("Record the human’s unchanged words for the displayed revision. Use --acceptor with --authority only "
                      "for delegated acceptance. If the proposal changed, review its new revision. Wait for a separate start instruction.",

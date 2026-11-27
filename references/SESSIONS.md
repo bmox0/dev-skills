@@ -36,8 +36,10 @@ Record transitions without duplicate reports.
 
 ## Start and recover once
 
-Planning presents the complete plan and run together with `CLI plan review`
-and records one human approval. A separate start instruction chooses **herdr**, a **native independent
+Present the `CLI plan review` summary in chat with summary, plan and run links,
+available prototypes, screenshots, bug cause and evidence. Explain changes on
+reapproval. Record one decision per revision.
+A separate start instruction chooses **herdr**, a **native independent
 session**, or **manual handoff** and authorizes `CLI build start <plan>`.
 Use `--provider NAME` for multiple providers. Repeat to see the existing assignment.
 Record plan/run/build-skill paths, tree, session IDs, contact/channel and

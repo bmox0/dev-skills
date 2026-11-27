@@ -3,6 +3,7 @@ set -euo pipefail
 unset CODEX_THREAD_ID CLAUDECODE
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export INSTALLER="$repo_root/scripts/install-runweld"
+export SUMMARY_FIXTURE="$repo_root/test/lib/summary.md"
 python3 -B <<'PY'
 import json
 import os
@@ -217,9 +218,17 @@ Waits for: nothing
 
 none
 """
+    trial_plan = Path(trial["plan"])
+    trial_plan.write_text(draft.replace('runweld/bug', trial["branch"]).replace(earlier, trial["base"]))
+    run(cli, "approve", trial_plan)
+    trial_plan.with_suffix(".summary.md").write_bytes(Path(os.environ["SUMMARY_FIXTURE"]).read_bytes())
+    preview = json.loads(run(cli, "plan", "review", trial_plan, "--json"))
+    assert preview["evidence"] == {"prototype": {"result": "Choose A", "artifact": str(proto)}}
+    assert proto.as_uri() in run(cli, "plan", "review", trial_plan)
     direct_plan = Path(direct["plan"])
     direct_plan.write_text(draft.replace('runweld/bug', direct["branch"]).replace(earlier, direct["base"]))
     run(cli, "approve", direct_plan)
+    direct_plan.with_suffix(".summary.md").write_bytes(Path(os.environ["SUMMARY_FIXTURE"]).read_bytes())
     approval = json.loads(run(cli, "plan", "review", direct_plan, "--json"))["revision"]
     assert "plan-unapproved" in run(cli, "build", "start", direct_plan, ok=False)
     route(direct, 'grill = "take"\nprototype = "skip"\n')
@@ -245,7 +254,11 @@ none
     plan.write_text(draft)
     run(cli, "spec", "check", plan, cwd=prefix)
     run(cli, "approve", plan, cwd=prefix)
+    plan.with_suffix(".summary.md").write_bytes(Path(os.environ["SUMMARY_FIXTURE"]).read_bytes())
     review = json.loads(run(cli, "plan", "review", plan, "--json"))
+    assert review["evidence"] == {"reproduce": {"result": "The source says wrong", "command": reproduction, "artifact": str(art)}}
+    screen = run(cli, "plan", "review", plan)
+    assert "Bug cause: The source says wrong" in screen and reproduction in screen and art.as_uri() in screen
     run(cli, "plan", "approve", plan, "--revision", review["revision"], "--by", "Tester", "--words", "Approve the plan and run")
     stamp = (data / "ready").stat().st_mtime_ns
     run(cli, "build", "start", plan)
