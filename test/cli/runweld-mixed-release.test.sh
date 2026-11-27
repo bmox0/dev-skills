@@ -19,7 +19,7 @@ else
   preceding="$sandbox/release-a"
   mkdir "$preceding"
   cp -R "$repo_root/." "$preceding/"
-  sed -e '/^project_lock_version = /d' -e '/^\[route\]$/,/^$/d' "$repo_root/references/workflow.toml" > "$preceding/references/workflow.toml"
+  sed -e '/^project_lock_/d' -e '/^\[route\]$/,/^$/d' "$repo_root/references/workflow.toml" > "$preceding/references/workflow.toml"
   sed 's/Close a task whose/Previous help for a task whose/g' "$repo_root/workflow/build/cli_help.py" > "$preceding/workflow/build/cli_help.py"
 fi
 launcher="$sandbox/bin/runweld"
@@ -161,8 +161,8 @@ cmp .runweld/runweld.lock "$sandbox/v2.lock"
 cli update --project >/dev/null
 b=$(cat "$sandbox/lib/runweld/default")
 [[ "$a" != "$b" ]]
-assert_eq "lock_version = 3
-release = \"$b\"" "$(cat .runweld/runweld.lock)" 'distribution#project-lock: updating to a current release writes only the format and release'
+assert_contains "$(cat .runweld/runweld.lock)" "release = \"$b\"" 'distribution#project-lock: update pins the current release'
+assert_contains "$(cat .runweld/runweld.lock)" '[guides]' 'distribution#project-lock: update records guide hashes'
 current_entry=$(cli task start current --finish-how ff-only --finish-target main --json)
 same_plan=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"])' <<< "$current_entry")
 cp .runweld/runweld.lock "$sandbox/lock"

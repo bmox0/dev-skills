@@ -81,8 +81,14 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'isolation' not in read(config)
     assert read(config)['setup'] == {'command': 'touch must-not-run-at-init'}
     pins = read(lock)
-    assert pins == {'lock_version': 3, 'release': release}, 'distribution#project-lock: init writes only the format and exact release'
+    assert pins['lock_version'] == 3 and pins['release'] == release
+    assert set(pins) == {'lock_version', 'release', 'guides', 'roles', 'cli', 'adapters'}
+    for section in ('guides', 'roles', 'cli', 'adapters'):
+        assert all(len(value) == 64 and all(c in '0123456789abcdef' for c in value) for value in pins[section].values())
     generated = lock.read_bytes()
+    grill_hash = pins['guides']['grill'].encode()
+    lock.write_bytes(generated.replace(grill_hash, b'0' * 64))
+    assert 'runweld update --project' in runweld('task', 'start', 'altered', ok=False)
     lock.write_bytes(generated + b'unexpected = true\n')
     assert 'runweld update --project' in runweld('task', 'start', 'altered', ok=False)
     runweld('update', '--project', release)

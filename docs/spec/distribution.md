@@ -22,7 +22,7 @@ Why: a new terminal or agent needs a discoverable path through the entire task
 
 Why: release contents already carry their integrity metadata and task changes must stay local
 
-- Initialize and update a test project. Its new lock contains only format and release, an existing v2 project opens, older runs retain their pinned engine, and an altered package still fails verification.
+- Update a project after changing only the grill interview. Only the release ID and `guides.grill` change in the lock. Verify package files against the release manifest and resume existing runs on their pinned engine.
 - Configure two runs from one project to take different optional stages. Resume each in a fresh process and follow its selected route; compare project config and lock byte for byte before and after. Existing runs with no preference keep working.
 
 ### local-workflow — Shared project configuration and private workflow artifacts have distinct Git visibility

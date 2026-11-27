@@ -251,10 +251,13 @@ def read_workflow(root, files=None):
     catalog = read_data(root / WORKFLOW, tomllib.loads)
     try:
         required = {"order", "shared", "stages"}
-        if not required <= catalog.keys() <= required | {"project_lock_version", "route"}:
+        if not required <= catalog.keys() <= required | {"project_lock_version", "project_lock_components", "route"}:
             raise ValueError("expected order, shared inputs and stages")
         if "project_lock_version" in catalog and (type(catalog["project_lock_version"]) is not int or catalog["project_lock_version"] != 3):
             raise ValueError("project_lock_version must be 3")
+        if "project_lock_components" in catalog and (
+                catalog.get("project_lock_version") != 3 or type(catalog["project_lock_components"]) is not bool):
+            raise ValueError("project_lock_components must be a boolean for lock format 3")
         if "route" in catalog:
             route = catalog["route"]
             if not isinstance(route, dict) or set(route) != set(ROUTE_STAGES) or any(v not in ROUTE_CHOICES for v in route.values()):
@@ -300,18 +303,26 @@ def project_lock(bundle, *, legacy=False):
     release = bundle.name
     manifest = release_manifest(bundle, release)
     catalog = read_workflow(bundle, manifest["files"])
-    if not legacy and catalog.get("project_lock_version") == 3:
-        return f'lock_version = 3\nrelease = "{release}"\n'
+    version = 2 if legacy else catalog.get("project_lock_version", 2)
+    lines = [f"lock_version = {version}", f'release = "{release}"']
+    if version == 3 and not catalog.get("project_lock_components"):
+        return "\n".join(lines) + "\n"
+    if version == 2:
+        lines.append("stage_order = " + json.dumps(catalog["order"]))
     groups = {}
     for path, entry in manifest["files"].items():
         section, name = component_key(path)
-        groups.setdefault(section, {}).setdefault(name, {})[path] = entry
-    lines = ["lock_version = 2", f'release = "{release}"', "stage_order = " + json.dumps(catalog["order"])]
+        if version == 2 or section != "resources":
+            groups.setdefault(section, {}).setdefault(name, {})[path] = entry
     for section, components in sorted(groups.items()):
         lines.extend(["", f"[{section}]"])
         for name, entries in sorted(components.items()):
             digest = hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()
-            lines.append(f'{json.dumps(name)} = "sha256:{digest}"')
+            if version == 2:
+                digest = "sha256:" + digest
+            lines.append(f'{json.dumps(name)} = "{digest}"')
+    if version == 3:
+        return "\n".join(lines) + "\n"
     for key in catalog["order"]:
         stage = catalog["stages"][key]
         inputs = catalog["shared"] + stage["inputs"] + list(stage.get("references", {})) + list(stage.get("roles", {}).values())

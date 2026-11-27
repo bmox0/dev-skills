@@ -2,6 +2,7 @@
 order = ["grill", "prototype", "plan", "build", "build-verification", "judge", "human-review", "finish"]
 shared = ["references/SESSIONS.md", "references/WORKFLOW-PATHS.md"]
 project_lock_version = 3
+project_lock_components = true
 
 [route]
 grill = "ask"

@@ -97,7 +97,12 @@ with tempfile.TemporaryDirectory() as folder:
         before, after = map(manifest_files, (old, new))
         return {path for path in before.keys() | after.keys() if before.get(path) != after.get(path)}
 
-    assert tomllib.loads(lock.read_text()) == {"lock_version": 3, "release": latest}
+    original_lock = tomllib.loads(before.decode())
+    grill_lock = tomllib.loads(lock.read_text())
+    assert grill_lock["release"] == latest
+    assert grill_lock["guides"]["grill"] != original_lock["guides"]["grill"]
+    assert grill_lock == {**original_lock, "release": latest,
+                          "guides": {**original_lock["guides"], "grill": grill_lock["guides"]["grill"]}}
     assert changed_files(release, latest) == {"workflow/grill/references/INTERVIEW.md"}
     shared_path = 'references/SESSIONS.md'
     with (upstream / shared_path).open('a') as f:
@@ -106,7 +111,8 @@ with tempfile.TemporaryDirectory() as folder:
     subprocess.run([cli, "update", "--cli"], cwd=locked, env=bootstrap_env, check=True, timeout=30)
     run(cli, "update", "--project", cwd=locked)
     shared_release = (prefix / "lib/runweld/default").read_text().strip()
-    assert tomllib.loads(lock.read_text()) == {"lock_version": 3, "release": shared_release}
+    shared_lock = tomllib.loads(lock.read_text())
+    assert shared_lock == {**grill_lock, "release": shared_release}
     assert changed_files(latest, shared_release) == {shared_path}
     nested = locked / "src"
     nested.mkdir()

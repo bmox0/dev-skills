@@ -20,11 +20,12 @@ curl -fsSL https://raw.githubusercontent.com/bmox0/runweld/main/install.sh | bas
 
 Run `runweld update --project` in an initialized checkout to select the installed
 default for new tasks. Commit `.runweld/runweld.lock` to share the selection.
-The current TOML lock contains only `lock_version = 3` and the exact
-`release` ID. Runweld verifies the installed files and executable flags
-against the release manifest before running commands. Existing version 2
-locks remain readable. Selecting a release that expects version 2 writes
-its expanded lock. Models and checks live in `.runweld/config.toml`.
+Lock format 3 records the exact release ID and 64-digit SHA-256 hashes under
+`[guides]`, `[roles]`, `[cli]` and `[adapters]`. Updating only the grill
+interview changes two values in Git: the release ID and `guides.grill`.
+Runweld verifies every installed file against the release manifest.
+Existing tasks retain their release and route. Older releases retain their
+lock layout. Models and checks live in `.runweld/config.toml`.
 
 Use `runweld update --project RELEASE` to select a specific installed build ID.
 That changes the release for new tasks only. From an older task’s worktree,
